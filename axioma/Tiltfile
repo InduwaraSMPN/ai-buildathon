@@ -1,5 +1,15 @@
-docker_compose('api/docker-compose.yml', project_name='axioma', wait=True)
-dc_resource('postgres', labels=['infrastructure'])
+version_settings(check_updates=False)
+update_settings(max_parallel_updates=6)
+
+PROJECT_NAME = 'axioma'
+
+docker_compose('api/docker-compose.yml', project_name=PROJECT_NAME, wait=True)
+dc_resource(
+    'postgres',
+    project_name=PROJECT_NAME,
+    labels=['infrastructure'],
+    links=['postgresql://postgres:password@localhost:5432/axioma'],
+)
 
 local_resource(
     'api',
@@ -8,9 +18,10 @@ local_resource(
     dir='api',
     serve_dir='api',
     resource_deps=['postgres'],
-    readiness_probe=probe(tcp_socket=tcp_socket_action(port=3000)),
-    links=['http://localhost:3000'],
+    readiness_probe=probe(http_get=http_get_action(port=3000, path='/health')),
+    links=['http://localhost:3000', 'http://localhost:3000/health'],
     labels=['backend'],
+    allow_parallel=True,
 )
 
 local_resource(
@@ -23,6 +34,7 @@ local_resource(
     readiness_probe=probe(tcp_socket=tcp_socket_action(port=3001)),
     links=['http://localhost:3001'],
     labels=['frontend'],
+    allow_parallel=True,
 )
 
 local_resource(
@@ -35,6 +47,7 @@ local_resource(
     readiness_probe=probe(tcp_socket=tcp_socket_action(port=3002)),
     links=['http://localhost:3002'],
     labels=['frontend'],
+    allow_parallel=True,
 )
 
 local_resource(
@@ -46,6 +59,7 @@ local_resource(
     readiness_probe=probe(tcp_socket=tcp_socket_action(port=3003)),
     links=['http://localhost:3003'],
     labels=['frontend'],
+    allow_parallel=True,
 )
 
 local_resource(
@@ -54,9 +68,12 @@ local_resource(
     serve_cmd='uv run python -m axel.server',
     dir='agent',
     serve_dir='agent',
+    deps=['agent/axel', 'agent/pyproject.toml', 'agent/uv.lock'],
+    ignore=['agent/**/__pycache__', 'agent/.venv', 'agent/.pytest_cache', 'agent/.ruff_cache'],
     resource_deps=['api'],
     readiness_probe=probe(http_get=http_get_action(port=8090, path='/health')),
     labels=['backend'],
+    allow_parallel=True,
 )
 
 local_resource(
@@ -65,4 +82,5 @@ local_resource(
     dir='cli',
     deps=['cli/cmd', 'cli/internal', 'cli/go.mod', 'cli/go.sum'],
     labels=['device'],
+    allow_parallel=True,
 )
