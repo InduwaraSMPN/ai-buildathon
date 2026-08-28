@@ -38,6 +38,17 @@ local_resource(
 )
 
 local_resource(
+    'web',
+    cmd='pnpm install --frozen-lockfile',
+    serve_cmd='pnpm exec vite dev --port 3003',
+    dir='web',
+    serve_dir='web',
+    readiness_probe=probe(tcp_socket=tcp_socket_action(port=3003)),
+    links=['http://localhost:3003'],
+    labels=['frontend'],
+)
+
+local_resource(
     'agent',
     cmd='uv sync --all-extras',
     serve_cmd='uv run python -m axel.server',

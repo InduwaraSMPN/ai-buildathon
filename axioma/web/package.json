@@ -1,0 +1,33 @@
+{
+	"name": "axioma-web",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "Public website for Axiōma.",
+	"scripts": {
+		"dev": "vite dev --port 3000",
+		"build": "vite build",
+		"start": "node .output/server/index.mjs",
+		"check": "biome check --write .",
+		"check-types": "vite build && tsc --noEmit"
+	},
+	"dependencies": {
+		"@tailwindcss/vite": "4.3.3",
+		"@tanstack/react-router": "1.170.32",
+		"@tanstack/react-start": "1.168.49",
+		"nitro": "3.0.260610-beta",
+		"react": "19.2.8",
+		"react-dom": "19.2.8",
+		"tailwindcss": "4.3.3"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "2.5.6",
+		"@types/node": "26.2.0",
+		"@types/react": "19.2.17",
+		"@types/react-dom": "19.2.3",
+		"@vitejs/plugin-react": "6.0.4",
+		"typescript": "6.0.3",
+		"vite": "8.1.5"
+	},
+	"packageManager": "pnpm@11.24.0"
+}
