@@ -3,11 +3,19 @@
 **Document role:** Product context — what we are building and why
 **Related:** [architecture.md](architecture.md) for system design, [implementation.md](implementation.md) for build order and delivery
 
+## Naming
+
+**Axiōma** is the platform — the whole solution, and the company.
+
+**Axel** is the agent: the component that reads a ticket, gathers evidence, decides what to do, and does it. Axel is one reasoning surface, not a cast of characters, and which model backs it is configuration.
+
+**axel-cli** is the binary that runs on an employee's laptop. It is Axel's reach onto a device, not a second agent — it executes typed actions it is told to execute and holds no reasoning of its own.
+
+Prose uses `Axiōma` with the macron. Identifiers, package names, and paths use the ASCII form `axioma`.
+
 ## What Axiōma Is
 
-Axiōma is an AI IT-support platform. An employee opens a ticket in a web portal. An LLM reads it, works out what kind of problem it is, and routes it. AI agents then try to resolve it directly — against enterprise infrastructure, or against the employee's own laptop through a CLI agent installed on that machine. If the fix works, the ticket closes on its own. If it does not, the ticket escalates to a human with everything the agent learned attached.
-
-The agent is called **Axel**. It is one reasoning surface, not a cast of characters, and which model backs it is configuration.
+An AI IT-support platform. An employee opens a ticket in a web portal. Axel reads it, works out what kind of problem it is, and routes it. It then tries to resolve the issue directly — against enterprise infrastructure, or against the employee's own laptop through axel-cli. If the fix works, the ticket closes on its own. If it does not, the ticket escalates to a human with everything Axel learned attached.
 
 ## The Problem
 
@@ -23,16 +31,28 @@ Axiōma targets the second cost first. If the fix is small and mechanical, an ag
 |---|---|
 | Employee | Opens a ticket in the portal, sees progress in plain language, gets told what changed and when it is fixed |
 | IT support staff | Works the dashboard: sees the queue, reads what Axel tried and why, takes over escalations |
-| Platform / infrastructure engineer | Owns what Axel is allowed to touch, adds connectors and action templates |
+| Platform engineer | Owns what Axel is allowed to touch, adds connectors and device actions |
 
 ## Ticket Flow
 
 1. **Creation.** Employee logs in to the portal and opens a ticket.
 2. **Routing.** The API captures the ticket and the employee's context — who they are, what device they use, what has happened before. Axel reads all of it and routes to the right system or team.
-3. **Autonomous resolution.** An agent run starts. It gathers evidence through read tools, forms a diagnosis, and applies a fix if one is available to it.
-4. **Device resolution.** If the problem is on the employee's laptop, the fix goes to the CLI agent running on that machine over its live connection.
-5. **Escalation or closure.** A verified fix closes the ticket. Anything else escalates to the dashboard with the full agent transcript, the evidence, and what it was about to do.
-6. **CMDB enrichment.** Everything observed along the way — services, dependencies, devices, what was actually true at the time — is written back to the CMDB with its source.
+3. **Autonomous resolution.** An agent run starts. Axel gathers evidence through read tools, forms a diagnosis, and applies a fix if one is available to it.
+4. **Device resolution.** If the problem is on the employee's laptop, the fix goes to axel-cli over its live connection.
+5. **Escalation or closure.** A verified fix closes the ticket. Anything else escalates to the dashboard with the full transcript, the evidence, and what Axel was about to do.
+6. **CMDB enrichment.** Everything observed along the way is written back to the CMDB with its source.
+
+## How Axel Fixes A Device
+
+Device remediation is tiered, and the order is deliberate.
+
+1. **Typed action.** Deterministic, fast, provable. `ipconfig /flushdns` takes 200ms and you can say exactly what changed. Almost all IT remediation belongs here.
+2. **Computer-use.** Driving the GUI, only when there is no programmatic path — GUI-only vendor apps, legacy config panels, one-off things nobody scripted.
+3. **Escalate to a human.**
+
+A vision model clicking through Settings is slow, non-deterministic, costs vision tokens per step, and leaves you unable to state precisely what changed. It earns its place in the tail and nowhere else. Having the capability available is not a reason to use it.
+
+Computer-use is also **installed only where it is needed** rather than shipping with every agent, because it carries a runtime footprint the typed path does not.
 
 ## Scope
 
@@ -40,10 +60,10 @@ Axiōma targets the second cost first. If the fix is small and mechanical, an ag
 
 - Portal: login, register, open a ticket, watch it progress, see the outcome.
 - Dashboard: ticket queue, agent transcript, evidence, manual takeover, close or reassign.
-- CLI: installs on a Windows laptop, runs in the background, holds a connection, executes what it is told, reports device state.
-- API: one typed surface that everything else speaks to.
-- Agent service: the LLM loop, tool registry, and per-ticket run history.
-- Connectors: Kubernetes first, since the flagship scenario is a failing deployment.
+- axel-cli: installs on a Windows laptop, runs in the background, holds a connection, executes typed actions, reports device state.
+- API: one typed surface for the frontends, and the gateway both agents dial into.
+- Axel: the run loop, tool registry, and per-ticket run history.
+- Kubernetes as the first infrastructure connector, since the flagship scenario is a failing deployment.
 - CMDB: a store the platform reads for context and writes observations back into.
 - Three scenarios end to end, covering both resolution routes and one correct refusal.
 
@@ -53,32 +73,32 @@ Axiōma targets the second cost first. If the fix is small and mechanical, an ag
 - **Safeguards on dangerous actions.** No approval gates, no sandboxing, no blast-radius limits. The action set is small and its contents are chosen to be safe, which is not the same as the system being safe.
 - **Multi-tenancy.** One organization.
 - **Proactive detection.** Nothing watches for problems. Every interaction starts with a ticket the employee opened.
-- **Real enterprise connectors beyond Kubernetes.** ITSM, identity, observability, endpoint management — later.
+- **Connectors beyond Kubernetes.** ITSM, identity, observability, endpoint management — later.
 
-The last two are worth stating plainly, because the first is what makes the CLI agent acceptable to install at all, and the second is what keeps the demo honest about what it proves.
+The last two matter most. The first is what makes axel-cli acceptable to install at all; the second keeps the demo honest about what it proves.
 
 ## Scenarios
 
-Three, chosen to exercise different paths rather than to tell the same story three ways.
+Three, chosen to exercise different paths rather than to tell one story three ways.
 
-**1. Failing pod deployment — infrastructure path, agent fixes it.**
-A service will not come up. The pods report `ImagePullBackOff`, and the reason is a bad image tag in the deployment. Axel reads pod status, identifies the tag, verifies the intended tag resolves in the registry, patches the deployment, and watches the rollout go green. Ticket closes.
+**1. Failing pod deployment — infrastructure path, Axel fixes it.**
+A service will not come up. Pods report `ImagePullBackOff` from a bad image tag. Axel reads pod status, identifies the tag, verifies the intended one resolves, patches the deployment, and watches the rollout go green. Ticket closes.
 
-This is the flagship because the signal is unambiguous — one string on the container status, no log parsing, no guessing between causes — and the fix is a single reversible patch on one field.
+Flagship because the signal is unambiguous — one string on the container status, no log parsing, no guessing between causes — and the fix is a single reversible patch on one field.
 
-**2. Laptop issue — device path, CLI fixes it.**
-Something is wrong on the employee's machine. Axel reads device state through the CLI, identifies it, and runs a fix through the same connection. The result is confirmed by re-reading state, and the ticket closes.
+**2. Laptop issue — device path, axel-cli fixes it.**
+Something is wrong on the employee's machine. Axel reads device state through axel-cli, identifies it, and dispatches a typed action over the same connection. The result is confirmed by re-reading state, and the ticket closes.
 
-This proves the CLI round trip, which is the part nothing else in the system can demonstrate.
+This proves the device round trip, which nothing else in the system can demonstrate.
 
-**3. Unschedulable pod — infrastructure path, agent correctly refuses.**
+**3. Unschedulable pod — infrastructure path, Axel correctly refuses.**
 Pods sit `Pending` with `Unschedulable` and `Insufficient cpu`. Axel diagnoses this perfectly and correctly does not act, because every available fix is a policy decision: shrinking a CPU request changes the workload's performance contract, and adding capacity is not in the API. It escalates with the scheduler's verbatim message and the patch it would have proposed.
 
 An agent that always acts is not trustworthy, it is just fast. This case is what makes the other two mean something.
 
-## What Success Looks Like For The MVP
+## What Success Looks Like
 
-An employee opens a ticket, an agent resolves it without a human touching anything, and the ticket closes — across both the infrastructure path and the device path. A third ticket escalates cleanly with its reasoning intact.
+An employee opens a ticket, Axel resolves it without a human touching anything, and the ticket closes — across both the infrastructure path and the device path. A third ticket escalates cleanly with its reasoning intact.
 
 That is the whole bar. Not throughput, not accuracy across a broad problem space, not production readiness. One working loop, end to end, through every component.
 
@@ -87,10 +107,10 @@ That is the whole bar. Not throughput, not accuracy across a broad problem space
 | Question | Why it matters |
 |---|---|
 | Which model backs Axel? | Affects tool-calling reliability and structured-output support. Provider is configuration; the choice is not yet made. |
-| How does the CLI get installed on a real fleet? | Manual install works for a demo. Anything beyond that needs packaging and a distribution story. |
+| How does axel-cli reach a real fleet? | Manual install works for a demo. Anything beyond needs packaging and distribution. |
 | What is the CMDB seeded from? | Right now it is empty and fills from observation. A real deployment imports from an existing source of truth. |
 | How much does Axel see of prior tickets? | Context improves routing and risks leaking one employee's information into another's ticket. |
-| When does an agent stop trying? | No budget or stopping rule is defined yet. Without one, a confused agent loops. |
+| When does Axel stop trying? | There are ceilings on tool calls, model turns, and wall time. Whether those numbers are right is unvalidated. |
 
 ## Claim Discipline
 

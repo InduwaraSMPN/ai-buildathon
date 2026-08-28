@@ -1,220 +1,183 @@
 # Axiōma Architecture
 
 **Document role:** System design — components, boundaries, and how they connect
-**Related:** [idea.md](idea.md) for product intent, [implementation.md](implementation.md) for repo layout and build order
+**Related:** [idea.md](idea.md) for product intent, [implementation.md](implementation.md) for layout and build order
+
+## Shape
+
+Five independent projects, each with the toolchain its job actually calls for. They are not a monorepo and share no package manager; the workspace directory holds them side by side the way a set of checked-out repositories would.
+
+| Project | Language | Job |
+|---|---|---|
+| `api` | TypeScript | oRPC surface for the frontends, gRPC gateways for both agents. The only component that writes. |
+| `portal` | TypeScript | Employee web app. |
+| `dashboard` | TypeScript | IT web app. |
+| `agent` | Python | Axel — the reasoning loop, tool registry, and model client. |
+| `cli` | Go | axel-cli — one static binary on an employee laptop. |
+
+The language boundaries are not incidental. Python is where the agent ecosystem lives — model clients, observability, computer-use. Go produces a single binary with no runtime to install on a laptop, which is the constraint that dominates everything about that component. TypeScript holds the frontends and the API because the contract between them infers end to end there and nowhere else.
 
 ## Component Map
 
 ```mermaid
 flowchart TB
-  subgraph clients["Clients"]
-    PORTAL["Web Portal<br/>employee: open ticket, watch progress"]
-    DASH["Dashboard<br/>IT staff: queue, transcript, takeover"]
+  subgraph clients["Clients — TypeScript"]
+    PORTAL["portal<br/>employee: open ticket, watch progress"]
+    DASH["dashboard<br/>IT staff: queue, transcript, takeover"]
   end
 
-  subgraph device["Employee device"]
-    CLI["CLI agent<br/>background process<br/>holds outbound connection"]
+  subgraph laptop["Employee device"]
+    CLI["axel-cli — Go<br/>background daemon<br/>typed actions only"]
   end
 
-  subgraph backend["Backend"]
-    API["API<br/>oRPC surface + device gateway<br/>the only thing clients talk to"]
-    AGENT["Agent Service<br/>Axel: LLM loop, tool registry, run history"]
-    CONN["Connectors<br/>Kubernetes today, enterprise systems later"]
-  end
+  API["api — TypeScript<br/>oRPC + gRPC gateways<br/>owns every write"]
 
-  subgraph platform["Platform packages"]
-    DB[("Postgres<br/>tickets · runs · devices · CMDB")]
-    INFRA["infra<br/>db · env · config · logging"]
-  end
+  AXEL["agent — Python<br/>Axel: run loop, tools, model client"]
 
   MODEL(["Model provider<br/>configured, not fixed"])
+  K8S(["Kubernetes API"])
+  DB[("Postgres<br/>tickets · runs · steps · devices · commands · cmdb")]
 
-  PORTAL --> API
-  DASH --> API
-  CLI <-. "WebSocket, device-initiated" .-> API
+  PORTAL -- "oRPC" --> API
+  DASH -- "oRPC" --> API
+  CLI <-. "gRPC stream, device dials out" .-> API
+  AXEL <-. "gRPC stream, agent dials out" .-> API
 
-  API --> AGENT
-  AGENT -. "proposes" .-> MODEL
-  MODEL -. "tool calls" .-> AGENT
-  AGENT --> CONN
-  AGENT -- "device actions" --> API
-  CONN --> K8S(["Kubernetes API"])
-
-  API --> INFRA
-  AGENT --> INFRA
-  CONN --> INFRA
-  INFRA --> DB
-
-  AGENT -- "observations" --> DB
+  AXEL -. "proposes" .-> MODEL
+  API --> K8S
+  API --> DB
 ```
 
-## Components
+Both agents are gRPC **clients**. The API runs both servers. Neither can be dialled directly — one is a worker on whatever network it happens to run on, the other is behind NAT on a laptop that sleeps — so each dials out and holds a single bidirectional stream that work is pushed down.
 
-### Employee-facing
+## The Rule That Shapes Everything
 
-**Web Portal.** Where employees log in, open tickets, and follow them. Shows progress in plain language — what Axel is looking at, what it found, what it changed. Never shows raw tool output or model reasoning.
+**Axel has no database credentials, no cluster credentials, and no path to a device.**
 
-**Dashboard.** Where IT staff work. The ticket queue, the full agent transcript for any ticket, the evidence Axel gathered, and controls to take over, close, or reassign. Everything the portal hides is visible here.
+Every side effect is a `ToolRequest` sent to the API, which executes it and returns the result. Axel decides; the API acts and persists.
 
-Both are separate apps rather than one app with two roles. They share components and the API client, but their audiences and screens diverge immediately, and merging them would mean a permission system the MVP does not have.
+Three things follow, and they are the reason for the arrangement:
 
-### CLI
+- Persistence and authority live in one place, so there is no second ORM, no duplicated schema, and no question about which component wrote a row.
+- A run is reproducible from its transcript, because tool name plus validated input is the whole record of what happened.
+- Credentials never leave the API. Compromising the agent yields the ability to *ask* for things, not to do them.
 
-A small process installed on the employee's Windows laptop. It runs in the background, holds a connection to the API, reports device state on request, and executes actions it is told to execute.
+## Contracts
 
-The connection is **device-initiated over WebSocket**. The device dials out; the backend never dials in. That is what makes it work through NAT, on home networks, and behind corporate proxies without any firewall change.
+Two, each where a boundary genuinely exists.
+
+**oRPC, for the TypeScript half.** `api/src/contracts` declares procedures with zod schemas and imports nothing but `@orpc/contract` and `zod` — that constraint is what makes it safe to copy. `pnpm contracts:publish` mirrors it verbatim into `portal/src/sdk/contracts` and `dashboard/src/sdk/contracts`, stamped as generated and never edited in place. Handlers live in `api/src/server` and are bound with `implement(appContract)`, so a handler whose output stops matching the declared schema fails to typecheck in `api` rather than at runtime in a frontend that mirrored a contract the server no longer honours.
+
+**Protocol buffers, for the language boundaries.** `api/proto/axioma.proto` is the source of truth, mirrored into `agent/` and `cli/` by the same command. It defines `AgentChannel` and `DeviceChannel` — same shape, remote side dials in.
+
+Contract-first is what allows separate repositories at all. A contract that dragged in a Hono context and an auth module could not cross into a frontend that has neither.
+
+## Axel
+
+A bounded loop: read, think, act, verify. The loop owns the sequence and the limits; the model owns only what to try next. No verdict is taken from model confidence.
+
+**Tools are typed and registered.** Axel picks a tool by name and supplies parameters validated against a pydantic schema before anything leaves the process. It does not compose commands, shell strings, or API calls. Adding a capability means adding a tool, which is a code change and a review.
+
+| Tool | Effect | Verified by |
+|---|---|---|
+| `cluster.read_pods` | read | — |
+| `cluster.read_deployment` | read | — |
+| `cluster.patch_image` | write | `cluster.read_deployment` |
+| `device.read_state` | read | — |
+| `device.run_action` | write | `device.read_state` |
+| `device.computer_use` | write | `device.read_state` |
+| `cmdb.record_observation` | write | — |
+
+Every write names the read that confirms it. A write returning success means the call was accepted, not that the problem is fixed — so after acting, Axel re-reads through the named read tool.
+
+**The loop is bounded.** Ceilings on tool calls, model turns, and wall time. Hitting any of them ends the run as `exhausted` and escalates, rather than leaving a ticket in a partial state. Without this a confused agent loops and the ticket neither resolves nor escalates.
+
+**Unknown tools and invalid input are observations, not crashes.** They go back into the transcript so the model can correct itself inside the same budget.
+
+**The model is not fixed.** No provider is named in the design. The adapter is configured with an endpoint, model, and credentials, and the run record stores which model actually answered rather than which one was configured.
+
+## axel-cli
+
+One Go binary, two modes.
+
+**`axel-cli daemon`** is headless and runs as a logon Scheduled Task. There is no terminal attached, so there is no terminal UI. It holds the outbound connection, executes typed actions, and reports results.
+
+**`axel-cli status | enroll | doctor`** are operator-facing, run by IT staff on a machine they are debugging. These carry the terminal UI — [Bubble Tea v2](https://charm.land/bubbletea) (`charm.land/bubbletea/v2`) with Lip Gloss — because that is where a person is actually looking.
 
 Design points that matter:
 
-- **Identity.** On first run the CLI generates a UUID and persists it to `%LOCALAPPDATA%\axioma\device.json`. That is the device ID for the life of the profile. The hello message carries hostname, username, platform, and release so the dashboard reads as something human.
-- **Liveness.** A laptop that sleeps does not close its TCP connection, it just stops answering. So the server pings every 30 seconds and terminates peers that miss a round; the client sends its own application-level ping every 25 seconds and reconnects on exponential backoff with jitter, capped at 30 seconds.
-- **Replay.** On reconnect the client sends the last sequence number it saw, and the server replays unacked commands from a bounded in-memory outbox. Sleeping laptops make this necessary. It is deliberately not durable queuing — a hundred commands, ten-minute TTL, gone on restart.
-- **Install.** A logon Scheduled Task running as the interactive user, not a Windows service. A service runs as LocalSystem in session 0, which cannot reach the user profile, mapped drives, or per-user applications — which is where most real laptop problems live. It also installs without administrator rights.
+- **Outbound only.** The device dials the gateway; the gateway never dials in. That is what works through NAT, on home networks, and behind corporate proxies without a firewall change.
+- **Identity** is a UUID minted on first run and persisted under the user profile. It survives restarts, upgrades, and network roaming, and dies with the profile — the right lifetime for "this person's laptop". A hardware ID would outlive a reimage, clone with a VM image, and be a privacy artifact besides.
+- **Liveness.** A sleeping laptop does not close its TCP connection, it stops answering. Only an application-level ping notices. The client pings on an interval and reconnects with exponential backoff plus jitter, so a fleet waking together does not stampede.
+- **Replay.** On reconnect the device reports the last sequence it processed and the gateway replays past it. Deliberately a bounded in-memory outbox, not durable queuing.
+- **A logon Scheduled Task, not a Windows service.** A service runs as LocalSystem in session 0, which cannot reach the user profile, mapped drives, or per-user applications — where most real laptop problems live. It also installs without administrator rights.
 
-### Backend
+**Actions are named, never composed.** The gateway sends an action name and typed parameters; the argument list for each action is written out in the binary. Facet reads work the same way. No command string crosses the boundary, which is what stops a ticket talking the agent into running something arbitrary.
 
-**API.** The only surface clients talk to. It owns the oRPC procedures the portal and dashboard call, and it owns the WebSocket gateway the CLI connects to. Everything crossing a process boundary goes through here.
+Computer-use is the second tier and is installed separately, as `cua-driver` and `cua-computer-server` on the device. [cua](https://github.com/trycua/cua) is the choice because its driver runs in the background — agents click, type, and verify *without stealing the cursor or focus* — which is the property that makes this acceptable on a laptop somebody is working on. Agent-S was rejected for using PyAutoGUI, which takes the real mouse and keyboard, and for requiring a separately hosted grounding model.
 
-The device gateway lives in the API rather than in its own service for one reason: the connection is stateful and long-lived, and the thing that dispatches to a device needs to be the thing holding the socket. Splitting them means a second hop and a device-to-socket routing table for no gain at this size.
+cua is Python and axel-cli is Go, so the language boundary is a process boundary: `cua-computer-server` runs locally and axel-cli drives it over its local API. Axel itself has no cua dependency, because Axel has no device path at all — it asks the API, the API dispatches to axel-cli, and axel-cli decides which tier can serve the request.
 
-**Agent Service.** All AI logic. Owns the agent loop, the tool registry, run history, and the routing decision. Given a ticket it plans reads, calls tools, forms a diagnosis, and either acts or escalates.
+A device without cua installed **refuses** a computer-use request rather than falling back to something else. That is intended: a missing tier two means escalate, not improvise.
 
-**Connectors.** The platform's hands. The only component that talks to enterprise systems — Kubernetes today, more later. The Agent Service decides what should happen; Connectors makes it happen. Keeping them separate means the agent's tool registry is a list of capabilities rather than a pile of API clients, and adding a system is a connector plus a tool definition.
+## Kubernetes
 
-**infra.** Platform plumbing: database access, environment and config loading, logging. Shared by everything, owns nothing domain-specific.
+The first connector, and it lives in the API because the API owns every side effect.
 
-**Shared types.** The oRPC contract package. Procedure definitions and their input and output schemas live in one place and are imported by the API, both frontends, and the CLI. Type safety across the boundary comes from sharing the definition, not from generating and syncing clients.
+**Reads** come from pod status rather than events wherever the signal exists there: status is structured, events are prose. `containerStatuses[].state.waiting.reason` gives `ImagePullBackOff` and `CrashLoopBackOff` directly, `lastState.terminated.reason` gives `OOMKilled`, and `conditions[PodScheduled].reason` gives `Unschedulable` with the scheduler's own message. Events are read only where the signal exists nowhere else, which in practice means volume mount failures.
 
-## How A Ticket Moves
+**Writes** use JSON Patch with an explicit path, not strategic merge. A JSON Patch with `op: replace` fails loudly if the object is not the shape the caller believed; strategic merge applies silently and the mistake surfaces later. Every write runs once with `dryRun` before running for real.
 
-```mermaid
-sequenceDiagram
-  participant E as Employee
-  participant P as Portal
-  participant A as API
-  participant AG as Agent Service
-  participant C as Connectors
-  participant D as CLI on device
-
-  E->>P: opens ticket
-  P->>A: tickets.create
-  A->>AG: start run
-  AG->>AG: route (LLM reads ticket + context)
-
-  alt infrastructure path
-    AG->>C: read cluster state
-    C-->>AG: pod status, events
-    AG->>AG: diagnose
-    AG->>C: apply patch
-    C-->>AG: rollout status
-  else device path
-    AG->>A: dispatch device read
-    A->>D: over open socket
-    D-->>A: device state
-    A-->>AG: result
-    AG->>AG: diagnose
-    AG->>A: dispatch device action
-    A->>D: over open socket
-    D-->>A: result
-  end
-
-  alt resolved
-    AG->>A: verify, then close
-    A-->>P: ticket closed, explanation
-  else cannot resolve
-    AG->>A: escalate with transcript
-    A-->>P: a human is looking at this
-  end
-
-  AG->>A: write observations to CMDB
-```
-
-## Agent Design
-
-Axel runs a bounded loop: read, think, act, verify.
-
-**Tools are typed and registered.** The agent picks a tool by name and supplies parameters that are schema-validated before anything executes. It does not compose commands, shell strings, or arbitrary API calls. Adding a capability means adding a tool, which is a code change.
-
-This is not a safety control — the MVP has none — it is how the system stays debuggable. When a run goes wrong you want to see which tool was called with what, not reverse-engineer a generated command.
-
-**Tool categories:**
-
-| Category | Examples | Side effects |
-|---|---|---|
-| Cluster read | pod status, deployment status, events, logs | None |
-| Cluster write | patch deployment image, patch resource limits | Yes |
-| Device read | resolver config, adapter state, service status, reachability | None |
-| Device action | flush DNS cache, reset resolver, restart a named service | Yes |
-| CMDB | read service dependencies, write observation | Writes are additive |
-
-**The loop is bounded.** A run has a maximum number of tool calls and a maximum number of model turns. Hitting either ends the run in escalation rather than in a partial state. Without this a confused agent loops forever and the ticket never resolves or escalates.
-
-**Verification is a separate read.** After acting, the agent re-reads state through a read tool to confirm the change landed. A write tool returning success means the API accepted the call, not that the problem is gone. For the pod scenario that means polling deployment status until replicas are ready; for a device fix it means re-reading the state that was wrong.
-
-**The model is not fixed.** No provider is named in the design. The adapter is configured with an endpoint, model, and credentials, and the run record stores which model actually answered. Swapping providers is configuration.
-
-## Connectors: Kubernetes
-
-The first connector, because the flagship scenario needs it.
-
-**Reads** come from pod status rather than events wherever possible, because status is structured and events are prose. `containerStatuses[].state.waiting.reason` gives `ImagePullBackOff`, `CrashLoopBackOff`, or `CreateContainerConfigError` directly; `lastState.terminated.reason` gives `OOMKilled`; `conditions[PodScheduled].reason` gives `Unschedulable` with the scheduler's message. Events are read only where the signal exists nowhere else, which in practice means volume mount failures.
-
-**Writes** use JSON Patch with an explicit path, not strategic merge. A JSON Patch with `op: replace` on `/spec/template/spec/containers/0/image` fails loudly if the object is not the shape the agent believed it was; strategic merge silently applies and you find out later. Every write runs once with `dryRun: 'All'` before running for real.
-
-**Rollout status** is polled, not watched. Poll deployment status until `observedGeneration >= metadata.generation`, `updatedReplicas === spec.replicas`, `readyReplicas === spec.replicas`, and nothing unavailable — with a deadline. Polling is fewer moving parts than a watch and gives the UI a progress stream for free.
+**Rollout status** is polled, not watched — fewer moving parts, and the caller gets a progress stream for free.
 
 ## Data Model
 
-Six tables carry the MVP. Auth tables come from Better Auth and are not listed.
+Six tables carry the MVP, alongside Better Auth's four.
 
 | Table | Holds |
 |---|---|
-| `tickets` | The ticket: reporter, title, body, status, route, resolution, timestamps |
-| `agent_runs` | One row per agent run against a ticket: model used, outcome, token counts, start and end |
-| `agent_steps` | The transcript: ordered steps within a run, each with tool name, parameters, result, and the model's stated reasoning |
-| `devices` | Registered devices: device ID, hostname, username, platform, last seen, connection state |
-| `device_commands` | Commands dispatched to a device: sequence number, tool, parameters, status, result |
-| `cmdb_items` | Observed entities and relationships, each with what observed it and when |
+| `tickets` | Reporter, title, body, status, route, resolution, timestamps |
+| `agent_runs` | One row per run: model used, status, outcome, token counts, timing |
+| `agent_steps` | The transcript: ordered steps with tool name, input, output, and reasoning |
+| `devices` | Device ID, hostname, user, platform, last seen, connection state |
+| `device_commands` | Sequence, action, parameters, status, result |
+| `cmdb_items` | Observed entities and relationships, each with its source |
 
-`agent_steps` is what makes the dashboard useful and what makes a bad run debuggable. It is written as the run proceeds, not at the end, so a run that hangs still shows how far it got.
+`agent_steps` is what makes the dashboard useful and a bad run debuggable. Rows are written as the run proceeds, not at the end, so a run that hangs still shows how far it got.
 
 ## CMDB
 
-The CMDB does two jobs, and they are worth separating.
+Two jobs, worth separating.
 
-**As context, it is read.** Before diagnosing, the agent asks what the platform already believes about the service, the device, and their dependencies. A ticket about ExpenseHub is easier to route when the CMDB knows ExpenseHub runs on the cluster and depends on an auth service.
+**As context, it is read.** Before diagnosing, Axel asks what the platform already believes about the service, the device, and their dependencies.
 
-**As a record, it is written.** Everything the agent observes gets written back — that this service has these pods, that this device has this resolver configuration, that this deployment references this image. Writes are additive observations, not overwrites.
+**As a record, it is written.** Everything observed goes back — additive observations, never overwrites.
 
-Every CMDB row records **where the fact came from**: which ticket, which agent run, which step, and when. That provenance is two columns and it is the only part of a governed CMDB that is genuinely expensive to add later. Everything else — proposal workflows, separate ownership, approval before correction, rollback — is deliberately absent, and can be built on top of provenance whenever it is wanted.
+Every row records **where the fact came from**: which ticket, which run, which step, and when. That provenance is a few columns and it is the only part of a governed CMDB that is genuinely expensive to add later. Proposal workflows, separate ownership, approval before correction, and rollback can all be built on top of it whenever they are wanted.
 
 ## Stack
 
 | Layer | Choice |
 |---|---|
-| Monorepo | pnpm workspaces + Turborepo, pnpm catalog for version pinning |
-| Language | TypeScript, Node 24 |
-| Frontend | TanStack Router + React 19, Tailwind 4 |
-| Backend | Hono |
-| API layer | oRPC — shared contract, end-to-end inference, OpenAPI output |
-| Database | PostgreSQL via Docker Compose |
-| ORM | Drizzle |
-| Auth | Better Auth |
-| Lint and format | Biome |
-| Device transport | WebSocket over `ws`, native `WebSocket` on the client |
-| Kubernetes | `@kubernetes/client-node` |
+| Frontends | TanStack Router + React 19, Tailwind 4, Vite |
+| API | Hono, oRPC, Better Auth |
+| Database | PostgreSQL via Docker Compose, Drizzle |
+| Agent | Python 3.14, uv, pydantic, model-agnostic LLM client |
+| Device agent | Go 1.25, one static binary; Bubble Tea v2 for operator commands |
+| Wire | gRPC for both agent boundaries |
+| Lint and format | Biome (TypeScript), ruff (Python), gofmt (Go) |
 
-The frontends are SPAs rather than a server-rendered framework. The backend is separate services, so there is no benefit in a framework that wants to colocate route handlers with pages.
+The frontends are SPAs rather than a server-rendered framework. The API is a separate service, so there is no benefit in a framework that wants to colocate route handlers with pages.
 
 ## What This Architecture Does Not Do
 
 Stated because the gaps are deliberate and someone reading the component map will look for them.
 
 - **Nothing checks authorization.** Any authenticated user can call any procedure.
-- **Nothing constrains blast radius.** A cluster write tool can patch any deployment the service account can reach; a device action runs on the target device with the logged-in user's rights.
-- **No action is approved before it runs.** The agent acts on its own judgment.
+- **Nothing constrains blast radius.** A cluster write can patch any deployment the service account reaches; a device action runs with the logged-in user's rights.
+- **No action is approved before it runs.** Axel acts on its own judgment.
 - **Nothing is idempotent.** Retrying a dispatched action can apply it twice.
-- **Command dispatch is not durable.** If the backend restarts, in-flight device commands are lost.
-- **The CLI is not signed, and its transport is not authenticated** beyond a shared bootstrap token.
+- **Command dispatch is not durable.** If the API restarts, in-flight device commands are lost.
+- **The device connection is not authenticated** beyond a shared bootstrap token, and the binary is unsigned.
 
-Each is a real gap, and each is out of scope by decision rather than oversight. The two worth knowing about first, if this ever moves past a demo, are authorization and idempotency — the first because the CLI can execute on employee machines, the second because "did that action already run" becomes unanswerable after the first timeout.
+Each is out of scope by decision rather than oversight. The two worth addressing first, if this moves past a demo, are authorization and idempotency — the first because axel-cli executes on employee machines, the second because "did that action already run" becomes unanswerable after the first timeout.

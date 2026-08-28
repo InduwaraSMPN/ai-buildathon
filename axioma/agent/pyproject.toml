@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "axel"
+version = "0.1.0"
+description = "Axel — the Axioma reasoning agent. Plans reads, diagnoses, acts through the API, and verifies."
+requires-python = ">=3.14"
+dependencies = [
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    # Model-agnostic LLM calls. No provider is named in the design; which model
+    # backs Axel is configuration, and the run records which one answered.
+    "litellm>=1.96.2,<2",
+]
+
+[project.optional-dependencies]
+# The gRPC back-channel to the API. The agent is the client and dials out.
+server = [
+    "grpcio",
+    "protobuf",
+]
+all = ["axel[server]"]
+
+[dependency-groups]
+dev = [
+    "ruff",
+    "pytest",
+    "pytest-asyncio",
+    "grpcio-tools",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["axel*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

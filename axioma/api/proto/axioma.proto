@@ -1,0 +1,182 @@
+syntax = "proto3";
+
+package axioma.v1;
+
+option go_package = "github.com/axioma/cli/internal/pb;pb";
+
+// Axiōma cross-language contract.
+//
+// Two boundaries live here, and both work the same way: the remote side dials in and
+// holds one bidirectional stream, and the API pushes work down it. Neither the
+// agent nor a device can be dialled directly — one is behind whatever network
+// the worker runs on, the other is behind NAT on an employee's laptop.
+//
+// The TypeScript half of the system (portal, dashboard, API) does not use this
+// file. It uses oRPC, where the contract is the TypeScript definition itself and
+// inference runs end to end. This proto exists only where a language boundary
+// forces an explicit wire format.
+
+// ---------------------------------------------------------------------------
+// Agent back-channel: API <-> Python agent
+// ---------------------------------------------------------------------------
+
+service AgentChannel {
+  // The agent is the client. It dials the API and holds the stream open.
+  rpc Connect(stream AgentMessage) returns (stream ApiMessage);
+}
+
+message AgentMessage {
+  oneof payload {
+    AgentHello hello = 1;
+    RunUpdate run_update = 2;
+    ToolRequest tool_request = 3;
+    Heartbeat heartbeat = 4;
+  }
+}
+
+message ApiMessage {
+  oneof payload {
+    StartRun start_run = 1;
+    ToolResult tool_result = 2;
+    CancelRun cancel_run = 3;
+    Heartbeat heartbeat = 4;
+  }
+}
+
+message AgentHello {
+  string agent_version = 1;
+  // Model actually backing Axel for this worker, observed rather than configured.
+  string model_label = 2;
+  repeated string capabilities = 3;
+}
+
+message StartRun {
+  string run_id = 1;
+  string ticket_id = 2;
+  string title = 3;
+  string body = 4;
+  string reporter_id = 5;
+  // Empty when the ticket is not about a specific machine.
+  string device_id = 6;
+  // Prior CMDB observations relevant to this ticket, as JSON.
+  string context_json = 7;
+}
+
+message CancelRun {
+  string run_id = 1;
+  string reason = 2;
+}
+
+// One step of the transcript. Sent as it happens, not batched at the end, so a
+// run that hangs still shows how far it got.
+message RunUpdate {
+  string run_id = 1;
+  uint32 ordinal = 2;
+
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_THINK = 1;
+    KIND_TOOL_CALL = 2;
+    KIND_OBSERVATION = 3;
+    KIND_DECISION = 4;
+    KIND_TERMINAL = 5;
+  }
+  Kind kind = 3;
+
+  string reasoning = 4;
+  string tool_name = 5;
+  string tool_input_json = 6;
+  string tool_output_json = 7;
+  string error = 8;
+
+  // Set only on KIND_TERMINAL.
+  string status = 9;   // resolved | escalated | failed | exhausted
+  string outcome = 10;
+}
+
+// The agent asks the API to execute a tool. The agent never touches the
+// database, the cluster, or a device directly — the API owns every side effect
+// and every persistence path.
+message ToolRequest {
+  string run_id = 1;
+  string call_id = 2;
+  string tool_name = 3;
+  string input_json = 4;
+}
+
+message ToolResult {
+  string run_id = 1;
+  string call_id = 2;
+  bool ok = 3;
+  string output_json = 4;
+  string error = 5;
+}
+
+message Heartbeat {
+  int64 unix_ms = 1;
+}
+
+// ---------------------------------------------------------------------------
+// Device channel: API <-> Go device agent
+// ---------------------------------------------------------------------------
+
+service DeviceChannel {
+  // The device is the client. Outbound only: it works through NAT, on home
+  // networks, and behind corporate proxies without a firewall change.
+  rpc Connect(stream DeviceMessage) returns (stream GatewayMessage);
+}
+
+message DeviceMessage {
+  oneof payload {
+    DeviceHello hello = 1;
+    CommandResult result = 2;
+    Heartbeat heartbeat = 3;
+  }
+}
+
+message GatewayMessage {
+  oneof payload {
+    DeviceCommand command = 1;
+    Heartbeat heartbeat = 2;
+  }
+}
+
+message DeviceHello {
+  // UUID minted on first run and persisted to the user profile. Survives
+  // restarts and network roaming; dies with the profile, which is the right
+  // lifetime for "this person's laptop".
+  string device_id = 1;
+  string hostname = 2;
+  string username = 3;
+  string platform = 4;
+  string release = 5;
+  string agent_version = 6;
+  // Last sequence the device processed. The gateway replays past it, because a
+  // laptop that slept never got to acknowledge anything.
+  uint64 last_seen_sequence = 7;
+}
+
+message DeviceCommand {
+  string command_id = 1;
+  uint64 sequence = 2;
+
+  // Tier one: a named action from a fixed set the device implements. No command
+  // string ever crosses this boundary.
+  string action = 3;
+  map<string, string> parameters = 4;
+
+  // Tier two: computer-use, when no programmatic path exists. Installed only on
+  // machines that need it; absent means the device cannot serve this request.
+  bool computer_use = 5;
+  string objective = 6;
+
+  uint32 timeout_seconds = 7;
+}
+
+message CommandResult {
+  string command_id = 1;
+  uint64 sequence = 2;
+  bool ok = 3;
+  string output_json = 4;
+  string error = 5;
+}

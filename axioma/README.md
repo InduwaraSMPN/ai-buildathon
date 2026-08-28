@@ -1,105 +1,52 @@
-# axioma
+# Axiōma — workspace
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines React, TanStack Router, Hono, ORPC, and more.
+**Axiōma** is the platform. **Axel** is its agent — the component that reasons
+about a ticket and decides what to do.
 
-## Features
+This repository is a workspace shell, not a monorepo. It holds orchestration,
+shared documentation, and nothing else. Each component is an independent project
+with its own toolchain, chosen for what that component actually does.
 
-- **TypeScript** - For type safety and improved developer experience
-- **TanStack Router** - File-based routing with full type safety
-- **TailwindCSS** - Utility-first CSS for rapid UI development
-- **Shared UI package** - shadcn/ui primitives live in `packages/ui`
-- **Hono** - Lightweight, performant server framework
-- **oRPC** - End-to-end type-safe APIs with OpenAPI integration
-- **Node.js** - Runtime environment
-- **Drizzle** - TypeScript-first ORM
-- **PostgreSQL** - Database engine
-- **Authentication** - Better-Auth
-- **Biome** - Linting and formatting
-- **Turborepo** - Optimized monorepo build system
+| Directory | Language | What it is |
+|---|---|---|
+| `api/` | TypeScript | oRPC surface for the frontends, gRPC gateways for the agent and devices. The only component that writes. |
+| `portal/` | TypeScript | Employee-facing web app. Open a ticket, follow it, see the outcome. |
+| `dashboard/` | TypeScript | IT-facing web app. Queue, agent transcript, evidence, takeover. |
+| `agent/` | Python | Axel himself — the reasoning loop, tool registry, and model client. |
+| `cli/` | Go | Axel's reach onto an employee laptop. Executes typed actions; holds no reasoning. |
 
-## Getting Started
+Product and design documentation lives in `context/idea/`.
 
-First, install the dependencies:
+## Contracts across the boundaries
 
-```bash
-pnpm install
-```
+Two contracts, each where a boundary actually exists.
 
-## Database Setup
+**oRPC**, for the TypeScript half. `api/src/contracts` declares procedures with
+zod schemas and imports nothing else, which is what lets it be mirrored verbatim
+into both frontends by `pnpm contracts:publish` from `api/`. Handlers live in
+`api/src/server` and are checked against the contract, so the two cannot drift.
+The mirrored copies are marked generated and are never edited in place.
 
-This project uses PostgreSQL with Drizzle ORM.
+**Protocol buffers**, for the language boundaries. `api/proto/axioma.proto` is
+the source of truth and is mirrored into `agent/` and `cli/` by the same
+command. It defines two services with the same shape: the remote side dials in
+and holds one bidirectional stream, because neither a worker nor a laptop behind
+NAT can be dialled directly.
 
-1. Make sure you have a PostgreSQL database set up.
-2. Update your `apps/server/.env` file with your PostgreSQL connection details.
+## Running it
 
-3. Apply the schema to your database:
-
-```bash
-pnpm run db:push
-```
-
-Then, run the development server:
+Each project is independent. From its own directory:
 
 ```bash
-pnpm run dev
+cd api        && pnpm install && pnpm db:start && pnpm db:push && pnpm dev
+cd portal     && pnpm install && pnpm dev      # :3001
+cd dashboard  && pnpm install && pnpm dev      # :3002
+cd agent      && uv sync --all-extras && uv run python -m axel.server
+cd cli        && go build -o bin/axel-cli ./cmd/axel-cli
 ```
 
-Open [http://localhost:3001](http://localhost:3001) in your browser to see the web application.
-The API is running at [http://localhost:3000](http://localhost:3000).
+## Repository layout
 
-## UI Customization
-
-React web apps in this stack share shadcn/ui primitives through `packages/ui`.
-
-- Change design tokens and global styles in `packages/ui/src/styles/globals.css`
-- Update shared primitives in `packages/ui/src/components/*`
-- Adjust shadcn aliases or style config in `packages/ui/components.json` and `apps/web/components.json`
-
-### Add more shared components
-
-Run this from the project root to add more primitives to the shared UI package:
-
-```bash
-npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
-```
-
-Import shared components like this:
-
-```tsx
-import { Button } from "@axioma/ui/components/button";
-```
-
-### Add app-specific blocks
-
-If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
-
-## Git Hooks and Formatting
-
-- Run checks: `pnpm run check`
-
-## Project Structure
-
-```
-axioma/
-├── apps/
-│   ├── web/         # Frontend application (React + TanStack Router)
-│   └── server/      # Backend API (Hono, ORPC)
-├── packages/
-│   ├── ui/          # Shared shadcn/ui components and styles
-│   ├── api/         # API layer / business logic
-│   ├── auth/        # Authentication configuration & logic
-│   └── db/          # Database schema & queries
-```
-
-## Available Scripts
-
-- `pnpm run dev`: Start all applications in development mode
-- `pnpm run build`: Build all applications
-- `pnpm run dev:web`: Start only the web application
-- `pnpm run dev:server`: Start only the server
-- `pnpm run check-types`: Check TypeScript types across all apps
-- `pnpm run db:push`: Push schema changes to database
-- `pnpm run db:generate`: Generate database client/types
-- `pnpm run db:migrate`: Run database migrations
-- `pnpm run db:studio`: Open database studio UI
-- `pnpm run check`: Run Biome formatting and linting
+Each component is intended to be its own git repository, checked out here side by
+side — the pattern used by `marketrix.ai`, where the workspace repo tracks
+orchestration and gitlinks while each service lives under its own remote.
