@@ -1,0 +1,7 @@
+# DBHub config for Axioma (PostgreSQL)
+# Database settings mirror axioma/api/.env and docker-compose.yml.
+
+[[sources]]
+id = "axioma"
+description = "Axioma PostgreSQL database (Docker Compose, port 5432)"
+dsn = "postgresql://postgres:password@localhost:5432/axioma"
