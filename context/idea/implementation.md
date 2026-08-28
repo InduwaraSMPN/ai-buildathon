@@ -10,27 +10,29 @@ The scaffold is generated. Package scope is `@axioma/*`, workspaces are `apps/*`
 ```
 axioma/
   apps/
-    web/                 generated — becomes the employee portal
-    server/              generated — becomes the API service
-    dashboard/           add — IT-facing app
-    cli/                 add — device agent
-    agent/               add — Axel: LLM loop and tool registry
-    connectors/          add — Kubernetes and later systems
+    web/                 employee portal            (generated)
+    server/              API service + device gateway (generated)
+    dashboard/           IT-facing app
+    cli/                 device agent
   packages/
-    api/                 generated — oRPC routers and contracts
-    auth/                generated — Better Auth
-    db/                  generated — Drizzle schema, migrations, docker compose
-    env/                 generated — environment loading
-    config/              generated — shared tsconfig and build config
-    ui/                  generated — shared components
-    shared/              add — domain types not tied to a procedure
+    api/                 oRPC routers and contracts (generated)
+    auth/                Better Auth                (generated)
+    db/                  Drizzle schema, migrations, docker compose (generated)
+    env/                 environment loading        (generated)
+    config/              shared tsconfig            (generated)
+    ui/                  shared components          (generated)
+    shared/              domain vocabulary and the device wire protocol
+    agent/               Axel: the run loop and tool registry
+    connectors/          Kubernetes, and later systems
 ```
 
-Nothing generated needs renaming. `apps/web` becomes the portal and `apps/server` becomes the API; both keep their directory names so the generated scripts, Turborepo filters, and workspace references keep working.
+Nothing generated is renamed. `apps/web` is the portal and `apps/server` is the API; both keep their directory names so the generated scripts, Turborepo filters, and workspace references keep working. `apps/dashboard` is a copy of `web` on port 3002.
 
-**On the four "backend components" from the product spec:** `api`, `agent`, and `connectors` are apps because they are processes. `infra` is not a process — the scaffold already delivers it as `packages/db`, `packages/env`, and `packages/config`. Adding a service that only wraps those three would be a hop with no work in it.
+**On the backend components from the product spec.** Only two are processes. `api` is `apps/server`. `infra` is not a process at all — the scaffold delivers it as `packages/db`, `packages/env`, and `packages/config`, and a service wrapping those would be a hop with no work in it.
 
-**Where the device gateway lives:** in `apps/server` alongside the oRPC surface, not in its own app. The socket is stateful, and whatever dispatches to a device must be whatever holds that device's socket.
+`agent` and `connectors` are packages rather than services, which is a deviation worth stating. Three reasons. The agent has to dispatch device commands through the socket `apps/server` holds, so a separate process would have to call back into the API immediately — the hop buys nothing and costs a routing table. Running five dev processes instead of three is friction against the MVP's actual goal, which is end-to-end connectivity. And the package boundary is real: `@axioma/agent` imports no database and no HTTP, so extracting it to a process later is a deployment change, not a rewrite.
+
+**Where the device gateway lives:** in `apps/server` alongside the oRPC surface. The socket is stateful and long-lived, and whatever dispatches to a device must be whatever holds that device's socket.
 
 ## Build Order
 

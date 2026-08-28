@@ -1,38 +1,40 @@
 {
-  "name": "axioma",
-  "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "type": "module",
-  "scripts": {
-    "dev": "turbo run dev",
-    "build": "turbo run build",
-    "check-types": "turbo run check-types",
-    "dev:web": "turbo run dev -F web --",
-    "dev:server": "turbo run dev -F server --",
-    "db:push": "turbo run db:push -F @axioma/db --",
-    "db:studio": "turbo run db:studio -F @axioma/db --",
-    "db:generate": "turbo run db:generate -F @axioma/db --",
-    "db:migrate": "turbo run db:migrate -F @axioma/db --",
-    "db:start": "turbo run db:start -F @axioma/db --",
-    "db:watch": "turbo run db:watch -F @axioma/db --",
-    "db:stop": "turbo run db:stop -F @axioma/db --",
-    "db:down": "turbo run db:down -F @axioma/db --",
-    "check": "biome check --write ."
-  },
-  "dependencies": {
-    "@axioma/env": "workspace:*",
-    "dotenv": "catalog:",
-    "zod": "catalog:"
-  },
-  "devDependencies": {
-    "@axioma/config": "workspace:*",
-    "@biomejs/biome": "^2.5.6",
-    "@types/node": "catalog:",
-    "turbo": "^2.10.7",
-    "typescript": "catalog:"
-  },
-  "packageManager": "pnpm@11.24.0"
+	"name": "axioma",
+	"private": true,
+	"workspaces": [
+		"apps/*",
+		"packages/*"
+	],
+	"type": "module",
+	"scripts": {
+		"dev": "turbo run dev",
+		"build": "turbo run build",
+		"check-types": "turbo run check-types",
+		"dev:web": "turbo run dev -F @axioma/web --",
+		"dev:server": "turbo run dev -F @axioma/server --",
+		"db:push": "turbo run db:push -F @axioma/db --",
+		"db:studio": "turbo run db:studio -F @axioma/db --",
+		"db:generate": "turbo run db:generate -F @axioma/db --",
+		"db:migrate": "turbo run db:migrate -F @axioma/db --",
+		"db:start": "turbo run db:start -F @axioma/db --",
+		"db:watch": "turbo run db:watch -F @axioma/db --",
+		"db:stop": "turbo run db:stop -F @axioma/db --",
+		"db:down": "turbo run db:down -F @axioma/db --",
+		"check": "biome check --write .",
+		"dev:dashboard": "turbo run dev -F @axioma/dashboard --",
+		"dev:cli": "turbo run dev -F @axioma/cli --"
+	},
+	"dependencies": {
+		"@axioma/env": "workspace:*",
+		"dotenv": "catalog:",
+		"zod": "catalog:"
+	},
+	"devDependencies": {
+		"@axioma/config": "workspace:*",
+		"@biomejs/biome": "^2.5.6",
+		"@types/node": "catalog:",
+		"turbo": "^2.10.7",
+		"typescript": "catalog:"
+	},
+	"packageManager": "pnpm@11.24.0"
 }
