@@ -35,14 +35,10 @@ NAT can be dialled directly.
 
 ## Running it
 
-Each project is independent. From its own directory:
+From this directory, start the whole workspace (including Postgres and setup) with:
 
 ```bash
-cd api        && pnpm install && pnpm db:start && pnpm db:push && pnpm dev
-cd portal     && pnpm install && pnpm dev      # :3001
-cd dashboard  && pnpm install && pnpm dev      # :3002
-cd agent      && uv sync --all-extras && uv run python -m axel.server
-cd cli        && go build -o bin/axel-cli ./cmd/axel-cli
+tilt up
 ```
 
 ## Repository layout

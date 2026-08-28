@@ -1,0 +1,51 @@
+docker_compose('api/docker-compose.yml', project_name='axioma', wait=True)
+
+local_resource(
+    'api',
+    cmd='pnpm install --frozen-lockfile && pnpm db:push',
+    serve_cmd='pnpm dev',
+    dir='api',
+    serve_dir='api',
+    resource_deps=['postgres'],
+    readiness_probe=probe(tcp_socket=tcp_socket_action(port=3000)),
+    links=['http://localhost:3000'],
+)
+
+local_resource(
+    'portal',
+    cmd='pnpm install --frozen-lockfile',
+    serve_cmd='pnpm dev',
+    dir='portal',
+    serve_dir='portal',
+    resource_deps=['api'],
+    readiness_probe=probe(tcp_socket=tcp_socket_action(port=3001)),
+    links=['http://localhost:3001'],
+)
+
+local_resource(
+    'dashboard',
+    cmd='pnpm install --frozen-lockfile',
+    serve_cmd='pnpm dev',
+    dir='dashboard',
+    serve_dir='dashboard',
+    resource_deps=['api'],
+    readiness_probe=probe(tcp_socket=tcp_socket_action(port=3002)),
+    links=['http://localhost:3002'],
+)
+
+local_resource(
+    'agent',
+    cmd='uv sync --all-extras',
+    serve_cmd='uv run python -m axel.server',
+    dir='agent',
+    serve_dir='agent',
+    resource_deps=['api'],
+    readiness_probe=probe(http_get=http_get_action(port=8090, path='/health')),
+)
+
+local_resource(
+    'cli',
+    cmd='go build -o bin/axel-cli.exe ./cmd/axel-cli',
+    dir='cli',
+    deps=['cli/cmd', 'cli/internal', 'cli/go.mod', 'cli/go.sum'],
+)

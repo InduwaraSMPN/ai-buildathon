@@ -72,26 +72,28 @@ The daemon is installed as a logon Scheduled Task and is not run by hand.
 // runDaemon is the headless mode. No Bubble Tea here: when this runs there is
 // no terminal, and anything written to stdout goes nowhere.
 func runDaemon(ctx context.Context) error {
-	id, err := device.Load(agentVersion)
-	if err != nil {
-		return err
+	host := os.Getenv("AXIOMA_GRPC_HOST")
+	if host == "" {
+		host = "localhost:50051"
 	}
-
-	// TODO(M8): dial the gateway over gRPC and hold the stream. Reconnect with
-	// exponential backoff plus jitter, and replay from last_seen_sequence — a
-	// laptop that slept never acknowledged what it was sent.
-	fmt.Printf("axel-cli %s — device %s (%s)\n", agentVersion, id.DeviceID, id.Hostname)
-	<-ctx.Done()
-	return nil
+	return device.RunDaemon(ctx, host, agentVersion)
 }
 
 // The operator-facing commands below are where the terminal UI belongs. They
 // are run by a person, on a machine they are looking at, to answer "is this
 // thing connected and what did it last do".
 
-func runStatus(_ context.Context) error {
-	// TODO(M8): Bubble Tea view over the daemon's local state.
-	return fmt.Errorf("not implemented")
+func runStatus(ctx context.Context) error {
+	id, err := device.Load(agentVersion)
+	if err != nil {
+		return err
+	}
+	state, err := device.LoadDaemonState()
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	_, err = tea.NewProgram(tui.NewStatus(id, state), tea.WithContext(ctx)).Run()
+	return err
 }
 
 func runEnroll(_ context.Context) error {

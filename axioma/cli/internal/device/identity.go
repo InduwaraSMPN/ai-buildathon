@@ -11,16 +11,27 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 // Identity is what the agent reports when it dials the gateway.
 type Identity struct {
-	DeviceID     string `json:"deviceId"`
-	Hostname     string `json:"-"`
-	Username     string `json:"-"`
-	Platform     string `json:"-"`
-	Release      string `json:"-"`
-	AgentVersion string `json:"-"`
+	DeviceID         string `json:"deviceId"`
+	LastSeenSequence uint64 `json:"lastSeenSequence,omitempty"`
+	Hostname         string `json:"-"`
+	Username         string `json:"-"`
+	Platform         string `json:"-"`
+	Release          string `json:"-"`
+	AgentVersion     string `json:"-"`
+}
+
+// DaemonState is the small persisted snapshot shown by `status`.
+type DaemonState struct {
+	Connected        bool      `json:"connected"`
+	GRPCHost         string    `json:"grpcHost"`
+	LastSeenSequence uint64    `json:"lastSeenSequence"`
+	UpdatedAt        time.Time `json:"updatedAt"`
+	LastError        string    `json:"lastError,omitempty"`
 }
 
 // StateDir is where the agent keeps its identity and local state.
@@ -69,6 +80,7 @@ func Load(agentVersion string) (Identity, error) {
 		var stored Identity
 		if json.Unmarshal(raw, &stored) == nil && stored.DeviceID != "" {
 			id.DeviceID = stored.DeviceID
+			id.LastSeenSequence = stored.LastSeenSequence
 			return id, nil
 		}
 	}
@@ -82,14 +94,66 @@ func Load(agentVersion string) (Identity, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Identity{}, fmt.Errorf("create state dir: %w", err)
 	}
-	body, err := json.MarshalIndent(Identity{DeviceID: id.DeviceID}, "", "  ")
-	if err != nil {
-		return Identity{}, err
-	}
-	if err := os.WriteFile(path, body, 0o600); err != nil {
+	if err := writeJSON(path, Identity{DeviceID: id.DeviceID}); err != nil {
 		return Identity{}, fmt.Errorf("persist device id: %w", err)
 	}
 	return id, nil
+}
+
+// SaveSequence atomically advances the persisted command sequence.
+func SaveSequence(id Identity, sequence uint64) error {
+	if sequence < id.LastSeenSequence {
+		return fmt.Errorf("sequence cannot move backwards: %d < %d", sequence, id.LastSeenSequence)
+	}
+	dir, err := StateDir()
+	if err != nil {
+		return err
+	}
+	return writeJSON(filepath.Join(dir, "device.json"), Identity{DeviceID: id.DeviceID, LastSeenSequence: sequence})
+}
+
+func SaveDaemonState(state DaemonState) error {
+	dir, err := StateDir()
+	if err != nil {
+		return err
+	}
+	state.UpdatedAt = time.Now()
+	return writeJSON(filepath.Join(dir, "daemon.json"), state)
+}
+
+func LoadDaemonState() (DaemonState, error) {
+	dir, err := StateDir()
+	if err != nil {
+		return DaemonState{}, err
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "daemon.json"))
+	if err != nil {
+		return DaemonState{}, err
+	}
+	var state DaemonState
+	if err := json.Unmarshal(raw, &state); err != nil {
+		return DaemonState{}, fmt.Errorf("read daemon state: %w", err)
+	}
+	return state, nil
+}
+
+func writeJSON(path string, value any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("create state dir: %w", err)
+	}
+	body, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func newID() (string, error) {

@@ -16,9 +16,15 @@ uv run python -m axel.server
 
 ## Contracts
 
-The wire format is `../proto/axioma.proto`, shared with the Go device agent.
-Regenerate bindings after changing it:
+The wire format is `proto/axioma.proto` (kept in sync with the other Axiōma
+components). Generated Python bindings live in the gitignored `axel/pb/` directory
+and must be generated before running Axel:
 
 ```bash
 ./scripts/generate-proto.sh
 ```
+
+`GET /health` on `AXIOMA_HEALTH_PORT` returns 200 while the gRPC stream is
+connected and 503 while Axel is reconnecting. Configure the API and model with
+`AXIOMA_API_GRPC_HOST` and `AXIOMA_MODEL`; LiteLLM uses the provider's standard
+environment variables for credentials.
