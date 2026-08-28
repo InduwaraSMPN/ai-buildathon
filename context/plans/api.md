@@ -36,7 +36,7 @@ a reference plugin at `/api-reference`, Better Auth at `/api/auth/*`, CORS readi
 `source_step_id`, `observed_at`) — the part that would be expensive to add later is already there.
 
 **Contract** — `src/contracts/index.ts`, importing only `@orpc/contract` and `zod` as required.
-Six procedures: `healthCheck`, `privateData`, `createTicket`, `listTickets`, `getTicket`,
+Seven procedures: `healthCheck`, `privateData`, `createTicket`, `listTickets`, `getTicket`,
 `updateTicket`, `listDevices`.
 
 **Handlers** — `src/server/routers/index.ts`. All implemented against real Drizzle queries.
@@ -46,7 +46,7 @@ Six procedures: `healthCheck`, `privateData`, `createTicket`, `listTickets`, `ge
 `STEP_KINDS`, `DEVICE_CONNECTION_STATES`, `COMMAND_STATUSES`, and `RUN_LIMITS` (`maxToolCalls: 20`,
 `maxModelTurns: 10`, `runDeadlineMs: 300000`).
 
-**gRPC gateway** — `src/server/grpc.ts`, 483 lines, and the most complete part of the component. It
+**gRPC gateway** — `src/server/grpc.ts`, 482 lines, and the most complete part of the component. It
 loads the proto at runtime with `@grpc/proto-loader`, registers both services, and binds on
 `AXIOMA_GRPC_ADDRESS` (default `0.0.0.0:50051`). It really does:
 
@@ -66,7 +66,10 @@ and `proto/axioma.proto` into both agents, stamping the copies as generated.
 
 **Local infrastructure** — `docker-compose.yml` runs `postgres:18` with a healthcheck;
 `drizzle.config.ts` points at `./src/db/schema` and `./src/db/migrations`; the workspace `Tiltfile`
-orchestrates postgres, api, portal, dashboard, agent, and a cli build.
+orchestrates postgres, api, portal, dashboard, agent, a cli build, and `web` — a fourth app at
+`axioma/web` (the public marketing site, TanStack Start, :3003 under Tilt) that no plan in this set
+covers. Nothing here touches it, but note its own `dev` script defaults to `--port 3000`, colliding
+with this API when run outside Tilt.
 
 ### What is stubbed
 
@@ -100,15 +103,22 @@ orchestrates postgres, api, portal, dashboard, agent, and a cli build.
 
 | # | Location | Defect |
 |---|---|---|
-| D1 | `src/server/grpc.ts:445` | `agent_steps.id` is built from run ID and ordinal. A replayed or duplicated ordinal is a primary-key collision that throws inside the stream `data` handler and is swallowed. |
+| D1 | `src/server/grpc.ts:445` | `agent_steps.id` is built from run ID and ordinal. A replayed or duplicated ordinal is a primary-key collision that throws inside the stream `data` handler — and because that handler is invoked as `void this.onAgentMessage(...)` (`grpc.ts:212`) with no catch, the throw is an unhandled promise rejection, which kills the process under Node's default policy. |
 | D2 | `src/server/grpc.ts:160-162` | `this.sequences.get(id) ?? await this.loadSequence(id)` — two concurrent dispatches to a device with no cached sequence both await the load and compute the same next value, violating `device_commands_seq_idx`. |
 | D3 | `src/server/routers/index.ts:110` | `closedAt: input.action === "close" ? now : null` resets `closed_at` to null when a previously closed ticket is escalated, destroying a real timestamp. |
-| D4 | `src/contracts/index.ts:20,116` | `status` and `connected` are declared `z.string()` on output while the enums exist a few lines above. Both frontends receive `string` and hand-roll their own status maps as a result. |
+| D4 | `src/contracts/index.ts:20,115` | `status` and `connected` are declared `z.string()` on output while the enums exist a few lines above. Both frontends receive `string` and hand-roll their own status maps as a result. |
 | D5 | `src/server/grpc.ts:184-186` | A command created while a device is offline is written `pending` and only replayed from the in-memory outbox. An API restart loses it while the row still says `pending` forever. |
 | D6 | `src/server/grpc.ts:97-109` | `startRun` inserts `agent_runs` with no `model` and performs no ticket status transition. |
+| D7 | `src/server/grpc.ts:212,80` | The D1 mechanism generalised: every rejection on the agent message path (`void this.onAgentMessage(...)`) and the sweep (`void this.sweep()`) is unhandled. Any database error while persisting a step — not only a key collision — crashes the whole API. |
+| D8 | `src/server/grpc.ts:217-221` | The agent slot is cleared only on a clean `end` — no `close`/`error` cleanup. A killed worker leaves `this.agent` pointing at a dead stream, so `startRun` "succeeds", inserts a run, and writes into the void: the run sticks in `running` and `Axel is not connected` never fires. |
+| D9 | `src/server/grpc.ts:348-358` | When any replay happens on device reconnect, **all** `pending` rows for that device are flipped to `dispatched` — including rows evicted from the 100-item outbox or created before a restart, which were never transmitted. |
+| D10 | `src/server/grpc.ts:193-204,389-402` | A timed-out command stays in the outbox: on reconnect it is replayed and executed, and `completeCommand` unconditionally overwrites `timed_out` with `succeeded`. A double execution, after the run already observed a failure. |
+| D11 | `src/server/grpc.ts:437-449` | The gateway writes `terminal` and `unspecified` into `agent_steps.kind`, while `STEP_KINDS` declares only the four model-facing kinds — the live data already holds a `terminal` row. The vocabulary lies about the data. |
+| D12 | `src/server/grpc.ts:160-175` | The D2 race has a second cost: on the unique-index violation, the in-memory counter has already advanced and the command already sits in the outbox — a phantom command awaits replay and a sequence number is skipped, so memory and database diverge even after the throw. |
 
-D1, D2 and D3 are correctness bugs, scheduled in milestone A. D5 is the documented "dispatch is not
-durable" gap and gets a bounded mitigation in milestone H rather than a fix.
+D1, D2, D3, D7, D11 and D12 are correctness bugs, scheduled in milestone A. D8, D9 and D10 are
+gateway-lifecycle bugs, scheduled in milestone H. D5 is the documented "dispatch is not durable" gap
+and gets a bounded mitigation in milestone H rather than a fix.
 
 ---
 
@@ -124,7 +134,7 @@ durable" gap and gets a bounded mitigation in milestone H rather than a fix.
 8. Devices are never linked to a user, so the device path cannot be reached from a ticket.
 9. Run telemetry — model label and token counts — is never persisted.
 10. Contract output types are looser than the vocabulary that already exists.
-11. Defects D1, D2, D3.
+11. Defects D1–D3 and D7–D12.
 12. No migrations, no scenario seeds, no repeatable demo reset.
 
 ---
@@ -168,16 +178,27 @@ Fix in the same pass:
 - **D1** — `agent_steps.id` becomes `crypto.randomUUID()` with a new unique index on
   `(run_id, ordinal)`, and the insert becomes `onConflictDoNothing` on that index, so a replayed
   update is idempotent rather than fatal.
+- **D7** — the `data` handlers and the sweep stop being `void`-discarded: a rejection is caught,
+  logged, and errors the offending stream, never the process. This is the containment D1's fix
+  removes one trigger for; the catch removes the class.
 - **D2** — serialise sequence allocation per device with a promise chain keyed by device ID inside
   `Gateway`, so `loadSequence` runs at most once per device.
+- **D12** — the same serialisation rolls the counter and the outbox entry back when the insert
+  fails, so an allocation that did not commit leaves no phantom command behind.
 - **D3** — `closedAt` is only ever written on close; escalation leaves it untouched.
+- **D11** — `STEP_KINDS` gains `terminal`, matching what the gateway already writes and the data
+  already holds; `unspecified` is never written — an unrecognised proto kind is persisted as an
+  `observation` carrying the raw kind in its output, so the enum stays true.
+- `tickets.device_id` gains a foreign key to `devices.id` — nothing enforces it today and
+  `createTicket` accepts any string, so dangling device references are accepted silently.
 
 Stop treating `drizzle-kit push` as the source of truth: run `pnpm db:generate` and commit the first
 migration, so the ITIL columns arrive as a reviewable diff.
 
 **Done when:** `pnpm db:migrate` applies cleanly to an empty database and to one created by the old
-`push`; `derivePriority` is checked against all nine matrix cells; and two `RunUpdate`s with the same
-ordinal leave one row and throw nothing.
+`push`; `derivePriority` is checked against all nine matrix cells; two `RunUpdate`s with the same
+ordinal leave one row and throw nothing; and a forced insert failure on the step path errors that
+stream while the process keeps serving.
 
 ### B — Contract and vocabulary
 **Files:** `src/contracts/index.ts`, then `pnpm contracts:publish`.
@@ -318,9 +339,12 @@ that is a follow-on rather than part of this milestone.
 **`cluster.patch_image(namespace, name, containerIndex, image)`** applies a JSON Patch with the
 explicit path `/spec/template/spec/containers/{index}/image` and `op: replace`. `replace` fails
 loudly if the object is not the shape the caller believed; strategic merge would apply silently and
-surface the mistake later. It runs once with `dryRun: "All"` and only proceeds if that succeeds,
-returning both the dry-run result and the real one so the transcript records both.
-`verifiedBy: "cluster.read_deployment"`.
+surface the mistake later. Mechanics of the v1.x client: the JSON Patch content type must be set
+explicitly — `setHeaderOptions("Content-Type", PatchStrategy.JsonPatch)` on the
+`patchNamespacedDeployment` call — or the client defaults to strategic merge and the explicit-path
+guarantee is lost; `dryRun: "All"` is a field on the same request object. It runs once with the dry
+run and only proceeds if that succeeds, returning both the dry-run result and the real one so the
+transcript records both. `verifiedBy: "cluster.read_deployment"`.
 
 **Rollout polling** is a helper that polls `read_deployment` until `readyReplicas === replicas` or a
 90s ceiling, returning the observation sequence rather than a boolean, so the transcript shows the
@@ -338,6 +362,8 @@ patches; polling observes ready; and against the 64-CPU-request seed, `cluster.r
 `cmdb.record_observation` writes one additive row per observation, never an update. The four
 provenance columns are filled from the run context the tool router already carries: `sourceTicketId`
 and `sourceRunId` from `ctx`, `sourceStepId` from the step the agent reported alongside the call.
+`device_commands.step_id` gets the same treatment — the column exists and the dispatch insert never
+writes it, so command provenance is dead today; the tool router fills it from the same step context.
 
 Add a read helper `readContextForTicket(ticketId, deviceId)` returning the newest row per
 `(kind, externalId)`, used by milestone C to populate `StartRun.context_json` instead of today's
@@ -372,7 +398,14 @@ populated.
 
 - **Agent slot** — replace the single `agent?: Duplex` with a small pool keyed by a worker ID from
   `AgentHello`, round-robin on dispatch. A superseded stream is closed explicitly rather than
-  orphaned.
+  orphaned, and a slot is removed on `close` and `error` as well as `end`, so a killed worker cannot
+  leave `startRun` writing into a dead stream (fixes **D8**).
+- **Replay honesty** — only rows actually transmitted are marked `dispatched` (fixes **D9**), a
+  command that timed out is removed from the outbox rather than replayed, and `completeCommand`
+  refuses to overwrite a terminal status — a late result can no longer turn `timed_out` into
+  `succeeded` (fixes **D10**).
+- **`outcome` normalised** — proto-loader `defaults: true` turns an unset `outcome` into `""`, which
+  is currently stored verbatim; empty becomes null at the persistence boundary.
 - **Model and tokens** — persist `AgentHello.model_label` onto the `agent_runs` row at `startRun`, and
   add `prompt_tokens` / `completion_tokens` to the terminal `RunUpdate` in the proto so the numbers
   the dashboard already renders stop being zero. **Proto change**, additive.
@@ -389,9 +422,10 @@ populated.
   the dashboard can stop a run that is misbehaving.
 
 **Done when:** killing and restarting the API marks orphaned commands `timed_out` and orphaned runs
-`failed` within one sweep; a completed run row shows a non-null model and non-zero token counts; and
-cancelling from the dashboard ends the run as `failed` with `run cancelled` rather than leaving it
-`running`.
+`failed` within one sweep; killing the agent worker mid-run frees the slot so the next `startRun`
+returns `Axel is not connected` instead of inserting a stuck run; a completed run row shows a
+non-null model and non-zero token counts; and cancelling from the dashboard ends the run as `failed`
+with `run cancelled` rather than leaving it `running`.
 
 ### I — Scenario seeds and repeatable reset
 **Files:** new `scripts/seed-scenarios.mjs`, new `k8s/` manifests, `package.json`.

@@ -106,7 +106,7 @@ That is the whole bar. Not throughput, not accuracy across a broad problem space
 
 | Question | Why it matters |
 |---|---|
-| Which model backs Axel? | Affects tool-calling reliability and structured-output support. Provider is configuration; the choice is not yet made. |
+| Which model backs Axel? | Affects tool-calling reliability and structured-output support. Provider is configuration; the agent plan sets a frontier OpenAI model as the default through LiteLLM, and switching is one environment variable. |
 | How does axel-cli reach a real fleet? | Manual install works for a demo. Anything beyond needs packaging and distribution. |
 | What is the CMDB seeded from? | Right now it is empty and fills from observation. A real deployment imports from an existing source of truth. |
 | How much does Axel see of prior tickets? | Context improves routing and risks leaking one employee's information into another's ticket. |

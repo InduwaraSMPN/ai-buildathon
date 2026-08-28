@@ -19,7 +19,8 @@ typed actions it is told to execute and holds no reasoning of its own.
 | Tests | `go test ./...` | 2 passed (`TestExecuteRejectsComputerUse`, `TestSplitFacets`); `cmd/axel-cli`, `internal/pb` and `internal/tui` have no test files |
 
 `proto/axioma.proto` is byte-identical to `api/proto/axioma.proto`, and generated bindings exist in
-`internal/pb/`. Built binaries are present at `bin/axel-cli` and `bin/axel-cli.exe`.
+`internal/pb/`. Built binaries are present at `bin/axel-cli` and `bin/axel-cli.exe` — both are
+Windows PE files despite the extension-less name; no non-Windows artefact exists.
 
 ### What is built and real
 
@@ -69,13 +70,20 @@ identity, gateway, connection state and sequence.
 |---|---|---|---|
 | C1 | `daemon.go:24-39` | **Backoff never resets after a successful connection.** `backoff` doubles on every reconnect and is never returned to one second, so a laptop that sleeps nightly permanently sits at the 30s cap and takes half a minute to come back every morning. The Python agent's equivalent loop does reset. | High |
 | C2 | `daemon.go:182-187` | `actionOK` returns `true` for any output that is not a `Result`. `ReadState` returns a `map[string]any`, so **a facet read in which every facet failed is reported to Axel as `ok: true`** with error text buried in the payload. | High |
-| C3 | `actions.go:41` | `reset_resolver` runs `netsh winsock reset`, which requires administrator rights and a reboot. The install path is deliberately non-admin (`/RL LIMITED`). **This action cannot succeed as installed**, and it is disruptive enough that it should not be in a tier-one set anyway. | High |
-| C4 | `actions.go:48-54` | `restart_service` uses `sc stop`/`sc start`. Stopping `Dnscache`, `Dhcp` or `WlanSvc` requires administrator rights, so this action also fails as installed. | High |
-| C5 | `actions.go:74` | The `services` facet runs `sc query type= service state= all` — several thousand lines of output, returned whole, straight into the model's context. | Medium |
+| C3 | `actions.go:43-44` | `reset_resolver` runs `netsh winsock reset`, which requires administrator rights and a reboot. The install path is deliberately non-admin (`/RL LIMITED`). **This action cannot succeed as installed**, and it is disruptive enough that it should not be in a tier-one set anyway. | High |
+| C4 | `actions.go:46-57` | `restart_service` uses `sc stop`/`sc start`. Stopping `Dnscache`, `Dhcp` or `WlanSvc` requires administrator rights, so this action also fails as installed. | High |
+| C5 | `actions.go:68` | The `services` facet runs `sc query type= service state= all` — several thousand lines of output, returned whole, straight into the model's context. | Medium |
 | C6 | `actions.go:88-92` | Every facet returns `{"raw": "<entire stdout>"}`. Axel is handed console prose and asked to parse it, which is precisely what `architecture.md` argues against on the cluster side ("status is structured, events are prose"). | Medium |
 | C7 | `daemon.go:32-36` | `break` inside a `select` breaks the select, not the `for`. Harmless because the loop condition re-checks `ctx.Err()`, but it reads as control flow that does not exist. | Low |
-| C8 | `identity.go:80-82` | `Release` is set from `runtime.GOARCH`. It is an architecture string in a field the dashboard renders as an OS release. | Low |
+| C8 | `identity.go:68` | `Release` is set from `runtime.GOARCH`. It is an architecture string in a field the dashboard renders as an OS release. | Low |
 | C9 | `daemon.go:26-41` | `RunDaemon` always returns `nil`; connection failures are recorded in `DaemonState` and the process exits 0 regardless. A supervisor cannot tell a clean stop from a permanent failure. | Low |
+| C10 | `daemon.go:63-78` | The receive goroutine's only escape is the daemon-lifetime context, not a per-connection one. If `connect` returns through a send error while the goroutine is blocked handing over a received message on the unbuffered channel, it blocks forever — one goroutine leaked per such reconnect. | Medium |
+| C11 | `daemon.go:45,80-91` | No gRPC keepalive and no read deadline; heartbeats are send-only, with nothing expected back. After an unclean drop, sends land in kernel buffers and `Recv` blocks until TCP gives up — minutes of appearing connected to nothing. | High |
+| C12 | `daemon.go:100,114` | `execute` runs synchronously inside the single send loop, so a command near the 30s ceiling starves heartbeats past the 20s interval — a busy device looks dead to the gateway precisely while it is working, and later commands queue behind it. | Medium |
+| C13 | `daemon.go:100-103` | The action executes **before** the sequence is persisted. A crash between the two re-runs the command on reconnect — duplicate execution, not the documented lost-result case, and `restart_service` is not safe to run twice. | Medium |
+| C14 | `daemon.go:169-180` | `splitFacets` returns nil for garbage or empty input, `ReadState` returns `{}`, and the empty result is reported `ok: true` — a cousin of C2 with a different trigger. | Low |
+| C15 | `actions.go:36` | Every action re-wraps its context with the 30s default regardless of what the command carries, so the effective timeout is `min(command timeout, 30s)` — a gateway-specified 60s is silently halved. | Low |
+| C16 | `identity.go:79-92` | A corrupt `device.json` falls through to minting a fresh identity: the device silently changes ID, the sequence resets to zero, and the gateway sees a brand-new machine with replay semantics wiped. | Medium |
 
 ### What is missing outright
 
@@ -90,6 +98,10 @@ identity, gateway, connection state and sequence.
   tags, so a non-Windows build compiles and fails only at runtime.
 - **Tests.** Two, both trivial. Nothing covers the daemon loop, reconnect, replay, sequence
   persistence, or any action.
+- **Transport security and device identity.** The dial is plaintext and `device_id` in the hello is
+  client-asserted, so any process that can reach the gateway can impersonate any device.
+  `architecture.md` accepts this for the demo; it is restated here so nobody mistakes it for
+  implemented.
 
 ---
 
@@ -103,7 +115,12 @@ identity, gateway, connection state and sequence.
 6. No computer-use tier, which is now in scope.
 7. No packaging, no install artefact, no update path.
 8. No meaningful test coverage.
-9. At-most-once result delivery is undocumented.
+9. At-most-once result delivery is undocumented — and execution itself is not even at-most-once
+   (C13).
+10. The connection loop leaks goroutines, cannot detect a dead gateway, and starves heartbeats while
+    executing (C10, C11, C12).
+11. Garbage facet input reports success, command timeouts are silently capped, and a corrupt
+    identity file re-mints the device (C14, C15, C16).
 
 ---
 
@@ -118,24 +135,44 @@ Dependency-ordered.
 - **C1** — reset `backoff` to its base the moment a connection is established and has survived a
   minimum stable period (say 30s), not merely on dial success, so a connect-crash loop still backs off
   while a nightly sleep/wake does not.
-- **C2** — `ReadState` returns a typed struct carrying per-facet success, and `execute` reports
+- **C2, C14** — `ReadState` returns a typed struct carrying per-facet success, and `execute` reports
   `ok: false` when every requested facet failed, `ok: true` with per-facet errors when some succeeded.
-  A read that wholly failed must never look successful to Axel, because milestone C of `agent.md`
-  discharges a verification obligation on a successful read.
+  `splitFacets` stops laundering garbage into success: an unrecognised facet string is an error and an
+  empty facet list is `ok: false`. A read that wholly failed must never look successful to Axel,
+  because milestone C of `agent.md` discharges a verification obligation on a successful read.
+- **C10** — the receive goroutine runs under a per-connection context and its handoff is select-guarded
+  on that context, so tearing a connection down always releases the goroutine instead of leaking one
+  per failed cycle.
+- **C11** — enable gRPC client keepalive with a timeout, and treat a missed gateway heartbeat window
+  as a dead connection that triggers reconnect. Milestone F's "a silent gateway triggers reconnect"
+  test asserts behaviour that only exists once this lands.
+- **C12** — command execution moves off the send loop into a worker; results re-enter the loop
+  through the outbound channel, so the single-sender rule is kept and heartbeats keep flowing while a
+  30-second command runs.
+- **C13** — persist the sequence **before** executing, not after. The at-most-once property currently
+  covers only result delivery, while execution itself can run twice on a crash between execute and
+  persist; persist-first makes at-most-once true of execution too — a crash now loses the command
+  instead of repeating it, which is the failure mode the design already accepts.
+- **C15** — honour the timeout the command carries; the 30s value becomes the default for commands
+  that carry none, with a configurable hard ceiling rather than a silent halving.
+- **C16** — a corrupt identity file is fatal: rename it aside, log what happened, exit non-zero.
+  Silently minting a new identity resets replay semantics and forges a new device.
 - **C7** — replace the dead `break` with a labelled break or a `return`.
 - **C8** — populate `Release` from the actual OS version. On Windows that is a
   `RtlGetVersion`/registry read behind a build tag; the POSIX fallback can use `uname`-equivalent
   data. Keep `GOARCH` as a separate field if it is wanted.
 - **C9** — return the terminal error from `RunDaemon` so the exit code distinguishes a cancelled
   context from a permanent failure.
-- **Document at-most-once delivery** in the package doc: a command that executed and whose result was
-  lost is not retried, and the API will time it out. Retrying would need an idempotency key, which
-  `architecture.md` names as one of the two gaps worth closing first if this moves past a demo. Do not
-  close it here; state it.
+- **Document at-most-once semantics** in the package doc: a command whose result was lost is not
+  retried and the API will time it out, and (post-C13) a crash mid-command loses the command rather
+  than repeating it. Retrying would need an idempotency key, which `architecture.md` names as one of
+  the two gaps worth closing first if this moves past a demo. Do not close it here; state it.
 
 **Done when:** a test drives the reconnect loop through ten simulated drops and asserts the delay
-returns to base after a stable connection; a facet read where every facet fails returns `ok: false`;
-and `go test ./...` covers both.
+returns to base after a stable connection; a gateway that stops answering while the TCP session stays
+up is detected and reconnected within the keepalive window; a facet read where every facet fails
+returns `ok: false`; a crash injected between persist and execute leaves the command un-run on
+replay; and `go test ./...` covers all four.
 
 ### B — Rebuild the action and facet set around what actually works
 **Files:** `internal/device/actions.go`, new `internal/device/actions_windows.go`,
@@ -184,6 +221,12 @@ those, keeping the raw text under a `raw` key that is truncated to a stated ceil
 Every facet declares a hard output ceiling. Console output is an unbounded input from the perspective
 of a model context window, and that is the component that can bound it.
 
+One constraint on the parsers: `ipconfig`, `netsh` and `sc` output is fully localised on non-English
+Windows — labels, section headings, even some separators. Parsers key off locale-stable structure
+(indentation, `:` delimiters, adapter block boundaries) or read the same data from locale-stable
+sources such as the registry, never off English label text, and the fixture set includes at least one
+non-English capture so a regression is caught without a localised machine in the loop.
+
 **Done when:** each action in the table runs successfully on a Windows laptop under a non-admin
 account, and for each one a before/after `read_state` on its paired facet shows a field that changed.
 Unit tests parse captured fixture output for every facet.
@@ -219,12 +262,13 @@ cua is Python and this is Go, so the language boundary is a process boundary: `c
 runs locally and `axel-cli` drives it over its local API. This binary keeps its job — hold the
 connection, receive typed commands, orchestrate — and delegates only the GUI tier.
 
-**D0, a spike before any code.** Stand up `cua-driver` and `cua-computer-server` on the test
-machine, confirm the local API surface — transport, port, authentication, whether an objective is
-submitted as one call or driven step by step, and what a step result looks like — and write it down.
-The rest of this milestone is sized on the assumption that it is a local HTTP or WebSocket API on a
-loopback port; if the spike shows otherwise, rescope milestone D before continuing rather than
-adapting in flight.
+**D0, a spike before any code.** Stand up the server on the test machine — the package is
+`cua-computer-server`, launched with `python -m computer_server`, serving HTTP/WebSocket on port 8000
+by default; the `[driver]` extra adds the native Cua Driver backend, selected with
+`--backend cua-driver`. Confirm the parts the docs do not settle — authentication, whether an
+objective is submitted as one call or driven step by step, and what a step result looks like — and
+write them down. The rest of this milestone is sized on that loopback HTTP/WebSocket surface; if the
+spike shows otherwise, rescope milestone D before continuing rather than adapting in flight.
 
 Then:
 
@@ -246,8 +290,11 @@ Then:
 Installation stays separate from the base install and is documented as such:
 
 ```bash
-pip install cua-driver cua-computer-server
+pip install cua-computer-server
 ```
+
+— the base package serves the HTTP/WebSocket surface this milestone drives; the `[driver]` extra adds
+the native Cua Driver backend when it is wanted. The exact extras are settled by the D0 spike.
 
 **Done when:** on a machine with cua installed, a `device.computer_use` command drives a GUI-only
 change and returns a step transcript; on a machine without it, the same command returns the refusal

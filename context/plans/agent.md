@@ -38,7 +38,8 @@ next. Concretely:
 - Hitting any ceiling ends the run `exhausted` with a `DECISION` step naming the reason.
 
 **The tool registry** — `axel/tools.py`. All seven tools from `architecture.md` are registered with
-pydantic schemas and, for the three writes, a `verified_by` naming the read that confirms them.
+pydantic schemas. Four tools have `effect: WRITE`; three of them carry a `verified_by` naming the read
+that confirms them, and `cmdb.record_observation` deliberately carries none (see milestone C).
 `as_llm_tools()` renders the registry as OpenAI-style function definitions from
 `model_json_schema()`. Nothing in this module executes anything, which is the point.
 
@@ -49,7 +50,8 @@ and capabilities, then holds one bidirectional stream. It really does:
 - report every step as its own `RunUpdate` as it happens, not batched at the end;
 - send a terminal `RunUpdate` with status and outcome, including on cancellation and on unexpected
   exceptions;
-- reject duplicate `StartRun` for a run already in flight;
+- ignore duplicate `StartRun` for a run already in flight — a local log warning only, the API is
+  never told;
 - handle `CancelRun` by cancelling the asyncio task;
 - reconnect with exponential backoff plus jitter, capped by `reconnect_cap_seconds`;
 - fail every pending tool future with `ConnectionError` when the connection drops, so a run cannot
@@ -66,14 +68,16 @@ to `Decision` mapping, and `call_id` correlation.
 
 **`axel/model.py` is the weak point of the component.** The real litellm path exists and is
 unexercised; the `demo` branch hard-codes a device read followed by a resolve, which is what the
-current tests actually exercise. Three defects in the real path, all of which prevent multi-step
-reasoning from working:
+current tests actually exercise. Five defects in the real path, the first three of which prevent
+multi-step reasoning from working:
 
 | # | Location | Defect |
 |---|---|---|
-| A1 | `model.py:339-343` | The transcript is flattened into user messages: `"role": "user" if item.get("role") == "tool" else …`. Tool results arrive as *user* turns, and **the assistant's own tool-call message is never appended**. The model therefore has no record of what it asked for — only anonymous blobs of output. Multi-step tool use degrades to guessing on turn two. |
-| A2 | `model.py:334-347` | `response.usage` is discarded. `agent_runs.prompt_tokens` and `completion_tokens` are consequently always null, which is why the dashboard's token row renders `0`. |
-| A3 | `tools.py:544-556` | `as_llm_tools()` emits `model_json_schema()` as the function parameters, which does not declare `reasoning`. `_decision` then pops `reasoning` with a default of `""`. A model following the schema cannot supply reasoning for an ordinary tool call, so **every `tool_call` step in the transcript has empty reasoning** — the "why" the dashboard exists to show. |
+| A1 | `model.py:71-75` | The transcript is flattened into user messages: `"role": "user" if item.get("role") == "tool" else …`. Tool results arrive as *user* turns, and **the assistant's own tool-call message is never appended** — nothing anywhere in `loop.py` or `model.py` ever adds an assistant message. The model therefore has no record of what it asked for — only anonymous blobs of output. Multi-step tool use degrades to guessing on turn two. |
+| A2 | `model.py:66-84` | `response.usage` is discarded — the identifier appears nowhere in `axel/`. `agent_runs.prompt_tokens` and `completion_tokens` are consequently always null, which is why the dashboard's token row renders `0`. |
+| A3 | `tools.py:176-188`, `model.py:89` | `as_llm_tools()` emits `model_json_schema()` as the function parameters, which does not declare `reasoning`. `_decision` then pops `reasoning` with a default of `""`. A model following the schema cannot supply reasoning for an ordinary tool call, so **every `tool_call` step in the transcript has empty reasoning** — the "why" the dashboard exists to show. |
+| A15 | `model.py:84` | Only `calls[0]` is taken from the response and `parallel_tool_calls` is not disabled on the `acompletion` call. A provider that answers with two calls loses the second silently — and, per A1, the model is never shown which one survived. |
+| A16 | `model.py:88-99` | Model output is parsed unguarded: `json.loads` on the arguments can raise `JSONDecodeError`, and `arguments["resolution"]` / `arguments["reason"]` can raise `KeyError`. `loop.py:116` wraps `think()` in nothing, so one malformed response fails the whole run instead of becoming a correctable observation the way invalid tool input already does. |
 
 ### What is missing outright
 
@@ -90,6 +94,9 @@ reasoning from working:
 | A12 | **No retry on transient provider errors.** A single 429 or a socket reset from the model provider fails the whole run. |
 | A13 | **No test of the loop itself** — the three existing tests cover adapters. The escalate-rather-than-act judgement, which `idea.md` calls the case that makes the other two mean something, has no test at all. |
 | A14 | **Nothing knows about incidents versus service requests**, or impact and urgency. Once `api.md` milestone A lands, that classification exists and the prompt ignores it. |
+| A17 | **Terminal updates die with the connection.** A run cancelled by `close()` on disconnect (`server.py:188-196`) still enqueues its terminal `RunUpdate` into the dead connection's outbound queue, which is then discarded — the API must infer the ending from the disconnect. The `except asyncio.CancelledError` in the run task also swallows cancellation without re-raising. |
+| A18 | **`temperature=0.1` is always sent** (`config.py:21`, `model.py:68`). Reasoning-tier models — including the default milestone F proposes — reject non-default temperature, so switching `AXIOMA_MODEL` alone would fail every call. |
+| A19 | **The health server binds all interfaces** (`server.py:247` binds `("", health_port)`), and `grpcio`/`protobuf` live in the optional `[server]` extra (`pyproject.toml:19-25`), so a plain `axel` install cannot import `server.py` — neither fact is written down anywhere. |
 
 ---
 
@@ -106,6 +113,10 @@ reasoning from working:
 8. No per-call timeout and no provider retry (A11, A12).
 9. The three scenarios — especially the refusal — are untested (A13).
 10. No model provider is actually configured or exercised end to end.
+11. Parallel tool calls are silently dropped, and malformed model output fails the run rather than
+    correcting inside it (A15, A16).
+12. Terminal run updates are lost on disconnect-cancel, and the pinned temperature is incompatible
+    with the target default model (A17, A18).
 
 ---
 
@@ -130,6 +141,12 @@ Rewrite the message construction so the transcript is a real OpenAI-shaped conve
   strict function calling can be enabled.
 - Capture `response.usage.prompt_tokens` and `completion_tokens`, accumulate across turns on the
   `RunContext`, and return them from `run()` on `RunResult` (fixes **A2**).
+- Pass `parallel_tool_calls=False` until the loop can dispatch more than one call per turn, so a
+  provider that answers with two calls is refused rather than silently truncated to `calls[0]`
+  (fixes **A15**).
+- Guard the parsing of model output: bad JSON in the arguments or a missing required key becomes an
+  observation pushed back to the model — the same correction path invalid tool input already uses —
+  never an unhandled exception that fails the run (fixes **A16**).
 - The `demo` branch moves out of `model.py` into `tests/fixtures.py` as a scripted model. Production
   code should not carry a demo path, and the tests that need one should own it.
 
@@ -257,6 +274,9 @@ Also in this milestone:
 - Retry transient provider failures — rate limits, timeouts, 5xx — with bounded exponential backoff
   and jitter, capped so retries cannot outlive the run deadline. A retried call is reported as an
   observation so the transcript shows the delay rather than an unexplained gap (fixes **A12**).
+- Send `temperature` only when explicitly configured. Reasoning-tier models reject non-default
+  values, and the pinned `0.1` would fail every call against the new default the moment the model
+  switches (fixes **A18**).
 - Enable strict function calling now that the schemas in milestone A support it, and fall back with a
   logged warning on providers that reject it.
 - Record the model string returned by the provider, not the configured one, so a provider-side alias
@@ -301,9 +321,15 @@ unverified resolution turns scenario 1 red.
   holds, so the API can reject a tool request for something this worker does not know.
 - Bound `Connection.pending` and log a warning when a `ToolResult` arrives for an unknown `call_id`,
   which today is silently dropped.
+- Hold the terminal `RunUpdate` of a run ended by `close()` and deliver it on the next connection
+  instead of enqueueing it into the dead one, and re-raise `CancelledError` after cleanup rather than
+  swallowing it (fixes **A17**).
+- Bind the health server to localhost by default, and document that the worker install is
+  `axel[server]` — the base package cannot import `server.py` (closes **A19**).
 
 **Done when:** two agent workers can run against one API and both appear connected; killing one leaves
-the other serving runs.
+the other serving runs; and a run cancelled by a disconnect reports its terminal status once the
+worker reconnects.
 
 ---
 
@@ -401,3 +427,5 @@ of tool calls without the reasoning between them is a log, not an explanation.
    verbatim in the terminal step, and the test fails if any write tool is called.
 9. Switching `AXIOMA_MODEL` between two providers runs all three scenarios with no code change.
 10. Two workers can serve one API concurrently and either can be killed without stalling the other.
+11. A malformed model response — bad JSON arguments or a missing required key — shows up in the
+    transcript as an observation and never ends the run as `failed` on its own.

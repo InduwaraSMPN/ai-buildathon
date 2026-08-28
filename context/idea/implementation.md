@@ -5,7 +5,7 @@
 
 ## Layout
 
-Five independent projects under `axioma/`, each intended to become its own git repository checked out side by side — the pattern `marketrix.ai` uses, where a workspace repo tracks orchestration and gitlinks while each service lives under its own remote.
+Five platform projects under `axioma/` — plus `web/`, the public site — each intended to become its own git repository checked out side by side — the pattern `marketrix.ai` uses, where a workspace repo tracks orchestration and gitlinks while each service lives under its own remote.
 
 ```
 axioma/
@@ -22,6 +22,7 @@ axioma/
   dashboard/    TypeScript   :3002  IT staff
   agent/        Python       package `axel`
   cli/          Go           binary `axel-cli`
+  web/          TypeScript   :3003  public site — outside the platform loop, listed for completeness
 ```
 
 Nothing is shared by a package manager. Each project installs, lints, and typechecks on its own, and a change to one cannot break another's build except through a contract that was deliberately published.
@@ -104,11 +105,13 @@ Present on the dev machine: Node 24.13.0, pnpm 11.24.0, Python 3.14.2, uv 0.9.28
 
 One consequence to plan for: reaching a kind cluster in WSL2 from a Windows-side Node process needs port mapping. Either run the API inside WSL2 or accept the mapping. The repository is on `D:\`, and `node_modules` on `/mnt/d/` from inside WSL2 has poor file I/O — so if development moves into WSL2, move the checkout to the Linux filesystem rather than reaching across.
 
-**Protobuf codegen** is not wired yet. Python needs nothing installed — `grpcio-tools` bundles protoc, and `agent/scripts/generate-proto.sh` uses it. Go needs one `go install` of `protoc-gen-go` and `protoc-gen-go-grpc`. Both `pb` directories are gitignored placeholders until then.
+**Protobuf codegen** is wired on both sides. Python needs nothing installed — `grpcio-tools` bundles protoc, and `agent/scripts/generate-proto.sh` uses it; Go regenerates with `cli/scripts/generate-proto.ps1`, which needs `protoc-gen-go` and `protoc-gen-go-grpc` installed once. Generated bindings live in `agent/axel/pb/` and `cli/internal/pb/`; rerun the scripts after any proto publish.
 
 ## Commands
 
-Each project stands alone.
+Each project stands alone. The workspace `Tiltfile` orchestrates the whole set — postgres, api,
+portal, dashboard, web, agent, and a cli build — with `tilt up`; the per-project commands below are
+the standalone path.
 
 ```bash
 cd api        && pnpm install && pnpm db:start && pnpm db:push && pnpm dev

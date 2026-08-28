@@ -5,7 +5,7 @@
 
 ## Shape
 
-Five independent projects, each with the toolchain its job actually calls for. They are not a monorepo and share no package manager; the workspace directory holds them side by side the way a set of checked-out repositories would.
+Five independent projects, each with the toolchain its job actually calls for. They are not a monorepo and share no package manager; the workspace directory holds them side by side the way a set of checked-out repositories would. (A sixth directory, `web/`, holds the public marketing site on :3003 — part of the workspace and the Tiltfile, not of the platform loop; nothing in this document applies to it.)
 
 | Project | Language | Job |
 |---|---|---|
@@ -88,7 +88,7 @@ A bounded loop: read, think, act, verify. The loop owns the sequence and the lim
 | `device.computer_use` | write | `device.read_state` |
 | `cmdb.record_observation` | write | — |
 
-Every write names the read that confirms it. A write returning success means the call was accepted, not that the problem is fixed — so after acting, Axel re-reads through the named read tool.
+Every write that changes external state names the read that confirms it. A write returning success means the call was accepted, not that the problem is fixed — so after acting, Axel re-reads through the named read tool. `cmdb.record_observation` is the deliberate exception: a CMDB observation has no external state to re-read — the write *is* the record, additive rather than corrective — so its `verified_by` is empty by design, not by omission.
 
 **The loop is bounded.** Ceilings on tool calls, model turns, and wall time. Hitting any of them ends the run as `exhausted` and escalates, rather than leaving a ticket in a partial state. Without this a confused agent loops and the ticket neither resolves nor escalates.
 
@@ -114,7 +114,7 @@ Design points that matter:
 
 **Actions are named, never composed.** The gateway sends an action name and typed parameters; the argument list for each action is written out in the binary. Facet reads work the same way. No command string crosses the boundary, which is what stops a ticket talking the agent into running something arbitrary.
 
-Computer-use is the second tier and is installed separately, as `cua-driver` and `cua-computer-server` on the device. [cua](https://github.com/trycua/cua) is the choice because its driver runs in the background — agents click, type, and verify *without stealing the cursor or focus* — which is the property that makes this acceptable on a laptop somebody is working on. Agent-S was rejected for using PyAutoGUI, which takes the real mouse and keyboard, and for requiring a separately hosted grounding model.
+Computer-use is the second tier and is installed separately, as `cua-computer-server` on the device — `python -m computer_server`, an HTTP/WebSocket surface on a loopback port, with a `[driver]` extra for the native Cua Driver backend. [cua](https://github.com/trycua/cua) is the choice because its driver runs in the background — agents click, type, and verify *without stealing the cursor or focus* — which is the property that makes this acceptable on a laptop somebody is working on. Agent-S was rejected for using PyAutoGUI, which takes the real mouse and keyboard, and for requiring a separately hosted grounding model.
 
 cua is Python and axel-cli is Go, so the language boundary is a process boundary: `cua-computer-server` runs locally and axel-cli drives it over its local API. Axel itself has no cua dependency, because Axel has no device path at all — it asks the API, the API dispatches to axel-cli, and axel-cli decides which tier can serve the request.
 
@@ -178,6 +178,6 @@ Stated because the gaps are deliberate and someone reading the component map wil
 - **No action is approved before it runs.** Axel acts on its own judgment.
 - **Nothing is idempotent.** Retrying a dispatched action can apply it twice.
 - **Command dispatch is not durable.** If the API restarts, in-flight device commands are lost.
-- **The device connection is not authenticated** beyond a shared bootstrap token, and the binary is unsigned.
+- **The device connection is not authenticated.** The stream is plaintext and the device ID in the hello is client-asserted — any process that can reach the gateway can impersonate any device — and the binary is unsigned.
 
 Each is out of scope by decision rather than oversight. The two worth addressing first, if this moves past a demo, are authorization and idempotency — the first because axel-cli executes on employee machines, the second because "did that action already run" becomes unanswerable after the first timeout.

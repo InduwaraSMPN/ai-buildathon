@@ -25,7 +25,8 @@ banner. Note that `pnpm check-types` runs `vite build` first, because the router
 
 **Stack** — TanStack Router with file-based routes, React 19, TanStack Query, Tailwind 4, Vite,
 Better Auth client, oRPC client with `createTanstackQueryUtils`. `@tanstack/react-table` and `recharts`
-are installed and in use. `@tanstack/react-form` is installed and **not yet used anywhere**.
+are installed and in use. `@tanstack/react-form` is used only by the two auth forms
+(`sign-in-form.tsx`, `sign-up-form.tsx`); **no feature form uses it**.
 
 **Component base** — `components.json` declares style `base-lyra`, base colour `neutral`, Lucide icons.
 The seventeen components in `src/components/ui/` are genuine Base UI: `dropdown-menu.tsx` imports
@@ -41,8 +42,10 @@ toggle, user nav, a pathname-derived breadcrumb), `page-container.tsx`, `info-si
 `user-nav.tsx`. Skip-to-content link present. Auth gating in `routes/_auth/route.tsx` redirects to
 `/login` when there is no session.
 
-**Feature structure** — `src/features/{tickets,devices,agent-runs,overview}/` each with
-`api/{service,queries,mutations,types}.ts` and `components/`. Clean and consistent; keep it.
+**Feature structure** — `src/features/{tickets,devices,agent-runs}/` each with
+`api/{service,queries,mutations,types}.ts` and `components/`; `features/overview/` has only
+`components/` and reuses `ticketQueries` (milestone H gives it its own `api/`). Clean and
+consistent; keep it.
 
 **Queue** — `features/tickets/components/ticket-queue.tsx`. A real `@tanstack/react-table` setup:
 sorting, global filter, column visibility, client pagination, empty/loading/error states, links into
@@ -68,16 +71,21 @@ for loading/empty/error, `PageHeader`, `formatDate`, `timeAgo`.
 
 | # | Location | Defect | Severity |
 |---|---|---|---|
-| B1 | `features/tickets/components/ticket-detail.tsx:118-152` | **Three operator buttons, one behaviour.** "Reassign", "Take over" and "Escalate" all call `update({ action: "escalate", … })` with different route strings. The dashboard cannot resolve, cannot assign, and cannot reopen — because the contract has only `close` and `escalate`. | High |
-| B2 | `features/agent-runs/components/agent-transcript.tsx:44-50` | Steps from **all runs are flattened and sorted by timestamp**, interleaving a second attempt with the first. A ticket with two runs shows one confusing merged transcript. | High |
-| B3 | `features/agent-runs/api/types.ts` | Types are **hand-declared** rather than inferred from the contract, unlike `features/tickets/api/types.ts` which does it correctly. Includes `evidence?: unknown`, which no contract field supplies — so the transcript renders a field the server can never send. Hand-declared types cannot fail to typecheck when the contract changes, which defeats the point of publishing it. | High |
-| B4 | `features/overview/components/overview-page.tsx:29-88` | Fetches **every ticket** and computes all four counts and both charts in the browser. Correct at ten tickets, wrong at ten thousand, and it makes the overview the slowest page in the app. Also constructs seven `new Date()` objects on every render. | Medium |
-| B5 | `features/tickets/components/ticket-detail.tsx:56` | `closed` gates the whole action panel, so a `resolved` ticket can still be escalated but a `closed` one cannot be reopened. The gate encodes the wrong state. | Medium |
-| B6 | `components/support-ui.tsx:6-22` and `features/devices/components/devices-table.tsx:26-42` | Status colours are hand-rolled `Record<string, string>` maps in two places, because the contract types `status` and `connected` as `z.string()`. Two sources of truth for the same vocabulary. | Medium |
-| B7 | `src/components/dashboard-shell.tsx`, `src/components/header.tsx`, `src/components/user-menu.tsx` | Orphaned by the new `components/layout/` shell. Still compiled, still linted, referenced by nothing. | Low |
+| B1 | `features/tickets/components/ticket-detail.tsx:115-146` | **Three operator buttons, one behaviour.** "Reassign", "Take over" and "Escalate" all call `update({ action: "escalate", … })` with different route strings. The dashboard cannot resolve, cannot assign, and cannot reopen — because the contract has only `close` and `escalate`. | High |
+| B2 | `features/agent-runs/components/agent-transcript.tsx:36-41` | Steps from **all runs are flattened and sorted by timestamp**, interleaving a second attempt with the first. A ticket with two runs shows one confusing merged transcript. | High |
+| B3 | `features/agent-runs/api/types.ts` | Types are **hand-declared** rather than inferred from the contract, unlike `features/tickets/api/types.ts` which does it correctly. Includes `evidence?: unknown` (line 11), which no contract field supplies — so the transcript renders a field the server can never send. Hand-declared types cannot fail to typecheck when the contract changes, which defeats the point of publishing it. | High |
+| B4 | `features/overview/components/overview-page.tsx:25-80` | Fetches **every ticket** and computes all four counts and both charts in the browser. Correct at ten tickets, wrong at ten thousand, and it makes the overview the slowest page in the app. Also constructs seven `new Date()` objects per render for the day buckets — plus one more per ticket per day inside the series filter. | Medium |
+| B5 | `features/tickets/components/ticket-detail.tsx:61` | `closed` gates the whole action panel, so a `resolved` ticket can still be escalated but a `closed` one cannot be reopened. The gate encodes the wrong state. | Medium |
+| B6 | `components/support-ui.tsx:6-20` and `features/devices/components/devices-table.tsx:24-38` | Status colours are hand-rolled twice — a `Record` map in `support-ui.tsx`, an inline ternary in `devices-table.tsx` — because the contract types `status` and `connected` as `z.string()`. Worse, the `support-ui` map keys `connected`/`offline` for devices can never match: the API writes `online \| offline`, so that branch is dead and only the table's own ternary is right. Two sources of truth, one of them wrong. | Medium |
+| B7 | `src/components/dashboard-shell.tsx`, `src/components/header.tsx` | Orphaned by the new `components/layout/` shell. Still compiled, still linted, referenced by nothing. (`src/components/user-menu.tsx` looks like a third orphan and is not — `components/layout/user-nav.tsx` imports it.) | Low |
 | B8 | `features/tickets/components/ticket-queue.tsx:109` | `useMemo(() => columns, [])` memoises a module-level constant. | Low |
-| B9 | `components/layout/header.tsx:8-12` | Breadcrumbs come from a hardcoded pathname-to-label map, so every new route needs an edit in an unrelated file. | Low |
+| B9 | `components/layout/header.tsx:7-11` | Breadcrumbs come from a hardcoded pathname-to-label map, so every new route needs an edit in an unrelated file. | Low |
 | B10 | `features/devices/components/devices-table.tsx` | No device detail view and no command history — a device row is a dead end. | Medium |
+| B11 | `features/devices/api/types.ts:1-13` | `Device` is hand-declared too — the same defect class as B3, in a second file. | Medium |
+| B12 | `routes/login.tsx:12` | `useState(false)` defaults `/login` to the **sign-up** form (the portal has the same defect). Neither `/` nor `/login` bounces an already-authenticated user, and the `_auth` redirect drops the intended destination, so every login lands on `/home`. | Low |
+| B13 | `components/layout/app-sidebar.tsx:37-41` | The closed mobile drawer is only `-translate-x-full` — no `inert`, no `aria-hidden`, no focus management — so its links stay in the keyboard tab order while invisible. | Low |
+| B14 | `lib/auth-client.ts:4-38`, `utils/orpc.ts:29-63` | `getServerUrl` is duplicated verbatim in both files, each carrying Vercel-only dead branches for a Vite SPA and a hardcoded `http://localhost:3000` fallback. | Low |
+| B15 | `components/layout/app-sidebar.tsx:96-99` | A hardcoded "Systems operational" green dot driven by nothing; the contract's `healthCheck` procedure is never called by this app. | Low |
 
 ### What is missing outright
 
@@ -85,8 +93,9 @@ for loading/empty/error, `PageHeader`, `formatDate`, `timeAgo`.
 - Server-side filtering and pagination — everything is fetched whole and filtered in the browser.
 - Any way to start, cancel or re-run an agent run from the dashboard.
 - Live transcript updates. A run in progress requires a manual refresh.
-- Any use of `@tanstack/react-form`, despite it being installed and mandated for forms.
-- Route-level pending and error boundaries.
+- Any feature-form use of `@tanstack/react-form`, despite it being installed and mandated for forms.
+- Error boundaries at any level — `main.tsx` sets a global `defaultPendingComponent`, but there is no
+  `defaultErrorComponent` and no route-level `errorComponent` or `pendingComponent` anywhere.
 - A command palette, keyboard navigation, or any density affordance for an all-day operator.
 - Missing Base UI primitives: `table`, `badge`, `tabs`, `sheet`, `select`, `separator`, `avatar`,
   `popover`, `command`, `dialog`, `alert-dialog`, `scroll-area`, `sidebar`, `breadcrumb`, `collapsible`,
@@ -104,9 +113,11 @@ for loading/empty/error, `PageHeader`, `formatDate`, `timeAgo`.
 5. No live view of a run in progress and no control over one.
 6. Two hand-rolled status vocabularies instead of one contract enum (B6).
 7. Devices are a dead end (B10).
-8. Forms use raw `useState`; `@tanstack/react-form` is unused.
+8. Feature forms use raw `useState`; `@tanstack/react-form` appears only in the auth forms.
 9. Two dozen Base UI primitives are missing, so screens get hand-built instead of sourced.
 10. Orphaned files and small correctness litter (B7, B8, B9).
+11. Hand-declared device types, sign-up-first login, duplicated URL helpers, a decorative health dot,
+    and a tab-reachable closed drawer (B11–B15).
 
 ---
 
@@ -118,22 +129,22 @@ for loading/empty/error, `PageHeader`, `formatDate`, `timeAgo`.
 were added this way and are genuinely Base UI. **No Radix adaptation is needed for anything in the
 shadcn catalogue**, which is a meaningful saving over the assumption in the brief.
 
-**Where they do not come from.** The workspace contains a downloaded reference dashboard at
-`tanstack-start-dashboard-main/`. It is **Radix** (`radix-ui` package, style `new-york`, `iconLibrary:
-radix`). Its primitives must not be copied — doing so would introduce a second component library into a
-project that has deliberately chosen one. It is useful for exactly one thing: **composition patterns**,
-which are framework-agnostic. Specifically worth reading and re-implementing on Base UI:
+**Blocks are a second source.** The shadcn blocks — login, sidebar and dashboard blocks included —
+are published in Base UI variants, and the CLI pulls the variant matching `components.json`, so a
+block is a legitimate starting point wherever one fits.
 
-| Pattern in the template | What it gives | Adaptation |
+**Compositions that must be built, not added.** Four compositions this plan relies on are not single
+catalogue components; each is assembled from Base UI primitives against APIs this project already
+has. There is no local reference implementation to copy from — these are built here:
+
+| Composition | What it gives | Built from |
 |---|---|---|
-| `src/components/ui/table/data-table.tsx` + `data-table-toolbar.tsx` + `data-table-pagination.tsx` + `data-table-view-options.tsx` | The full data-table composition around `@tanstack/react-table` | Structure ports directly; the toolbar's popovers and menus swap to Base UI equivalents. |
-| `src/components/ui/table/data-table-faceted-filter.tsx` | Multi-select column filtering with counts — exactly what a priority/status/category filter needs | Built on Radix `popover` + `cmdk`; re-implement on Base UI `popover` + `command`. |
-| `src/hooks/use-data-table.ts` | URL-synchronised table state (sorting, filters, pagination) | Depends on `nuqs`-style parsers; re-implement against TanStack Router search params, which this project already has. |
-| `src/components/layout/app-sidebar.tsx`, `header.tsx`, `user-nav.tsx` | Layout composition | Already adapted into this project. Nothing more to take. |
-| `src/components/command-menu.tsx` | ⌘K palette composition | Re-implement on Base UI `command`. |
-| `src/hooks/use-breadcrumbs.tsx` | Route-derived breadcrumbs, fixing B9 | Router-specific; adapt to TanStack Router matches. |
+| Data-table shell: toolbar, pagination, column view options around `@tanstack/react-table` | The queue and devices tables | shadcn `table` + `dropdown-menu` + `select` + `button`; the column plumbing already in `ticket-queue.tsx` carries over |
+| Faceted filter — multi-select column filtering with counts | Exactly what a priority/status/category filter needs | Base UI `popover` + `command` + `checkbox` |
+| URL-synchronised table state (sorting, filters, pagination) | Shareable queue URLs and a working back button | TanStack Router `validateSearch` + `useNavigate({ search })` — no extra library |
+| ⌘K palette and route-derived breadcrumbs | Navigation for an all-day operator; the breadcrumbs fix B9 | Base UI `command` + `dialog`; TanStack Router `useMatches()` |
 
-That adaptation is real work and is accounted for inside the milestones below rather than waved
+That construction is real work and is accounted for inside the milestones below rather than waved
 through.
 
 **Per-screen sources** are named in each milestone.
@@ -146,17 +157,27 @@ Dependency-ordered. Milestones A–C can start before
 `api.md` milestone B lands; D onward depend on it.
 
 ### A — Contract uptake and cleanup
-**Files:** `features/agent-runs/api/types.ts`, `components/support-ui.tsx`,
-`features/devices/components/devices-table.tsx`, delete `components/dashboard-shell.tsx`,
-`components/header.tsx`, `components/user-menu.tsx`; `features/tickets/components/ticket-queue.tsx`.
+**Files:** `features/agent-runs/api/types.ts`, `features/devices/api/types.ts`,
+`components/support-ui.tsx`, `features/devices/components/devices-table.tsx`, `routes/login.tsx`,
+`routes/_auth/route.tsx`, `lib/auth-client.ts`, `utils/orpc.ts`, `package.json`, delete
+`components/dashboard-shell.tsx`, `components/header.tsx`;
+`features/tickets/components/ticket-queue.tsx`.
 
-- Rewrite `features/agent-runs/api/types.ts` to infer from the client the way
-  `features/tickets/api/types.ts` already does — `Awaited<ReturnType<typeof client.getTicket>>` and
-  friends. Drop `evidence?: unknown` until the contract supplies it (fixes **B3**).
+- Rewrite `features/agent-runs/api/types.ts` **and** `features/devices/api/types.ts` to infer from
+  the client the way `features/tickets/api/types.ts` already does —
+  `Awaited<ReturnType<typeof client.getTicket>>` and friends. Drop `evidence?: unknown` until the
+  contract supplies it (fixes **B3**, **B11**).
 - Once `api.md` milestone B tightens `status` and `connected` to enums, replace both hand-rolled colour
   maps with one `Record<TicketStatus, string>` that fails to typecheck if a status is added and not
-  handled (fixes **B6**).
-- Delete the three orphans (**B7**) and the pointless `useMemo` (**B8**).
+  handled — which also retires the dead `connected`/`offline` keys that never matched the API's
+  `online | offline` (fixes **B6**).
+- Delete the two orphans (**B7**) and the pointless `useMemo` (**B8**).
+- `/login` defaults to sign-in, bounces an already-authenticated visitor to `/home`, and the `_auth`
+  redirect carries the intended destination so login returns the operator to where they were going
+  (fixes **B12**).
+- Collapse the two `getServerUrl` copies into one helper without the Vercel dead branches, with the
+  API origin from a single `VITE_`-prefixed variable (fixes **B14**), and drop the unused
+  `@orpc/server` dependency.
 
 **Done when:** `pnpm check-types` passes, no type in `features/*/api/types.ts` is hand-declared, and
 adding a status to the contract enum produces a compile error in exactly one file.
@@ -186,11 +207,13 @@ component was silently overwritten.
 - Replace the hand-rolled `<aside>` in `app-sidebar.tsx` with shadcn **`sidebar`** (Base UI), keeping
   the current nav groups. It brings collapse-to-icon, a persisted open state and mobile handling that
   the current version approximates.
-- Replace the hardcoded label map with route-derived **`breadcrumb`** (fixes **B9**), adapting the
-  template's `use-breadcrumbs` pattern to TanStack Router matches.
+- Replace the hardcoded label map with route-derived **`breadcrumb`** (fixes **B9**), built on a
+  `use-breadcrumbs` hook over TanStack Router `useMatches()`.
 - Add a **`command`** palette on ⌘K / Ctrl-K: jump to a ticket by ID or title, jump to a device, and
   switch views. For someone working a queue all day this is the difference between navigating and
-  hunting. Source: shadcn `command` + `dialog`, composition from the template's `command-menu.tsx`.
+  hunting. Source: shadcn `command` + `dialog`.
+- The sidebar's "Systems operational" dot is either wired to the contract's `healthCheck` procedure
+  or deleted — a status light driven by nothing is worse than none (fixes **B15**).
 - Add route-level `pendingComponent` and `errorComponent` in `routes/_auth/route.tsx` so a slow or
   failed load is a designed state rather than a blank panel.
 
@@ -204,9 +227,8 @@ new `components/ui/table/*`, `routes/_auth/tickets.index.tsx`.
 
 The queue is the screen an IT staff member has open all day, so it gets the most attention.
 
-**Sources:** shadcn **`table`** and **`badge`** primitives; the data-table composition adapted from the
-template's `src/components/ui/table/` as described above; faceted filters re-implemented on Base UI
-`popover` + `command`.
+**Sources:** shadcn **`table`** and **`badge`** primitives; the data-table shell and faceted filters
+built from Base UI primitives as laid out in section 3.
 
 Columns, in this order because it is triage order: **priority** (P1–P4, colour-weighted), **status**,
 **record type** (incident vs service request — a small icon, not a word, to save width), **title** with
@@ -246,9 +268,12 @@ full fetch; and 500 seeded tickets render without the page fetching all of them.
   than from a single `closed` boolean, so the UI can never offer a transition the server will reject.
   Encode it as one `allowedActions(status)` function and drive both enabled state and tooltips from it.
 - **Forms use `@tanstack/react-form`**, per the workspace rule and because these forms now have real
-  validation — a resolution note is required on resolve, a reason on escalate. This is the first use of
-  the library in the project; the field wrappers from the template's `src/components/forms/fields/` are
-  a reasonable structural reference, re-implemented on Base UI `field`.
+  validation — a resolution note is required on resolve, a reason on escalate. This is the first
+  feature use of the library (the auth forms already use it); field wrappers are built on Base UI
+  `field`.
+- The mutation wiring stops spreading `ticketMutations.update(queryClient)` and overriding
+  `onSuccess` locally — the current spread silently discards the base handler. One mutation factory
+  with composed callbacks.
 - **Layout**: a two-column detail with tabs on the left (*Transcript*, *Request*, *Activity*) and a
   metadata rail on the right showing priority, impact, urgency, record type, category, route, device,
   reporter, and the resolved/closed timestamps as distinct rows — the distinction is the point.
@@ -323,7 +348,9 @@ during a live run appears there within one refetch.
   (closed with no human transition, over closed total), and **median time to resolution**.
 - Two charts: ticket volume by day split by record type, and outcome mix over time. Both through the
   shadcn `chart` wrapper so tooltips, legends and theming are consistent with the rest of the app
-  instead of raw recharts defaults.
+  instead of raw recharts defaults. While here: the `--chart-1..5` tokens in `globals.css` are
+  identical in the light and dark blocks — dark gets its own values — and the `bg-gradient-to-t` on
+  the stat cards goes, per milestone I's no-decorative-gradients rule.
 - Every tile links into the queue with the matching filter applied — a number an operator cannot click
   through to is decoration.
 
@@ -339,7 +366,8 @@ filtered queue, and the autonomous resolution rate is computed from real closed 
   components so navigation never shows a blank panel.
 - A11y pass: the queue is a real `<table>` with proper header semantics, every icon-only control has an
   accessible name, focus is visible and trapped correctly in sheets and dialogs, live regions announce
-  transcript updates.
+  transcript updates, and the closed mobile drawer is `inert` so off-screen links leave the tab order
+  (fixes **B13** — the shadcn `sidebar` from milestone C handles this if adopted wholesale).
 - Typography and spacing for density: tabular numerals throughout, a single compact scale, no
   decorative gradients in operator surfaces.
 
@@ -369,10 +397,11 @@ contracts:publish` and overwritten. Nothing here edits files outside `axioma/das
 
 ## 6. Decisions taken
 
-**Source primitives from the shadcn Base UI catalogue, never from the local Radix template.** The
-project has one component library by decision and `base-lyra` covers everything needed. Copying Radix
-primitives in would put two libraries in one app and split the styling system. Composition patterns are
-a different matter and are worth taking, with the adaptation named explicitly in section 3.
+**Source primitives from the shadcn Base UI catalogue only; build the four compositions on them.**
+The project has one component library by decision and `base-lyra` covers everything needed. No
+Radix-based reference code enters this repository — copying any in would put two libraries in one app
+and split the styling system. The compositions in section 3 are assembled from Base UI primitives and
+TanStack Router APIs directly, with the construction named explicitly rather than assumed away.
 
 **Server-side filtering and pagination, not client-side.** The current pattern is correct at demo scale
 and wrong the moment there is a real queue, and retrofitting it later means rewriting every table's
@@ -417,7 +446,8 @@ usage just does not match the rest of the app's theming.
 |---|---|
 | Milestones D–H are blocked on `api.md` milestones B and C; starting them early means building against a contract that has not landed. | A, B and C are deliberately independent and can proceed meanwhile. Beyond that, coordinate the contract publish rather than mocking it — a mocked contract that diverges costs more than waiting. |
 | `npx shadcn@latest add` writes into `src/components/ui/` and can overwrite hand-edited components. | Run milestone B as a single commit on a clean tree and read the whole diff. Seventeen existing components are Base UI as generated and should show no meaningful drift. |
-| The Radix-to-Base-UI adaptation of the faceted filter and URL-synced table state is the least mechanical part of the plan and could overrun. | Named explicitly in section 3 rather than hidden. The fallback is the simpler `dropdown-menu` multi-select already used for column visibility, which is Base UI and already working. |
+| The faceted filter and URL-synced table state are built from scratch — the least mechanical part of the plan, and it could overrun. | Named explicitly in section 3 rather than hidden. The fallback is the simpler `dropdown-menu` multi-select already used for column visibility, which is Base UI and already working. |
+| Better Auth self-registration is open and `listTickets(scope: "all")` has no staff gate, so any self-registered account can read the whole queue. | Authorization is out of scope by decision (`api.md`), so this is stated rather than fixed. Milestone A's sign-in-first login at least stops advertising registration on the operator surface. |
 | Live transcript polling at 2s across several open tickets multiplies API load and Postgres queries. | Poll only the selected run, only while `running`, and only when the tab is visible. `getRun` returns one run's steps rather than the whole ticket. |
 | `pnpm check-types` runs a full `vite build` first, so type feedback is slow and may get skipped during a long refactor. | Run `tsc --noEmit` directly for inner-loop feedback, accepting that a renamed route needs the build; run the real gate before every commit. |
 | Density work is subjective and can absorb unbounded time. | Milestone I is bounded by a concrete checklist — keyboard map, three states per screen, a11y pass — rather than an open aesthetic brief. |
@@ -445,5 +475,6 @@ usage just does not match the rest of the app's theming.
    queue.
 10. The queue is fully operable from the keyboard, and every screen has a designed loading, empty and
     error state.
-11. `src/components/dashboard-shell.tsx`, `src/components/header.tsx` and `src/components/user-menu.tsx`
-    are gone.
+11. `src/components/dashboard-shell.tsx` and `src/components/header.tsx` are gone;
+    `src/components/user-menu.tsx` stays — the live shell imports it through
+    `components/layout/user-nav.tsx`.

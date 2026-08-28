@@ -25,7 +25,8 @@ regenerate `routeTree.gen.ts`.
 ### What is built and real
 
 **Stack** — TanStack Router, React 19, TanStack Query, Tailwind 4, Vite, Better Auth client, oRPC
-client. `@tanstack/react-form` is installed and **not used anywhere**. Correctly, there is no
+client. `@tanstack/react-form` is used by the two auth forms (`sign-in-form.tsx`,
+`sign-up-form.tsx`) and **nowhere else — the ticket form does not use it**. Correctly, there is no
 `@tanstack/react-table` and no `recharts` — this surface needs neither.
 
 **Component base** — `components.json` declares style `base-lyra`, base colour `neutral`, Lucide icons.
@@ -44,7 +45,8 @@ with status, last-updated, title and a two-line body excerpt, with a proper `Emp
 skeleton loading state. Genuinely good.
 
 **New request** — `routes/_auth/tickets/new.tsx`. Title and body with min/max length, a "please don't
-include passwords" note, optimistic navigation to the created ticket, toasts on success and failure.
+include passwords" note, navigation to the created ticket once the create settles, toasts on success
+and failure.
 
 **Request detail** — `routes/_auth/tickets/$ticketId.tsx`. Status card with a plain-language label and
 detail line, the employee's original text, a resolution card when one exists, a "This solved it"
@@ -60,15 +62,20 @@ one place where system vocabulary becomes human vocabulary.
 | # | Location | Defect | Severity |
 |---|---|---|---|
 | P1 | `routes/_auth/tickets/$ticketId.tsx` | **A request page never updates.** There is no polling and no invalidation on a timer, so an employee watching Axel work sees a frozen "In progress" until they reload. Following a request is half the product and it does not happen. | High |
-| P2 | `routes/_auth/tickets/$ticketId.tsx:98-108` | **"I still need help" escalates from any incomplete state**, including while Axel is actively working. It invites an employee to escalate a ticket thirty seconds after opening it, which defeats autonomous resolution. | High |
-| P3 | `routes/index.tsx` | The public landing page is the **unmodified Better-T-Stack scaffold** — ASCII art reading "BETTER T STACK" and an API health-check indicator. This is what an employee sees at the root URL. The dashboard's equivalent route redirects; this one does not. | High |
-| P4 | `routes/_auth/tickets/new.tsx` | Forms use raw `useState` plus HTML `required`/`minLength`, **not `@tanstack/react-form`**, which the workspace rules mandate and which is already a dependency. | Medium |
+| P2 | `routes/_auth/tickets/$ticketId.tsx:120-130,188-196` | **"I still need help" escalates from any incomplete state**, including while Axel is actively working — and an `escalated` ticket with a resolution shows the affordance twice, with nothing preventing re-escalating an already-escalated ticket. It invites an employee to escalate a ticket thirty seconds after opening it, which defeats autonomous resolution. | High |
+| P3 | `routes/index.tsx:14-31` | The public landing page is Better-T-Stack scaffold output — an "API Status" health-check panel at the root URL, with no redirect. This is what an employee sees first. The dashboard's equivalent route redirects; this one does not. | High |
+| P4 | `routes/_auth/tickets/new.tsx` | The ticket form uses raw `useState` plus HTML `required`/`minLength`, **not `@tanstack/react-form`**, which the workspace rules mandate and which the auth forms already use. | Medium |
 | P5 | `routes/_auth/tickets/new.tsx` | **No device attachment.** `createTicket` accepts `deviceId`; the portal never sends one, so every device-path ticket depends on the API guessing. | Medium |
-| P6 | `routes/__root.tsx:47-50` | The `Header` renders on `/login`, so a signed-out visitor sees a "New request" button and a user menu. | Medium |
-| P7 | `routes/login.tsx:11` | `showSignIn` starts `false`, so the **sign-up form is the default**. A returning employee lands on registration. | Low |
-| P8 | `components/ticket-ui.tsx:15-51` | The status vocabulary is a hand-rolled `Record<string, …>` because the contract types `status` as `z.string()`. Same root cause as the dashboard's two colour maps. | Low |
+| P6 | `routes/__root.tsx:52-54` | The `Header` renders on `/login`, so a signed-out visitor sees a "New request" button and a user menu. | Medium |
+| P7 | `routes/login.tsx:12` | `showSignIn` starts `false`, so the **sign-up form is the default**. A returning employee lands on registration. | Low |
+| P8 | `components/ticket-ui.tsx:15-49` | The status vocabulary is a hand-rolled `Record<string, …>` because the contract types `status` as `z.string()` while a `ticketStatus` enum sits unused a few lines above it. Same root cause as the dashboard's two colour maps. | Low |
 | P9 | `src/components/ui/{attachment,bubble,message,message-scroller,marker}.tsx` | Five chat-oriented components installed and referenced by nothing. | Low |
 | P10 | `routes/_auth/tickets/$ticketId.tsx` | `getTicket` returns **every agent run with every step** — reasoning, tool names, tool inputs and outputs — to this client. The portal does not render them, but they are on the wire and in the browser's memory and devtools. The rule "never raw tool output or model reasoning" is currently enforced by the component not reading a field, which is not enforcement. | Medium |
+| P11 | `utils/orpc.ts:12-23` | The global QueryCache `onError` toasts `` `Error: ${error.message}` `` for **every** failed query — raw server and fetch strings reach the employee surface today, violating the plain-language rule, and double-signal alongside the route error states. | Medium |
+| P12 | `components/user-menu.tsx:44-53` | Sign-out navigates to `/`, which is the scaffold health-check page (P3), not `/login`. | Low |
+| P13 | `routes/login.tsx:7-19` | A signed-in employee visiting `/login` is shown the auth forms — no bounce to `/home`. | Low |
+| P14 | `routes/_auth/route.tsx:8-12` | `beforeLoad` treats a failed `getSession()` the same as signed-out: a transient network error bounces a signed-in employee to `/login`. | Low |
+| P15 | `components/sign-in-form.tsx`, `components/sign-up-form.tsx` | Scaffold styling and register — off-token `text-indigo-600`/`text-red-500`, "Welcome Back"/"Create Account" headings — out of step with the app's tokens and voice. | Low |
 
 ### What is missing outright
 
@@ -94,6 +101,9 @@ one place where system vocabulary becomes human vocabulary.
 7. The plain-language rule is enforced by omission rather than by the data the client receives (P10).
 8. Signed-out chrome and a sign-up-first login (P6, P7).
 9. Status vocabulary duplicated with the dashboard's (P8).
+10. Raw query errors toasted to the employee, sign-out landing on the scaffold root, `/login`
+    ignoring an existing session, a network blip signing the employee out, and scaffold styling on
+    the auth forms (P11–P15).
 
 ---
 
@@ -101,9 +111,9 @@ one place where system vocabulary becomes human vocabulary.
 
 Same rule as the dashboard: `npx shadcn@latest add <name>` resolves against `components.json`'s
 `base-lyra` style, which is Base UI (`ui.shadcn.com/docs/components/base/<name>`). The seventeen
-existing components are genuine Base UI. **No Radix adaptation is required.** The Radix template at
-`tanstack-start-dashboard-main/` is not a source for this component at all — its density is wrong for
-an employee surface, and its primitives are the wrong library.
+existing components are genuine Base UI. **No Radix adaptation is required**, and the dashboard's
+data-table and command-palette compositions are not sources for this component at all — their density
+is wrong for an employee surface.
 
 Needed additions: `field`, `form`, `radio-group`, `select`, `separator`, `badge`, `alert`, `progress`,
 `avatar`, `item`, `spinner`, `alert-dialog`, `dialog`.
@@ -117,18 +127,28 @@ Per-screen sources are named in each milestone.
 Dependency-ordered.
 
 ### A — Entry points and chrome
-**Files:** `routes/index.tsx`, `routes/__root.tsx`, `routes/login.tsx`, `routes/_auth/route.tsx`.
+**Files:** `routes/index.tsx`, `routes/__root.tsx`, `routes/login.tsx`, `routes/_auth/route.tsx`,
+`components/user-menu.tsx`, `components/sign-in-form.tsx`, `components/sign-up-form.tsx`,
+`utils/orpc.ts`.
 
 - **P3** — `routes/index.tsx` becomes a redirect: to `/home` when a session exists, otherwise to
-  `/login`, matching the dashboard's `routes/index.tsx`. Delete the ASCII art and the health-check
-  panel. A health indicator is an operator concern and belongs on the dashboard if anywhere.
+  `/login`, matching the dashboard's `routes/index.tsx`. Delete the health-check panel. A health
+  indicator is an operator concern and belongs on the dashboard if anywhere.
 - **P6** — move `Header` out of `__root.tsx` and into the `_auth` layout, so signed-out pages have no
   authenticated chrome. `/login` gets its own minimal brand header.
-- **P7** — default `/login` to sign-in, with sign-up as the secondary path.
+- **P7, P13** — default `/login` to sign-in with sign-up as the secondary path, and bounce a
+  signed-in visitor to `/home`.
+- **P12** — sign-out lands on `/login`, not the root.
+- **P14** — a failed `getSession()` renders an error state with retry; only a definite null session
+  redirects to `/login`.
+- **P15** — the auth forms drop the scaffold styling and headings for the app's tokens and register.
+- **P11** — remove the global raw-error toast in `utils/orpc.ts`; query failures surface through the
+  route error states, worded from `copy.ts` (milestone G), with the raw error left to the console.
 - Add `errorComponent` and `pendingComponent` to `routes/_auth/route.tsx`.
 
-**Done when:** a signed-out visitor at `/` lands on a sign-in form with no app chrome, and a signed-in
-one lands on their requests.
+**Done when:** a signed-out visitor at `/` lands on a sign-in form with no app chrome, a signed-in
+one lands on their requests, signing out returns to `/login`, and no failure path can toast a raw
+error string.
 
 ### B — Component inventory
 **Files:** `src/components/ui/*` (generated).
@@ -291,7 +311,7 @@ is usable at 375px, and a screen reader announces each stage transition once.
 | `createTicket` accepts `recordType`, `impact`, `urgency`, `deviceId` | Milestone C's form has nowhere to send its answers | `api.md` milestone B |
 | `updateTicket.action` gains `resolve`, `reopen` | Milestone E's confirmation loop | `api.md` milestones B, C |
 | `resolvedAt` distinct from `closedAt` on the ticket output | Milestone E shows both | `api.md` milestones A, B |
-| `listMyDevices` procedure | Milestone C's device attachment — the signed-in user's enrolled devices with hostname and last-seen, nothing more | Requested by this plan, accepted into `api.md` milestone B |
+| `listMyDevices` procedure | Milestone C's device attachment — the signed-in user's enrolled devices with hostname and last-seen, nothing more. The existing `listDevices` returns every device with owner identifiers to any authenticated client; this surface must never need it | Requested by this plan, accepted into `api.md` milestone B |
 | `tickets.progress_marker` and a `getMyTicket` shape that omits `runs` | Milestone D, and the fix for **P10** — a closed enum of markers (`gathering_evidence`, `checking_device`, `checking_service`, `applying_fix`, `verifying_fix`, `handing_to_person`) set as the run progresses, and a portal ticket query that returns no `agent_runs` or `agent_steps` at all | Requested by this plan, accepted into `api.md` milestones A, B and D |
 
 The last one deserves its own note. Today `getTicket` returns every run with every step, including
@@ -375,7 +395,8 @@ internal site. The device they open the portal on is quite possibly their phone.
 
 1. `pnpm check` and `pnpm check-types` pass.
 2. `/` redirects by session state; no scaffold content remains anywhere in the app.
-3. Signed-out pages show no authenticated chrome, and `/login` opens on sign-in.
+3. Signed-out pages show no authenticated chrome; `/login` opens on sign-in and bounces a signed-in
+   visitor; sign-out lands on `/login`.
 4. A submitted request carries record type, impact, urgency and — where the employee has one —
    a device, and the dashboard shows a derived priority consistent with the matrix.
 5. The words *impact*, *urgency*, *priority*, *incident* and *service request* appear nowhere in
