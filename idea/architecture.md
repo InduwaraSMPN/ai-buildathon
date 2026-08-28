@@ -1,11 +1,11 @@
-# ResolveMesh Architecture
+# Axiōma Architecture
 
 **Document role:** Canonical architecture and data-contract context  
 **Status:** P0 architecture contract  
 **Decision date:** 2026-08-28  
-**Product:** ResolveMesh for Track 06, Enterprise Customer Support
+**Product:** Axiōma for Track 06, Enterprise Customer Support
 
-This document defines how ResolveMesh is structured, where authority lives, and how records bind across the proof-carrying resolution loop. Product purpose and claim boundaries are in [idea.md](idea.md). Build order, fixtures, acceptance tests, and release gates are in [implementation.md](implementation.md).
+This document defines how Axiōma is structured, where authority lives, and how records bind across the proof-carrying resolution loop. Product purpose and claim boundaries are in [idea.md](idea.md). Build order, fixtures, acceptance tests, and release gates are in [implementation.md](implementation.md).
 
 If documents conflict, [idea.md](idea.md) controls product intent and scope, this document controls architecture and data semantics, and [implementation.md](implementation.md) controls P0 execution and acceptance. A conflict must be resolved deliberately rather than hidden behind compatibility behavior.
 
@@ -24,7 +24,7 @@ If documents conflict, [idea.md](idea.md) controls product intent and scope, thi
 
 ## Invariants
 
-- One Qwen supervisor may invoke exactly five bounded, typed, read-only specialist skills. The skills are not autonomous principals and do not vote.
+- Axel, the single model supervisor, may invoke exactly five bounded, typed, read-only probes, one per evidence class. The probes are not autonomous principals, do not vote, carry no authority of their own, and are not named.
 - Model output is untrusted proposed data. It cannot create consent, expand scope, grant a role, approve an operation, perform a write, mark a check successful, verify a result, update CMDB, close a case, or pass a release gate.
 - Every material diagnostic claim cites immutable evidence IDs, including supporting and contradicting evidence where present.
 - An actionable hypothesis has fresh support from at least two independent source classes and no unresolved decisive contradiction.
@@ -36,12 +36,13 @@ If documents conflict, [idea.md](idea.md) controls product intent and scope, thi
 - A regression definition is immutable and content-addressed. A run never mutates the artifact.
 - Logical ledger records are append-only. Mutable case and lifecycle projections are disposable and rebuildable.
 - Tenant, case, employee, device, role, field, and time scope are enforced by application code before a model or adapter call.
-- P0 performs no real endpoint, DNS, VPN, route, application, server, cloud, Teams, ITSM, change-system, or authoritative CMDB mutation.
+- P0 performs no real endpoint, DNS, VPN, route, application, server, cloud, Teams, ITSM, change-system, or authoritative CMDB mutation. Device reads are real; every device write is template-validated and dispatched to a mock adapter.
+- The model selects an action template by ID and supplies typed parameters. It never authors, edits, or influences a command string, and no code path converts case text or model output into one.
 - Recorded model contracts never impersonate a live call and are never an automatic fallback on a real runtime path.
 
 ## System Context
 
-ResolveMesh is an assurance overlay, not a replacement system of record. P0 uses a thin web client, one backend application, a relational store, in-process or local mock adapters, and a real server-side call to Alibaba-hosted Qwen.
+Axiōma is an assurance overlay, not a replacement system of record. P0 uses a thin web client, one backend application, a relational store, in-process or local mock adapters, and a real server-side call to a configured model provider.
 
 ```text
  Employee portal                 SIMULATED TEAMS
@@ -59,7 +60,7 @@ ResolveMesh is an assurance overlay, not a replacement system of record. P0 uses
  append-only ledger          case projections/read API
           |
           v
- diagnosis orchestrator ---------> Alibaba-hosted Qwen
+ diagnosis orchestrator ---------> Axel on a model provider
           ^                              supervisor
           |                         /   /   |   \   \
           |                       APP EUX  SRV  NET CLOUD
@@ -94,9 +95,9 @@ ResolveMesh is an assurance overlay, not a replacement system of record. P0 uses
 | API boundary | Authentication context, role context, request validation, redaction, expected-version and idempotency inputs | Rejects malformed, stale, cross-tenant, or unauthorized requests |
 | Event normalizer | Deduplicates external events, links channels, creates immutable `SupportEvent` records, advances case projection | Initial intake uses external ID; existing-case events also use expected case version |
 | Ledger/store | Immutable domain records, ordered lifecycle events, idempotency indexes, rebuildable projections | Database constraints enforce uniqueness and append-only semantics |
-| Diagnosis orchestrator | Runs bounded planning rounds, dispatches allowlisted skills, validates Qwen output, records evidence and hypotheses | No write-capable enterprise tool is registered |
-| Qwen adapter | Calls Alibaba-hosted Qwen, validates structured output, records a redacted `ModelTrace` | Credentials and raw provider responses remain server-side |
-| Specialist skill registry | Five typed adapters for Application, EUX, Server, Network, and Cloud reads | Fixed tool names, schemas, tenant/case scope, timeout, and call budget |
+| Diagnosis orchestrator | Runs bounded planning rounds, dispatches allowlisted probes, validates model output, records evidence and hypotheses | No write-capable enterprise tool is registered |
+| Provider adapter | Calls the configured model provider, probes capability, validates structured output, records a redacted `ModelTrace` | Credentials and raw provider responses remain server-side; no vendor constant reaches the domain |
+| Evidence-class probe registry | Five typed read adapters for Application, EUX, Server, Network, and Cloud | Fixed tool names, schemas, tenant/case scope, timeout, and call budget |
 | Evidence policy | Computes freshness and evidence-class independence; checks contradictions and actionability | Deterministic calculations override model confidence |
 | Sandbox runner | Applies proposal only to pinned fixture snapshot and runs an ordered, versioned check set | No route to the mock production-state writer |
 | Approval service | Creates and decides exact, role-bound, expiring, one-time grants | Model cannot nominate or impersonate approver authority |
@@ -105,11 +106,11 @@ ResolveMesh is an assurance overlay, not a replacement system of record. P0 uses
 | CMDB workflow | Proposal, reconciliation, owner grant, mock apply, independent read-back, rollback, and projection | Separate role, grant, state machine, and adapter from incident action |
 | Regression compiler/runner | Creates content-addressed executable artifact and append-only run records | Assertions are deterministic; model output cannot determine pass/fail |
 | Mock adapters | Resettable fictional enterprise state and stable source records | Permanently labeled `MOCK` or `SIMULATED`; no production connector claim |
-| Optional MuleRun adapter | Optional orchestration/trace transport after the direct path works | Cannot become an authority or substitute for Qwen or the ledger |
+| Optional orchestration transport | Optional trace and correlation transport in front of the direct provider path | Cannot become an authority or substitute for the provider or the ledger |
 
 ## Runtime Deployment
 
-The minimal P0 deployment is one web application/backend process plus one relational database. Mock systems can be in-process modules or local HTTP services. A server-side Qwen adapter is the only mandatory external integration. Secrets never enter browser bundles, persisted model traces, fixtures, or logs.
+The minimal P0 deployment is one web application/backend process plus one relational database. Mock systems can be in-process modules or local HTTP services. A server-side provider adapter is the only mandatory external integration. Secrets never enter browser bundles, persisted model traces, fixtures, or logs.
 
 Recommended trust zones:
 
@@ -117,37 +118,91 @@ Recommended trust zones:
  Browser
    | HTTPS, authenticated demo identity
    v
- ResolveMesh server
+ Axiōma server
    |-- policy/state/action transaction boundary
    |-- relational ledger and projections
    |-- in-process/local mock adapters
    |
-   +-- outbound HTTPS --> Alibaba-hosted Qwen endpoint
+   +-- outbound HTTPS --> configured model provider
    |
-   +-- optional outbound HTTPS --> MuleRun
+   +-- optional outbound HTTPS --> orchestration transport
 ```
 
-The direct application-to-Qwen path is the reference implementation. MuleRun may wrap orchestration or add observability only after parity is demonstrated. If unavailable, behaviorally uncertain, or difficult to audit, it is omitted without changing any domain contract.
+The direct application-to-provider path is the reference implementation. An orchestration transport may wrap it or add observability only after parity is demonstrated. If unavailable, behaviorally uncertain, or difficult to audit, it is omitted without changing any domain contract.
 
-## Alibaba-Hosted Qwen Integration
+## Model Provider Integration
+
+Axel runs on a configured model provider. No provider is named in the domain contract, no record type carries a vendor constant, and no policy, gate, or verdict depends on which provider answered. Provider identity is observed at runtime and recorded as data.
+
+The reason is not portability for its own sake. A substrate whose safety argument depends on a particular vendor's behaviour is not a safety argument, and every obligation in this document has to hold when the model is swapped, degraded, or unavailable.
+
+### Provider Port
+
+```ts
+type ModelCapabilities = {
+  strictStructuredOutput: boolean;   // schema-enforced output, not best-effort JSON
+  jsonSchemaResponseFormat: boolean;
+  nativeToolCalling: boolean;
+  parallelToolCalls: boolean;
+  seedParameter: boolean;
+  maxContextTokens: number;
+  probedAt: IsoTimestamp;
+  probeDigest: Digest;
+};
+
+type ObservedProvider = {
+  providerLabel: string;   // configured display name; free text, never switched on
+  endpointHost: string;    // observed from the call, not from configuration
+  modelId: string;         // observed
+  providerRequestId: string;
+};
+```
+
+Every adapter implements the same port and passes the same contract suite. The wire baseline is the OpenAI-compatible Chat Completions shape, which most hosted and self-hosted providers speak, so one adapter covers the majority and a native adapter is written only where a provider's own API offers something the compatible layer does not.
+
+### Capability Probe
+
+Provider capability is discovered, never assumed. On startup and on configuration change the adapter runs a capability probe and appends the result to the ledger as a first-class record. Every diagnosis run binds the probe digest that was current when it ran.
+
+This exists because the features the output contract depends on are unevenly implemented. Strict JSON-Schema response formats, tool calling, `tool_choice`, and seed parameters are each present on some providers and absent, partial, or silently ignored on others. A provider that accepts a field and drops it is the dangerous case, and the probe is what turns that from an invisible degradation into a recorded one.
+
+Degraded mode is explicit. Where strict structured output is unavailable, the adapter requests plain JSON and the application validates the result against the same schema it would have enforced anyway. Validation strength therefore never depends on provider capability, because the application-side check is the gate in both modes. What changes is how often a repair is needed, and that is visible in the trace.
 
 ### Live Path
 
-Every real runtime and represented live demo path calls an Alibaba-hosted Qwen model. The adapter is configured server-side with an organizer- and account-appropriate endpoint, model ID, API credential, region, timeout, and retention setting. These values are deployment configuration, not hard-coded assumptions. `/health` reports only observed provider readiness, endpoint host, and model identity, never credentials or authorization headers.
+Every real runtime and represented live demo path calls a live model provider. The adapter is configured server-side with an endpoint, model ID, credential, region where applicable, timeout, sampling parameters, and retention setting. `/health` reports observed provider readiness, endpoint host, and model identity, never credentials or authorization headers.
 
 The adapter follows this sequence:
 
 1. Build a minimized prompt envelope from the current case, allowed evidence IDs, policy summary, tool schemas, prompt version, and output schema version.
 2. Mark employee text, CMDB fields, telemetry labels, change descriptions, and tool output as untrusted quoted data.
-3. Expose only the five registered read skills and their scoped JSON schemas.
-4. Validate each requested skill call before execution, then return typed observations rather than arbitrary text.
-5. Enforce at most ten skill calls and two planning rounds for one diagnosis run.
+3. Expose only the five registered read probes and their scoped JSON schemas.
+4. Validate each requested probe call before execution, then return typed observations rather than arbitrary text.
+5. Enforce at most ten probe calls and two planning rounds for one diagnosis run.
 6. Validate the final structured response against the application schema and referential-integrity rules.
 7. Permit one schema-repair request containing validation errors but no additional authority or tools.
 8. On another invalid response, append a failed trace, transition to `ESCALATED`, add `MODEL_SCHEMA_INVALID`, and perform no side effect.
-9. Persist a redacted `ModelTrace` containing observed host/model metadata, versions, tool calls, evidence references, latency, and output digest.
+9. Persist a redacted `ModelTrace` containing the observed provider, endpoint host, model ID, provider request ID, sampling parameters, capability probe digest, versions, tool calls, evidence references, latency, and output digest.
 
-Provider errors, quota exhaustion, timeout, unsupported model identity, or authentication failure fail closed. There is no transparent fallback to a recorded response. The UI reports live integration unavailable and offers human escalation.
+Tool-calling turns and the final structured turn are separated. Turns that carry `tools` do not carry a response-format constraint, and the closing turn that carries the response format does not carry tools. Providers differ in whether they permit both in one request, and separating them removes the question.
+
+Provider errors, quota exhaustion, timeout, unsupported model identity, and authentication failure fail closed. There is no transparent fallback to a recorded response, ever. The UI reports live integration unavailable and offers human escalation.
+
+### Failover Between Providers
+
+A deployment may configure more than one provider. Failover is permitted and is never silent:
+
+- the fallback provider's capability probe must already be current, and its digest is bound to the run that used it;
+- the `ModelTrace` records which provider answered and that a failover occurred;
+- output is validated against the same schema with the same strictness;
+- a partially completed diagnosis is not resumed across providers; the run restarts, because planning-round budgets and tool-call histories are not portable;
+- failover never crosses into recorded or canned output, which is not a provider.
+
+### Determinism Is Provider-Dependent
+
+Where a provider exposes a seed parameter, it is pinned along with temperature and top-p, and all three are recorded in the trace. Where it does not, the trace records their absence.
+
+No acceptance test asserts exact model wording or raw confidence in either case. Route, reason codes, state, effects, and backend state are asserted; they are deterministic functions of validated evidence, not of model output. This is what keeps the scenario contract stable across a provider change.
 
 ### Model Output Contract
 
@@ -159,33 +214,108 @@ The final model response may contain:
 - candidate hypotheses with evidence links and uncertainty;
 - a proposed route from the fixed route enum;
 - missing facts and the smallest discriminating test;
-- a bounded remediation proposal draft;
-- a concise employee-facing explanation and specialist handoff summary.
+- a selected action template ID with typed parameters;
+- a concise employee-facing explanation and handoff summary.
 
-The application rejects unknown IDs, unknown routes, unknown action types, missing support, parameters outside fixture scope, writes disguised as reads, and any request to change tools, policy, roles, credentials, or system instructions.
+The application rejects unknown IDs, unknown routes, unknown action types, unknown template IDs, missing support, parameters outside the template's closed schema, writes disguised as reads, and any request to change tools, policy, roles, credentials, or system instructions.
 
-### Optional MuleRun
+### Optional Orchestration Transport
 
-MuleRun is an optional orchestration adapter, not a required dependency. If used, it may transport the same versioned prompt/tool envelopes, persist correlation IDs, and expose orchestration traces. It must not:
+A deployment may route provider calls through an orchestration layer that transports the same versioned prompt and tool envelopes, persists correlation IDs, and exposes traces. Such a layer is optional and is never a dependency. It must not:
 
-- replace the direct Alibaba-hosted Qwen call;
+- replace the direct provider call as the reference path;
 - add tools beyond the application registry;
 - hold approval, consent, closure, CMDB, or release authority;
 - become the source of truth for case state;
-- receive secrets or personal data not already permitted for Qwen;
+- receive secrets or personal data not already permitted for the provider;
 - alter retries in a way that can duplicate a write;
-- obscure provider host/model metadata or simulation labels.
+- obscure observed provider, host, or model metadata, or simulation labels.
 
-The application ledger remains canonical. MuleRun failure falls back only to the direct live-Qwen path if that path is healthy; it never falls back to recorded output.
+The application ledger remains canonical. If the transport fails, the direct provider path is used when healthy; nothing falls back to recorded output.
 
-## Supervisor And Specialist Skills
 
-There is one Qwen supervisor and five bounded read skills. Domain names describe evidence boundaries, not independent personas or security principals.
+## Endpoint Integration
+
+Device-related requests reach Axiōma the same way every other request does: an employee opens a ticket in the portal. Nothing observes a device, offers a diagnostic, or acts on a device outside a case the employee opened. There is no detection path, no background scan, and no automatic fix.
+
+For those cases the endpoint plane is **Fleet**, self-hosted, with osquery on the enrolled Windows device. Fleet is an existing managed-endpoint product and is not reimplemented. It supplies the signed agent, authenticated transport, device enrolment and identity, service-account execution context, and its own audit trail. What it does not supply is authority, scope, or proof, and those are exactly what Axiōma adds.
+
+### Read Path
+
+`probe_eux` issues allowlisted osquery queries through Fleet's live-query API. Each query is registered in advance against a manifest field; there is no query composition at runtime and no path by which a query string is built from case data or model output. A query outside the granted manifest is rejected by the registry before Fleet is called.
+
+Reads are genuinely real. The observations, source identity, and observation times come from the device, not from a fixture, and the freshness policy applies to them unchanged.
+
+### Action Template Registry
+
+The model never authors a command. Remediation is expressed as a **closed registry of pre-vetted, parameterized templates**, and Axel selects among them at runtime according to the diagnosed issue.
+
+```ts
+type ActionTemplate = {
+  templateId: string;
+  templateVersion: string;
+  templateDigest: Digest;
+  resourceType: ResourceType;
+  requiredRole: Role;
+  parameterSchema: unknown;        // closed JSON Schema; unknown keys rejected
+  preconditionQueries: string[];   // registered osquery query IDs
+  postconditionQueries: string[];  // evaluated off-device where the consequence allows
+  inverseTemplateId?: string;      // absent means irreversible, which raises the approval bar
+  effectConstraints: {
+    processes: string[];
+    services: string[];
+    registryPaths: string[];
+    filePaths: string[];
+    networkDestinations: string[];
+    maxDurationSeconds: number;
+    maxOutputBytes: number;
+  };
+  reviewedBy: string;
+  reviewedAt: IsoTimestamp;
+};
+```
+
+Axel emits a `templateId` and a typed parameter object. The application validates the parameters against the template's closed schema, rejects unknown keys and out-of-range values, and assembles the command server-side from a template the model can neither read nor modify. Adding a template is a code change and a human review, never a prompt change.
+
+This is what keeps the rest of the architecture intact. The approval grant binds `templateId`, `templateVersion`, `templateDigest`, and the normalized parameters, so an approver reviews an exact, reproducible operation. Bounded scope stays enforceable because `effectConstraints` are declared per template rather than inferred from a command string. And the injection test remains meaningful: a ticket that asks for a shell cannot produce one, because no code path turns text into a command.
+
+### Device Run Ledger
+
+No endpoint product on the market accepts a caller-supplied idempotency key. Fleet, like the others, mints its own execution identifier after dispatch, which is not sufficient for at-most-once.
+
+The ledger closes the gap. Every template's final action writes `HKLM\SOFTWARE\Axioma\Runs\<idempotencyKey>` with its outcome and timestamp, and every template guards its own body on that key being absent. The question "was the effect for this key applied" is then answered by **an osquery read of the `registry` table over the read path**, never by asking the execution API what it did.
+
+One mechanism therefore satisfies three obligations at once: keyed effect, lookup by key, and a post-read whose path is independent of the write by construction.
+
+### Verification Is Off-Device
+
+A single agent that both applies a change and reports the result is self-consistent by definition, including when it is wedged or compromised. Treating its response as proof would reintroduce the forged-success failure the substrate exists to prevent.
+
+Technical verification for a device action is therefore established **off the device wherever the consequence permits it**. If the remediation is supposed to restore reachability to an application, the application-side synthetic check is the verification, and the device is not consulted. Device-side read-back is corroborating evidence recorded alongside it, never the closing proof. Where no off-device consequence exists, the action declares that, and the closure requirement falls back to the run ledger read plus employee confirmation with the weaker basis recorded explicitly.
+
+### Division Of Responsibility
+
+| Supplied by Fleet | Owned by Axiōma |
+|---|---|
+| Signed agent and update verification | Employee-visible action manifest and consent over its digest |
+| Authenticated encrypted transport | Case-, device-, and action-bound authorization |
+| Device enrolment and identity | Closed template registry and effect constraints |
+| Execution context and privilege | Captured pre-state and declared inverse |
+| Vendor audit trail | Independently evaluated postconditions |
+| Script execution disabled unless explicitly enabled at packaging | Idempotency ledger, kill path, and threat tests |
+
+Fleet packages scripts disabled unless `fleetd` is built with execution enabled. That default is retained and surfaced in the deployment documentation rather than quietly turned on.
+
+## Supervisor And Evidence-Class Probes
+
+There is one model supervisor, named Axel, and five bounded read tools. Axel is the only named component, and the name denotes the product's single reasoning surface rather than an autonomous principal: it holds no authority that the authority matrix does not grant it, which is none. The domain names are evidence-class boundaries, not personas or security principals, and nothing in the system treats them as agents.
+
+The split is load-bearing rather than presentational. `EvidenceObservation.sourceClass` partitions observations into classes that can fail independently, and the actionability rule in the evidence policy requires fresh support from two distinct classes with no unresolved decisive contradiction. A hypothesis supported five times by one class is not actionable. Collapsing the five tools into one general read would therefore change which hypotheses reach an action, not merely how the system is described.
 
 | Skill | Permitted reads | Required typed result | Explicitly forbidden |
 |---|---|---|---|
 | `probe_application` | ExpenseHub health, deployment version, errors, synthetic status | Source IDs, observed/retrieved timestamps, typed values, provenance | Deploy, restart, configuration write, arbitrary service lookup |
-| `probe_eux` | Fields included in the exact granted simulated-capsule manifest | VPN state, DNS result, device time, resolver, reachability, capsule reference | Command execution, undeclared field, privilege request, real endpoint access |
+| `probe_eux` | Fields included in the exact granted capsule manifest, read by allowlisted osquery queries against the enrolled device | VPN state, DNS result, device time, resolver, reachability, capsule reference | Command execution, script dispatch, undeclared field, privilege request, any query outside the manifest allowlist |
 | `probe_server` | Auth service, database, server health and error counters | Typed status/counters with source identity and age | Process control, database write, shell, broad log export |
 | `probe_network` | Mock DNS answer, route target, gateway and reachability | Typed endpoint/path observations and age | DNS, route, VPN, firewall, or gateway mutation |
 | `probe_cloud` | Active ExpenseHub endpoint, deployment/change reference, cloud health | Endpoint and `CHG-481` linkage with provenance | Cloud mutation, credential enumeration, arbitrary resource traversal |
@@ -196,7 +326,7 @@ Skills emit observations; they do not emit state transitions or approvals. The o
 
 ## Authority Matrix
 
-| Decision | Qwen | Deterministic application | Human role | Mock/backend adapter |
+| Decision | Axel | Deterministic application | Human role | Mock/backend adapter |
 |---|---:|---:|---:|---:|
 | Extract intent and service-risk cues | Proposes | Validates and limits effects | May correct | No |
 | Select/order read skills | Proposes | Allowlist and budget enforcement | May stop | Executes reads only |
@@ -217,14 +347,16 @@ Skills emit observations; they do not emit state transitions or approvals. The o
 
 ## Mock And Simulation Boundaries
 
-P0 uses real Qwen but fictional enterprise data and mock enterprise systems.
+P0 uses a real model provider but fictional enterprise data and mock enterprise systems.
 
 | Boundary | P0 behavior | Production implication |
 |---|---|---|
 | Portal | Real local web interaction against fictional identity | Requires enterprise SSO, account lifecycle, and channel authentication |
 | Teams | Browser simulation with permanent `SIMULATED TEAMS` label | No Microsoft tenant, bot, Graph, webhook, or message-integrity claim |
-| Diagnostic capsule | Browser-generated fixed observations after explicit consent | No installed client, hardware identity, privilege, command execution, or attestation |
-| Application/EUX/Server/Network/Cloud | Typed fixture reads | No production telemetry, discovery, or control-plane integration |
+| Diagnostic capsule | **Real.** A Fleet-managed osquery agent on a real Windows device returns typed observations after explicit consent over an exact field manifest | Requires managed enrolment, device identity, fleet-wide rollout, and an employee-notice and consent regime |
+| Application/Server/Network/Cloud | Typed fixture reads | No production telemetry, discovery, or control-plane integration |
+| EUX read | **Real** osquery queries against the enrolled device, scoped to the granted manifest | Query scope, result retention, and privacy review become deployment requirements |
+| Endpoint action | Template selected and executed against a mock device adapter; no script reaches the real machine | The same template registry dispatches to Fleet `scripts/run` only after the P1 controls that remain open are met |
 | Action | One mock dependency-state mutation | No real DNS, VPN, route, endpoint, server, or cloud mutation |
 | CMDB | Versioned mock relation store | No ServiceNow or other authoritative CMDB connector or compatibility claim |
 | Identity/roles | Seeded demo users and roles | No production IAM, separation-of-duties, or role-governance claim |
@@ -233,7 +365,74 @@ P0 uses real Qwen but fictional enterprise data and mock enterprise systems.
 
 Mock adapters must expose fixture version and checksum, return stable source record IDs, support clean reset, and prevent any outbound mutation. Simulation status is stored in records and rendered wherever the data appears.
 
+## Connector Conformance Contract
+
+Mock backends demonstrate the loop but cannot by themselves demonstrate that the loop survives contact with a real system. What closes that gap is stating the contract a backend must satisfy for the substrate's guarantees to hold, and enforcing it as an executable test suite rather than as prose.
+
+Every backend adapter, mock or production, implements the same port and passes the same conformance suite. The mock adapters are one implementation of that port; a ServiceNow, DNS, or cloud connector would be another. The suite is the deliverable that transfers.
+
+### Required Capabilities
+
+| Capability | Contract | Why the substrate needs it |
+|---|---|---|
+| Keyed effect | An effect carries an idempotency key. Applying the same key twice produces one effect and the second call reports the first | At-most-once execution |
+| Lookup by key | The adapter answers "was the effect for key K applied" without applying anything | Reconciling an unknown outcome without a blind retry |
+| Pre-state read | The adapter reports current state as a canonical value before a write is attempted | Detecting that the world moved since the approval was granted |
+| Post-state read | The adapter reports state on a path that does not consult the write response | Independent verification |
+| Inverse | An effect declares an inverse, or declares itself irreversible | Rollback, and raising the approval bar when rollback is impossible |
+| Bounded scope | The adapter rejects a target outside its declared resource type and tenant | Confused-deputy containment |
+
+### Conformance Suite
+
+The suite runs against any implementation of the port and asserts the properties, not the values:
+
+1. Applying one key twice yields exactly one effect; the second call reports the first rather than failing.
+2. Lookup by an unapplied key reports absence, and does not create the effect as a side effect of asking.
+3. Lookup by an applied key reports the original effect after a simulated transport failure that lost the response.
+4. Pre-state read is stable across repeated calls with no intervening write.
+5. Post-state read is reachable when the write path is made to fail, proving the two paths are genuinely separate.
+6. Applying an effect and then its inverse returns the pre-state digest exactly.
+7. A target outside the declared resource type or tenant is rejected before any state is touched.
+8. Concurrent application of the same key from two callers yields one effect and one winner.
+
+An adapter that cannot pass a given property declares that explicitly. The declaration is a record, not a comment: the substrate reads it and refuses to grant approval for an action whose backend cannot support the guarantee the approval implies. A backend without lookup-by-key cannot be used for an action whose failure mode requires reconciliation; a backend without an inverse raises the required approval role.
+
+### Endpoint Adapter Scoring
+
+The Fleet endpoint adapter is the first case where a real product is measured against this contract rather than a mock, and it does not pass unaided.
+
+| Property | Fleet alone | With the Axiōma run ledger |
+|---|---|---|
+| Keyed effect | Partial. Fleet mints an `execution_id` after dispatch and accepts no caller key | Met. The template guards on the key and records it |
+| Lookup by key | Not met on the caller's own key | Met, by reading the ledger through osquery |
+| Pre-state read | Met, by registered query | Met |
+| Independent post-read | Partial. The same agent runs the script and answers the query | Met where an off-device consequence exists; otherwise declared weaker and recorded |
+| Inverse | Not met. Scripts are opaque to Fleet | Met, declared per template or explicitly absent |
+| Bounded scope | Partial. Host and saved script constrain, with no type declaration | Met, through `resourceType` and per-template `effectConstraints` |
+
+Every gap the product closes is closed in the read path or in the record layer, never by trusting the write path's own account of itself.
+
+### Honest Boundary
+
+This contract is what makes the mock defensible, and it is also where the remaining risk sits. Several real target systems do not offer native idempotency or read-back by key, and for those a compensating design has to be built and proven per connector. The conformance suite does not remove that work. It makes the work explicit, gives it a pass condition, and prevents a connector from being wired in while quietly failing a property the substrate depends on.
+
 ## Canonical Records
+
+### Kernel And Extension Records
+
+The record set divides into a kernel and four extensions. The division decides build order and tells a reader which records a second domain would reuse without modification.
+
+| Group | Records | Role |
+|---|---|---|
+| Kernel | `EvidenceObservation`, `Hypothesis`, `RemediationProposal`, `SandboxRun`, `SandboxCheckResult`, `ApprovalGrant`, `ActionAttempt`, `ActionReceipt`, `TechnicalVerificationRecord`, `IncidentLifecycleEvent`, `ModelTrace` | The proof-carrying loop. Domain-independent; a second domain reuses these unchanged |
+| Action vocabulary | `ActionTemplate` | The closed registry Axel selects from. Per-domain content, domain-independent shape |
+| Intake extension | `SupportEvent`, `IncidentCase` | Cross-channel continuity and the case projection |
+| Consent extension | `ConsentDecision`, `DiagnosticCapsule` | Explicit consent before observation, with an exact field manifest |
+| Closure extension | `EmployeeConfirmationRecord`, `HumanTask` | A second, human closure requirement on top of technical verification |
+| Governance extension | The `CMDBDriftProposal` lifecycle records | Turning verified findings into reviewed configuration corrections |
+| Learning extension | `RegressionArtifact`, `RegressionRun` | Turning a verified resolution into a replayable check |
+
+The kernel is correct and demonstrable on its own. Each extension depends on the kernel and on nothing else, so an extension can be removed without invalidating the loop, and an extension's failure cannot corrupt kernel records. Build order follows this table: the kernel runs end to end before any extension is added.
 
 ### Shared Primitives
 
@@ -264,14 +463,44 @@ type Validity = {
   freshnessClass: "FRESH" | "AGING" | "STALE" | "UNKNOWN";
 };
 
+type ActionType =
+  | "MOCK_PROMOTE_EXPENSEHUB_DEPENDENCY"
+  | "MOCK_REBIND_SERVICE_CREDENTIAL"
+  | "ENDPOINT_TEMPLATE";
+
+type ResourceType =
+  | "MOCK_NETWORK_DEPENDENCY"
+  | "MOCK_SERVICE_CREDENTIAL_BINDING"
+  | "MANAGED_DEVICE";
+
+type Role = "NETWORK_OWNER" | "IDENTITY_OWNER" | "EUX_OWNER" | "CMDB_OWNER";
+
 type TargetRef = {
   tenantId: string;
-  resourceType: "MOCK_NETWORK_DEPENDENCY";
+  resourceType: ResourceType;
   resourceId: string;
 };
 ```
 
-All timestamps are UTC ISO-8601 values. Confidence is a finite number from `0` through `1`; it is descriptive and never authorization. Canonical JSON uses sorted object keys, preserved array order, UTF-8, normalized number rules, and omitted absent optional fields. Each digest definition below includes the record schema version and canonicalization algorithm.
+All timestamps are UTC ISO-8601 values. Confidence is a finite number from `0` through `1`; it is descriptive and never authorization. Each digest definition below includes the record schema version and canonicalization algorithm.
+
+### Canonical JSON
+
+`CANONICAL-JSON-1` is RFC 8785, the JSON Canonicalization Scheme (JCS). Every digest in this document is SHA-256 over the UTF-8 bytes that JCS produces. The algorithm identifier `CANONICAL-JSON-1+SHA-256` denotes exactly this pairing.
+
+The following rules are normative because digests are only reproducible when every producer agrees on all of them:
+
+- **Object member order.** Members are sorted by their key's UTF-16 code units, per RFC 8785 section 3.2.3. Sorting by code point, by locale, or by byte value produces different bytes for keys outside the Basic Multilingual Plane and is non-conformant.
+- **Array order.** Preserved exactly as given. Arrays whose order carries meaning, including ordered checks and tool calls, are never reordered. Sets, including evidence snapshots, are sorted by stable ID before they are placed in the array, so that ordering is decided by the domain and not by the serializer.
+- **Number encoding.** ECMAScript `Number::toString` as constrained by RFC 8785 section 3.2.2.3. Every number is an IEEE-754 double. `NaN`, `Infinity`, and `-Infinity` are rejected. `-0` is rejected rather than normalized, so that a sign error surfaces at validation instead of silently digesting as `0`. Integers with a magnitude above `2^53 - 1` are rejected at the schema layer; a record needing a larger integer carries it as a string.
+- **Strings.** UTF-8 output with the escaping rules of RFC 8785 section 3.2.2.2. No Unicode normalization is applied. Two strings that differ in normalization form are different values and produce different digests, so producers normalize at the input boundary if they need NFC equivalence.
+- **Null and absence.** `null` is forbidden in any digested payload. An optional field that has no value is omitted. There is no encoding in which `null` and absence differ, which removes the ambiguity that would otherwise let one producer emit `{"a":null}` and another `{}` for the same record.
+- **Timestamps.** `IsoTimestamp` matches exactly `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$`. UTC only, second precision, no fractional seconds, no numeric offset, no lowercase `t` or `z`.
+- **Opaque values.** The fields typed `unknown` in this document — `before`, `after`, `inversePatch`, `value`, `expected`, `observed`, and `normalizedParameters` — are restricted to JSON-native scalars, arrays, and objects. A `Date`, `Map`, `Set`, `bigint`, class instance, or any object carrying a `toJSON` method is rejected before digesting. A `toJSON` method is specifically excluded because it would bypass canonical member ordering entirely.
+
+Conformance is proved by executing the official RFC 8785 test vectors against the implementation. The vectors are committed in the repository and run as part of the unit suite. Any implementation that produces different bytes for a vector is non-conformant and fails the build.
+
+No digest value is ever written by hand. Digests are computed from canonical bytes and recorded; a document, fixture, or test that asserts a literal hash without the canonical content that produces it is invalid.
 
 ### Event, Consent, And Capsule
 
@@ -411,7 +640,7 @@ type RemediationProposal = {
   caseVersion: number;
   hypothesisId: string;
   hypothesisDigest: Digest;
-  actionType: "MOCK_PROMOTE_EXPENSEHUB_DEPENDENCY";
+  actionType: ActionType;
   targetRef: TargetRef;
   before: unknown;
   beforeDigest: Digest;
@@ -424,7 +653,7 @@ type RemediationProposal = {
   normalizedParameters: unknown;
   parameterDigest: Digest;
   actionSnapshotDigest: Digest;
-  requiredRole: "NETWORK_OWNER";
+  requiredRole: Role;
   policyVersion: string;
   createdAt: IsoTimestamp;
 };
@@ -484,7 +713,7 @@ type ApprovalGrant = {
   sandboxRunId: string;
   sandboxRunDigest: Digest;
   checkSetDigest: Digest;
-  actionType: "MOCK_PROMOTE_EXPENSEHUB_DEPENDENCY";
+  actionType: ActionType;
   targetRef: TargetRef;
   actionSnapshotDigest: Digest;
   parameterDigest: Digest;
@@ -493,7 +722,7 @@ type ApprovalGrant = {
   inverseDigest: Digest;
   evidenceSnapshotDigest: Digest;
   sandboxSnapshotDigest: Digest;
-  requiredRole: "NETWORK_OWNER";
+  requiredRole: Role;
   approverId?: string;
   roleAssignmentDigest?: Digest;
   roleObservedAt?: IsoTimestamp;
@@ -793,7 +1022,7 @@ type RegressionArtifact = {
   sourceTechnicalVerificationIds: string[];
   sourceEmployeeConfirmationId: string;
   sourceEmployeeConfirmationDigest: Digest;
-  actionType: "MOCK_PROMOTE_EXPENSEHUB_DEPENDENCY";
+  actionType: ActionType;
   normalizedParameters: unknown;
   parameterDigest: Digest;
   evidenceSnapshotDigest: Digest;
@@ -836,7 +1065,7 @@ type ModelTrace = {
   caseId: string;
   caseVersion: number;
   mode: "LIVE_INTEGRATION" | "RECORDED_CONTRACT";
-  provider: "ALIBABA_CLOUD";
+  provider: ObservedProvider;
   endpointHost: string;
   modelId: string;
   promptVersion: string;
@@ -1043,7 +1272,7 @@ Reconciliation queries the backend by idempotency key and expected action-state 
 The mechanism is deliberately proposal-first:
 
 1. Verified incident evidence identifies a candidate relation mismatch, such as `ExpenseHub depends_on 10.20.4.17` versus verified `10.20.8.42` linked to `CHG-481`.
-2. ResolveMesh creates the immutable proposal with before, after, inverse, provenance, validity, verification links, component digests, and proposal digest.
+2. Axiōma creates the immutable proposal with before, after, inverse, provenance, validity, verification links, component digests, and proposal digest.
 3. A separate operation-bound reconciliation run reads one named CMDB snapshot and evaluates CI identity, relation key, source precedence, duplicates, protected attributes, concurrent version, and conflicting endpoint claims.
 4. `CONFLICT` cannot apply. `PASS` only makes the exact proposal/snapshot pair eligible for owner review.
 5. A separate `CMDB_OWNER` grant binds operation, proposal, reconciliation, snapshot, inverse, nonce, role, and expiry. Rollback also binds the original apply receipt.
@@ -1076,8 +1305,8 @@ All command endpoints authenticate server-side, derive tenant and roles from the
 |---|---|---|
 | `POST /api/events/portal` | `externalEventId`; unique by tenant/channel/external ID; no client case version | Idempotently creates or returns initial event and server-assigned case |
 | `POST /api/events/simulated-teams` | `caseId`, `externalEventId`, `expectedCaseVersion`, `expectedProjectionRevision`; forced `simulation=true` | Appends one existing-case event and increments context version/revision once |
-| `POST /api/cases/{caseId}/capsules/consent` | expected case version/revision, `deviceId`, exact `manifestDigest`, client command ID | Appends decision; grant may create exactly one matching simulated capsule |
-| `POST /api/cases/{caseId}/diagnose` | expected case version/revision, diagnosis run ID | Runs/resumes bounded live-Qwen supervisor; duplicate run ID returns prior result |
+| `POST /api/cases/{caseId}/capsules/consent` | expected case version/revision, `deviceId`, exact `manifestDigest`, client command ID | Appends decision; grant may create exactly one capsule whose observations are restricted to the granted manifest |
+| `POST /api/cases/{caseId}/diagnose` | expected case version/revision, diagnosis run ID | Runs/resumes a bounded live Axel diagnosis; duplicate run ID returns prior result |
 | `GET /api/cases/{caseId}` | Optional `If-None-Match` projection version | Returns role-filtered materialized case |
 | `GET /api/cases/{caseId}/evidence-board` | Read-only; tenant/case authorization | Returns observations, validity, contradictions, hypotheses, and snapshots |
 | `GET /api/cases/{caseId}/ledger` | Cursor and role-based redaction | Returns ordered immutable records and simulation labels |
@@ -1100,7 +1329,7 @@ All command endpoints authenticate server-side, derive tenant and roles from the
 | `POST /api/cases/{caseId}/stop` | expected case version/revision, command ID | Blocks new steps, reconciles in-flight attempt, and escalates with `MANUAL_STOP` |
 | `POST /api/demo/reset` | demo mode, fixture version, expected fixture checksum, reset ID | Replaces demo state only and returns resulting checksum |
 | `POST /api/evals/run` | client `evalRunId`, explicit mode, artifact manifest digest | Runs labeled recorded contracts or required live integration path without mode fallback |
-| `GET /health` | No authentication secret in response | App/store/Qwen readiness and optional MuleRun status |
+| `GET /health` | No authentication secret in response | App, store, and provider readiness with observed host and model, plus optional transport status |
 
 ### Endpoint-Specific Notes
 
@@ -1127,7 +1356,7 @@ Use a relational database with these logical groups:
 - `mock_backend_state`: versioned fictional system state;
 - `outbox`: durable adapter dispatch and trace events where asynchronous delivery is used.
 
-Use serializable transactions or explicit row locks for grant consumption and backend-effect reservation. If dispatch occurs after commit, use an outbox worker and preserve the same idempotency key. Never keep a database transaction open across a Qwen or external adapter call.
+Use serializable transactions or explicit row locks for grant consumption and backend-effect reservation. If dispatch occurs after commit, use an outbox worker and preserve the same idempotency key. Never keep a database transaction open across a provider or external adapter call.
 
 ## Security And Privacy Architecture
 
@@ -1135,8 +1364,8 @@ Use serializable transactions or explicit row locks for grant consumption and ba
 
 - Authenticate every non-public endpoint; derive tenant, employee, operator, and role context server-side.
 - Authorize every object reference against tenant and case before loading payload details.
-- Keep Alibaba and optional MuleRun credentials in server-side secret storage and scrub headers from logs and traces.
-- Permit outbound network access only to configured Qwen and optional MuleRun hosts. Mock adapters cannot make outbound mutations.
+- Keep provider and optional transport credentials in server-side secret storage and scrub headers from logs and traces.
+- Permit outbound network access only to configured provider, endpoint-plane, and optional transport hosts. Mock adapters cannot make outbound mutations.
 - Treat all external text and adapter fields as data. Delimit and label them in prompts and never concatenate them into system instructions or tool definitions.
 - Validate model output and tool arguments with closed schemas, enums, size limits, and referential integrity.
 - Apply read-call budgets, planning-round limits, request timeouts, body limits, rate limits, and manual stop.
@@ -1162,6 +1391,8 @@ Use serializable transactions or explicit row locks for grant consumption and ba
 | Threat | Boundary at risk | P0 mitigation | Residual/production work |
 |---|---|---|---|
 | Prompt injection in ticket, CMDB, telemetry, change, or tool output | Supervisor/tool use | Untrusted-data delimiters, fixed system policy, closed tool registry, schema validation, no model authority | Provider-specific adversarial testing and monitoring |
+| Prompt injection escalating to device code execution | Endpoint action path | No code path converts text or model output into a command. The model selects a template ID and typed parameters; the command is assembled server-side from a reviewed template. Parameters are validated against a closed schema, effect constraints are declared per template, and P0 dispatch reaches a mock adapter | Real dispatch is gated on the open control list; argument-injection tests per template; independent review of every template added |
+| Endpoint agent wedged, compromised, or lying about an effect | Device verification | Postconditions are evaluated off-device wherever a consequence exists; the run ledger is read through osquery rather than the execution API; the action response is never verification | Agent integrity monitoring and a second collection path |
 | Cross-tenant or insecure direct object access | API/store | Server-derived tenant, scoped queries, object authorization, opaque IDs | Production IAM review and penetration test |
 | Model requests shell, write tool, secret, or self-approval | Orchestrator | Exactly five reads, unknown tool rejection, no credentials in prompt, deterministic authority | Continuous policy regression tests |
 | Stale or replayed approval | Action/CMDB gateways | Exact digests, expected versions, nonce, expiry, role recheck, one-time consumption | Strong authentication and production role governance |
@@ -1171,7 +1402,7 @@ Use serializable transactions or explicit row locks for grant consumption and ba
 | False closure from stale verification | Case state | Case-version and action-state binding; new event requires revalidation | Define production event relevance and observation windows |
 | Silent CMDB corruption | CMDB workflow | Immutable proposal, reconciliation, separate owner grant, snapshot compare, read-back, rollback | Vendor IRE/reconciliation semantics and source-owner policy |
 | Ledger tampering | Store | Canonical digests, append-only application permissions, rebuildable projections | Signed records, WORM storage, key management, external audit anchoring |
-| Data exfiltration to model/provider | Qwen adapter | Fictional P0 data, minimization, redaction, host allowlist, trace scrubbing | Contractual retention, residency, DLP, provider account controls |
+| Data exfiltration to model/provider | Provider adapter | Fictional P0 data, minimization, redaction, host allowlist, trace scrubbing | Contractual retention, residency, DLP, and per-provider account controls, re-established for each provider a deployment configures |
 | Denial of service or runaway agent loop | Runtime | Rate limits, ten reads, two rounds, timeout, stop, no recursive agents | Capacity controls, circuit breakers, queue isolation |
 | Malicious or compromised browser | API | No browser-held provider secret or authority; server validation; CSRF/session controls | Production device/session risk controls |
 | Unsafe reset or role simulation | Demo controls | Explicit demo profile and disabled production routes | Environment isolation and deployment policy |
@@ -1179,9 +1410,30 @@ Use serializable transactions or explicit row locks for grant consumption and ba
 
 P0 does not claim cryptographic non-repudiation, production zero trust, regulatory compliance, security certification, or safe remote endpoint execution.
 
-## Future Action-Bound Endpoint Capsule: P1
+## Endpoint Capsule Control Status
 
-A real endpoint capsule must not be implemented as a partial P0 extension. Before any production endpoint read or write, P1 requires all of these controls:
+The endpoint capsule is split by direction. **Reads are real in P0** against a Fleet-managed device. **Writes remain mocked**: templates are selected, validated, approved, and dispatched against a mock device adapter, and no script reaches the real machine.
+
+The split is drawn where it is because the controls a read needs are achievable now, and the controls a write needs are not all met yet. What follows records which are closed and which are open, so that enabling real dispatch is a deliberate decision against a checklist rather than a configuration flag someone flips.
+
+**Closed for the P0 read path:** employee-visible field manifest with consent over its digest; accessible refusal producing no capsule and no query; manifest-scoped query allowlist with no runtime composition; signed agent, authenticated transport, and device identity supplied by Fleet; audit events on every query.
+
+**Closed in design for the write path, exercised against the mock:** closed template registry with per-template effect constraints; server-side command assembly the model cannot influence; approval bound to template ID, version, digest, and normalized parameters; captured pre-state; declared inverse or explicit irreversibility raising the approval bar; idempotency ledger keyed on the caller's key; off-device postcondition evaluation.
+
+**Open, and each one blocks real write dispatch:**
+
+- a case-, device-, proposal-, and action-bound token with short expiry and replay protection;
+- device posture checks in addition to identity;
+- least privilege acquired for the exact operation and released immediately afterward;
+- a local watcher that terminates on scope, resource, duration, connectivity, integrity, or policy violation;
+- server and local revoke and kill controls that do not require model cooperation;
+- hardware-backed identity where appropriate, anti-downgrade, and rollback protection;
+- recovery behaviour for client crash, server failure, network partition, power loss, stale approval, and rollback failure;
+- threat tests for malicious tickets, compromised orchestration, confused deputy use, local privilege escalation, TOCTOU races, token theft, replay, data exfiltration, persistence, and supply-chain compromise.
+
+Until the open list is closed and independently tested, the product describes device remediation as `template-validated, mock-dispatched`, and does not claim real endpoint remediation, a zero-trust tunnel, or production-safe action. Real device reads may be described as real, because they are.
+
+The following controls apply to any production endpoint read or write:
 
 - an employee-visible canonical action manifest listing every data read, write, process, network destination, duration, required privilege, expected postcondition, and rollback;
 - exact consent over the manifest digest, accessible refusal, and no scope expansion after consent;
@@ -1200,8 +1452,6 @@ A real endpoint capsule must not be implemented as a partial P0 extension. Befor
 - recovery behavior for client crash, server failure, network partition, power loss, stale approval, and rollback failure;
 - threat tests for malicious tickets, compromised orchestration, confused deputy use, local privilege escalation, TOCTOU races, token theft, replay, data exfiltration, persistence, and supply-chain compromise.
 
-Until all controls are implemented and independently tested, the product must say `simulated consented diagnostic capsule`, not `zero-trust tunnel`, real endpoint remediation, or production-safe action.
-
 ## Production Boundaries
 
 The P0 architecture demonstrates contracts and governance semantics. Production adoption additionally requires:
@@ -1210,7 +1460,7 @@ The P0 architecture demonstrates contracts and governance semantics. Production 
 - production-grade secret management, key rotation, encryption, backup, restore, disaster recovery, and audit retention;
 - connector-specific authentication, authorization, quotas, pagination, rate limiting, webhooks, failure semantics, and idempotency behavior;
 - an explicit source-authority model for each CMDB class/relation and tested vendor reconciliation behavior;
-- data classification, residency, retention, deletion, legal basis, employee notice, provider terms, and regional Qwen configuration;
+- data classification, residency, retention, deletion, legal basis, employee notice, provider terms, and per-provider regional configuration;
 - high availability, capacity planning, queue isolation, observability, alerting, incident response, and operational runbooks;
 - schema migration, digest migration, model/prompt change control, canarying, rollback, and evaluation governance;
 - production sandbox isolation and safe test data rather than a shared fixture process;
@@ -1222,24 +1472,23 @@ No P0 interface should imply that these controls already exist. Production conne
 
 ## Unresolved Assumptions
 
-1. The exact Alibaba-hosted Qwen endpoint, supported model ID, region, quota, latency, structured-output/tool-call behavior, and retention configuration must be verified through a real call.
-2. Event eligibility may require a particular Qwen ecosystem surface beyond direct Alibaba-hosted Qwen use; organizer clarification is required.
-3. MuleRun access, APIs, tracing semantics, data handling, and value are unverified. It remains optional.
+1. Each configured provider's endpoint, supported model ID, region, quota, latency, structured-output and tool-call behaviour, and retention configuration must be verified through a real call and a capability probe before it is used.
+2. Provider capability varies and is not stable over time. A probe result is valid until the next probe, not indefinitely.
+3. An orchestration transport's access, APIs, tracing semantics, data handling, and value are unverified. It remains optional.
 4. Production enterprises may define evidence freshness and independent source classes differently; P0 policy values are fixture-specific.
 5. Real target systems may not support native idempotency or read-back by key. Each connector needs a proven at-most-once or compensation strategy.
 6. Real CMDB products differ in identification, reconciliation, source precedence, versioning, and rollback. P0 semantics do not claim vendor compatibility.
-7. The definition of a relevant event that invalidates closure must be configured and audited in production; P0 conservatively treats accepted support events as relevant.
+7. Relevance is normative for P0 through the `RELEVANCE_RULES` table, whose values are fixture-specific. A production deployment configures and audits its own classification per record type and per event source.
 8. A confirmation event that both reports restoration and requests a human is accepted as employee confirmation only after same-version technical revalidation and actor validation.
 9. Production employee identity, device ownership, consent capacity, accessibility, and delegated support flows are not specified.
-10. Canonical JSON and digest rules need executable cross-language test vectors before multiple services or clients produce records.
-11. P0 append-only controls are application/database semantics, not tamper-proof storage or cryptographic attestation.
-12. Provider outage behavior is fail-closed human escalation; no approved alternative live model provider is currently defined.
+10. P0 append-only controls are application/database semantics, not tamper-proof storage or cryptographic attestation.
+11. Provider outage behavior is fail-closed human escalation; no approved alternative live model provider is currently defined.
 
 ## Architectural Acceptance
 
 The architecture is conformant only when:
 
-- a live path records an actual Alibaba-hosted Qwen trace and exposes only five read skills;
+- a live path records an actual provider trace with observed host, model, and capability probe digest, and exposes only five read probes;
 - no model output or model confidence is used as an authorization or deterministic test oracle;
 - every material immutable record has a schema version and reproducible digest;
 - event deduplication, expected-version conflicts, approval invalidation, and idempotency are enforced transactionally;
