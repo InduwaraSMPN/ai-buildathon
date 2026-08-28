@@ -1,4 +1,5 @@
 docker_compose('api/docker-compose.yml', project_name='axioma', wait=True)
+dc_resource('postgres', labels=['infrastructure'])
 
 local_resource(
     'api',
@@ -9,6 +10,7 @@ local_resource(
     resource_deps=['postgres'],
     readiness_probe=probe(tcp_socket=tcp_socket_action(port=3000)),
     links=['http://localhost:3000'],
+    labels=['backend'],
 )
 
 local_resource(
@@ -20,6 +22,7 @@ local_resource(
     resource_deps=['api'],
     readiness_probe=probe(tcp_socket=tcp_socket_action(port=3001)),
     links=['http://localhost:3001'],
+    labels=['frontend'],
 )
 
 local_resource(
@@ -31,6 +34,7 @@ local_resource(
     resource_deps=['api'],
     readiness_probe=probe(tcp_socket=tcp_socket_action(port=3002)),
     links=['http://localhost:3002'],
+    labels=['frontend'],
 )
 
 local_resource(
@@ -41,6 +45,7 @@ local_resource(
     serve_dir='agent',
     resource_deps=['api'],
     readiness_probe=probe(http_get=http_get_action(port=8090, path='/health')),
+    labels=['backend'],
 )
 
 local_resource(
@@ -48,4 +53,5 @@ local_resource(
     cmd='go build -o bin/axel-cli.exe ./cmd/axel-cli',
     dir='cli',
     deps=['cli/cmd', 'cli/internal', 'cli/go.mod', 'cli/go.sum'],
+    labels=['device'],
 )
