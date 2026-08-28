@@ -1,0 +1,158 @@
+import type { LucideIcon } from "lucide-react";
+import {
+	AlertCircle,
+	CircleCheck,
+	Clock3,
+	LifeBuoy,
+	Route,
+} from "lucide-react";
+import type { ReactNode } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+
+const statusCopy: Record<
+	string,
+	{ label: string; detail: string; icon: LucideIcon }
+> = {
+	open: {
+		label: "Received",
+		detail: "Your request is in the queue and ready for review.",
+		icon: Clock3,
+	},
+	routing: {
+		label: "Finding the right help",
+		detail: "We’re directing your request to the best support path.",
+		icon: Route,
+	},
+	resolving: {
+		label: "In progress",
+		detail: "Support is actively working on your request.",
+		icon: LifeBuoy,
+	},
+	resolved: {
+		label: "Resolved",
+		detail: "A solution is ready for you.",
+		icon: CircleCheck,
+	},
+	escalated: {
+		label: "With a specialist",
+		detail: "A specialist is taking a closer look.",
+		icon: LifeBuoy,
+	},
+	closed: {
+		label: "Closed",
+		detail: "This request is complete.",
+		icon: CircleCheck,
+	},
+};
+
+export function getStatus(status: string) {
+	return (
+		statusCopy[status] ?? {
+			label: "In review",
+			detail: "We’re reviewing the latest update.",
+			icon: Clock3,
+		}
+	);
+}
+
+export function StatusBadge({ status }: { status: string }) {
+	const { label } = getStatus(status);
+	return (
+		<span
+			className={cn(
+				"inline-flex items-center rounded-full border px-2.5 py-1 font-medium text-xs",
+				status === "resolved" || status === "closed"
+					? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+					: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300",
+			)}
+		>
+			{label}
+		</span>
+	);
+}
+
+export function formatDate(value: Date) {
+	return new Intl.DateTimeFormat(undefined, {
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(new Date(value));
+}
+
+export function PageShell({ children }: { children: ReactNode }) {
+	return (
+		<main className="min-h-full bg-muted/20">
+			<div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+				{children}
+			</div>
+		</main>
+	);
+}
+
+export function PageHeading({
+	eyebrow,
+	title,
+	description,
+	action,
+}: {
+	eyebrow: string;
+	title: string;
+	description: string;
+	action?: ReactNode;
+}) {
+	return (
+		<header className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+			<div className="max-w-2xl">
+				<p className="mb-2 font-semibold text-primary text-xs uppercase tracking-[0.18em]">
+					{eyebrow}
+				</p>
+				<h1 className="font-semibold text-3xl tracking-tight sm:text-4xl">
+					{title}
+				</h1>
+				<p className="mt-3 text-base text-muted-foreground leading-relaxed">
+					{description}
+				</p>
+			</div>
+			{action}
+		</header>
+	);
+}
+
+export function LoadingCards() {
+	return (
+		<div className="grid gap-4" role="status" aria-label="Loading requests">
+			{[0, 1, 2].map((item) => (
+				<Card className="rounded-xl" key={item}>
+					<CardContent className="space-y-4 py-2">
+						<Skeleton className="h-5 w-2/3 rounded-md" />
+						<Skeleton className="h-4 w-full rounded-md" />
+						<Skeleton className="h-4 w-1/3 rounded-md" />
+					</CardContent>
+				</Card>
+			))}
+		</div>
+	);
+}
+
+export function ErrorState({ retry }: { retry: () => void }) {
+	return (
+		<Card className="rounded-xl border-destructive/30">
+			<CardContent className="flex flex-col items-center gap-4 py-12 text-center">
+				<AlertCircle className="size-8 text-destructive" aria-hidden="true" />
+				<div>
+					<h2 className="font-semibold text-lg">
+						We couldn’t load this right now
+					</h2>
+					<p className="mt-1 text-muted-foreground">
+						Check your connection and try again.
+					</p>
+				</div>
+				<Button variant="outline" onClick={retry}>
+					Try again
+				</Button>
+			</CardContent>
+		</Card>
+	);
+}
