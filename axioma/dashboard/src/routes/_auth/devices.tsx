@@ -33,7 +33,7 @@ function DeviceList() {
 	).length;
 
 	return (
-		<main className="mx-auto w-full max-w-[1600px] overflow-auto p-4 lg:p-6">
+		<div className="mx-auto w-full max-w-[1600px] p-4 lg:p-6">
 			<PageHeader
 				eyebrow="Fleet / endpoint inventory"
 				title="Devices"
@@ -73,7 +73,7 @@ function DeviceList() {
 						description="No enrolled endpoint matches this search."
 					/>
 				) : (
-					<div className="overflow-x-auto border bg-card">
+					<div className="overflow-x-auto rounded-xl border bg-card shadow-sm">
 						<table className="w-full min-w-[900px] text-left text-xs">
 							<thead className="bg-muted/60 text-[10px] text-muted-foreground uppercase tracking-wider">
 								<tr>
@@ -130,7 +130,7 @@ function DeviceList() {
 					</div>
 				)}
 			</div>
-		</main>
+		</div>
 	);
 }
 function Th({ children }: { children: React.ReactNode }) {

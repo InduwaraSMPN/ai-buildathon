@@ -23,7 +23,7 @@ export function StatusBadge({ status }: { status: string }) {
 	return (
 		<span
 			className={cn(
-				"inline-flex items-center border px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wider",
+				"inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wider",
 				statusTone[status.toLowerCase()] ?? statusTone.closed,
 			)}
 		>
@@ -47,7 +47,7 @@ export function PageState({
 		kind === "loading" ? LoaderCircle : kind === "error" ? AlertCircle : Inbox;
 	return (
 		<div
-			className="flex min-h-64 flex-col items-center justify-center gap-3 border border-dashed bg-card p-8 text-center"
+			className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-card p-8 text-center shadow-sm"
 			role={kind === "error" ? "alert" : "status"}
 		>
 			<Icon

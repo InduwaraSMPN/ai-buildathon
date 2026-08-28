@@ -49,34 +49,34 @@ function TicketDetail() {
 	const ticket = query.data;
 	if (query.isPending)
 		return (
-			<main className="mx-auto w-full max-w-[1600px] p-6">
+			<div className="mx-auto w-full max-w-[1600px] p-6">
 				<PageState
 					kind="loading"
 					title="Loading ticket"
 					description="Retrieving transcript and metadata…"
 				/>
-			</main>
+			</div>
 		);
 	if (query.isError)
 		return (
-			<main className="mx-auto w-full max-w-[1600px] p-6">
+			<div className="mx-auto w-full max-w-[1600px] p-6">
 				<PageState
 					kind="error"
 					title="Ticket unavailable"
 					description={query.error.message}
 					onRetry={() => query.refetch()}
 				/>
-			</main>
+			</div>
 		);
 	if (!ticket)
 		return (
-			<main className="mx-auto w-full max-w-[1600px] p-6">
+			<div className="mx-auto w-full max-w-[1600px] p-6">
 				<PageState
 					kind="empty"
 					title="Ticket not found"
 					description="This ticket may have been removed or the ID is incorrect."
 				/>
-			</main>
+			</div>
 		);
 	const steps = ticket.runs
 		.flatMap((run) => run.steps.map((step) => ({ ...step, run })))
@@ -87,7 +87,7 @@ function TicketDetail() {
 	const closed = ticket.status === "closed";
 
 	return (
-		<main className="mx-auto w-full max-w-[1600px] overflow-auto p-4 lg:p-6">
+		<div className="mx-auto w-full max-w-[1600px] p-4 lg:p-6">
 			<Link
 				to="/home"
 				className="mb-4 inline-flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
@@ -102,7 +102,7 @@ function TicketDetail() {
 			/>
 			<div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
 				<div className="min-w-0 space-y-5">
-					<section className="border bg-card p-4">
+					<section className="rounded-xl border bg-card p-4 shadow-sm">
 						<h2 className="font-semibold text-xs uppercase tracking-wider">
 							Request
 						</h2>
@@ -128,7 +128,7 @@ function TicketDetail() {
 								description="The agent has not produced transcript steps for this ticket."
 							/>
 						) : (
-							<ol className="border bg-card">
+							<ol className="overflow-hidden rounded-xl border bg-card shadow-sm">
 								{steps.map((step, index) => (
 									<li
 										key={step.id}
@@ -185,7 +185,7 @@ function TicketDetail() {
 					</section>
 				</div>
 				<aside className="space-y-4">
-					<section className="border bg-card p-4">
+					<section className="rounded-xl border bg-card p-4 shadow-sm">
 						<h2 className="font-semibold text-xs uppercase tracking-wider">
 							Metadata
 						</h2>
@@ -199,7 +199,7 @@ function TicketDetail() {
 							<Meta label="Resolution">{ticket.resolution ?? "Pending"}</Meta>
 						</dl>
 					</section>
-					<section className="border bg-card p-4">
+					<section className="rounded-xl border bg-card p-4 shadow-sm">
 						<h2 className="font-semibold text-xs uppercase tracking-wider">
 							Operator controls
 						</h2>
@@ -278,7 +278,7 @@ function TicketDetail() {
 					</section>
 				</aside>
 			</div>
-		</main>
+		</div>
 	);
 }
 
