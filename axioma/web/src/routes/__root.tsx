@@ -21,11 +21,17 @@ export const Route = createRootRoute({
 				content:
 					"Axiōma is an AI IT-support platform that carries tickets from employee report to diagnosis, action, and a reasoned outcome.",
 			},
-			{ name: "theme-color", content: "#f3f3ed" },
+			{ name: "theme-color", content: "#d4dce6" },
 			{ property: "og:site_name", content: "Axiōma" },
 			{ property: "og:type", content: "website" },
 		],
 		links: [
+			{ rel: "preconnect", href: "https://fonts.googleapis.com" },
+			{ rel: "preconnect", href: "https://fonts.gstatic.com" },
+			{
+				rel: "stylesheet",
+				href: "https://fonts.googleapis.com/css2?family=Familjen+Grotesk:ital,wght@0,400;0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap",
+			},
 			{ rel: "stylesheet", href: styles },
 			{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
 		],
@@ -40,11 +46,16 @@ function RootComponent() {
 			<a className="skip-link" href="#main">
 				Skip to content
 			</a>
-			<SiteHeader />
-			<main id="main">
-				<Outlet />
-			</main>
-			<SiteFooter />
+			<div className="page-frame">
+				<div className="feed-rail" aria-hidden="true" />
+				<div className="page-sheet">
+					<SiteHeader />
+					<main id="main">
+						<Outlet />
+					</main>
+					<SiteFooter />
+				</div>
+			</div>
 		</RootDocument>
 	);
 }
