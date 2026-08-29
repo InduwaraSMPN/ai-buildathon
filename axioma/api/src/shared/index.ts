@@ -159,15 +159,3 @@ export const COMMAND_STATUSES = [
 	"timed_out",
 ] as const;
 export type CommandStatus = (typeof COMMAND_STATUSES)[number];
-
-/**
- * Ceilings on a single agent run.
- *
- * Without these a confused agent loops and the ticket neither resolves nor
- * escalates. Hitting either ends the run as `exhausted`.
- */
-export const RUN_LIMITS = {
-	maxToolCalls: 20,
-	maxModelTurns: 10,
-	runDeadlineMs: 5 * 60_000,
-} as const;

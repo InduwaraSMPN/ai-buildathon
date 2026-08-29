@@ -1,5 +1,13 @@
 import { relations } from "drizzle-orm";
-import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import {
+	foreignKey,
+	index,
+	integer,
+	pgTable,
+	text,
+	timestamp,
+} from "drizzle-orm/pg-core";
 
 import {
 	CATEGORY_NAMES,
@@ -51,8 +59,7 @@ export const tickets = pgTable(
 			.references(() => services.id, { onDelete: "restrict" }),
 		serviceSubcategoryId: text("service_subcategory_id")
 			.notNull()
-			.default("ss-general")
-			.references(() => serviceSubcategories.id, { onDelete: "restrict" }),
+			.default("ss-general"),
 		// Compatibility-only until all existing rows are backfilled by the Tier 2 migration.
 		category: text("category", { enum: CATEGORY_NAMES }),
 		subcategory: text("subcategory"),
@@ -75,7 +82,10 @@ export const tickets = pgTable(
 		teamId: text("team_id").references(() => teams.id, {
 			onDelete: "set null",
 		}),
-		mergedIntoId: text("merged_into_id"),
+		mergedIntoId: text("merged_into_id").references(
+			(): AnyPgColumn => tickets.id,
+			{ onDelete: "set null" },
+		),
 		number: text("number").unique(),
 		pendingReasonId: text("pending_reason_id"),
 		pendingUntil: timestamp("pending_until"),
@@ -106,6 +116,11 @@ export const tickets = pgTable(
 		index("tickets_type_idx").on(t.recordType, t.status),
 		index("tickets_device_idx").on(t.deviceId),
 		index("tickets_service_idx").on(t.serviceId, t.serviceSubcategoryId),
+		foreignKey({
+			columns: [t.serviceSubcategoryId, t.serviceId],
+			foreignColumns: [serviceSubcategories.id, serviceSubcategories.serviceId],
+			name: "tickets_subcategory_service_fk",
+		}).onDelete("restrict"),
 	],
 );
 

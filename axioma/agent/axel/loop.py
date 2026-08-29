@@ -1,8 +1,4 @@
-"""Axel's bounded read, think, act, and verify loop.
-
-The defaults in :mod:`axel.config` must equal ``RUN_LIMITS`` in
-``api/src/shared/index.ts`` (20 tool calls, 10 model turns, 300 seconds).
-"""
+"""Axel's bounded read, think, act, and verify loop."""
 
 from __future__ import annotations
 

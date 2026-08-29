@@ -9,6 +9,8 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
+import { forms } from "./forms";
+import { olas, slas } from "./sla";
 
 export const serviceFamilies = pgTable(
 	"service_families",
@@ -35,10 +37,12 @@ export const services = pgTable(
 			.references(() => serviceFamilies.id, { onDelete: "cascade" }),
 		name: text("name").notNull(),
 		description: text("description"),
-		// Tier 1 owns policy tables; loose ids avoid a circular schema import while
-		// preserving service -> priority -> default resolution semantics.
-		slaId: text("sla_id"),
-		olaId: text("ola_id"),
+		slaId: text("sla_id").references(() => slas.id, {
+			onDelete: "set null",
+		}),
+		olaId: text("ola_id").references(() => olas.id, {
+			onDelete: "set null",
+		}),
 		isActive: boolean("is_active").notNull().default(true),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
@@ -65,7 +69,9 @@ export const serviceSubcategories = pgTable(
 		approverOverrideId: text("approver_override_id").references(() => user.id, {
 			onDelete: "set null",
 		}),
-		formId: text("form_id"),
+		formId: text("form_id").references(() => forms.id, {
+			onDelete: "set null",
+		}),
 		isActive: boolean("is_active").notNull().default(true),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")

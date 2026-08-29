@@ -1,6 +1,5 @@
 """Runtime configuration.
 
-Run-limit defaults must match ``RUN_LIMITS`` in ``api/src/shared/index.ts``.
 The model name is passed directly to LiteLLM; provider credentials use that
 provider's standard environment variables.
 """

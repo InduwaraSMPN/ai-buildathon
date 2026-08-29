@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import re
-from pathlib import Path
+import pytest
 
 from axel import model, tools
 from axel.config import Config
@@ -81,7 +80,10 @@ def test_knowledge_search_is_a_read_tool_and_prompt_requires_explicit_citation()
     tool = tools.resolve("knowledge_search")
     assert tool is not None
     assert tool.effect is tools.Effect.READ
-    assert tool.schema_model.model_validate({"query": "VPN DNS failure"}).limit == 5
+    assert tool.schema_model.model_validate({"query": "VPN DNS failure"}).limit == 8
+    assert tool.schema_model.model_validate({"query": "VPN DNS failure", "limit": 20})
+    with pytest.raises(ValueError):
+        tool.schema_model.model_validate({"query": "VPN DNS failure", "limit": 21})
     assert "call knowledge_search before exploratory" in SYSTEM_PROMPT
     assert "explicit tool call in the transcript" in SYSTEM_PROMPT
     assert "cite its identifier and title" in SYSTEM_PROMPT
@@ -156,22 +158,3 @@ def test_non_strict_fallback_does_not_require_optional_tool_fields() -> None:
     parameters = definitions["device_run_action"]["function"]["parameters"]
     assert "parameters" not in parameters["required"]
     assert set(parameters["required"]) == {"reasoning", "device_id", "action"}
-
-
-def test_run_limits_match_api() -> None:
-    api_shared = Path(__file__).parents[2] / "api" / "src" / "shared" / "index.ts"
-    source = api_shared.read_text(encoding="utf-8")
-    limits = Config(_env_file=None)
-
-    def integer(name: str) -> int:
-        match = re.search(rf"{name}:\s*(\d+)", source)
-        assert match, f"RUN_LIMITS.{name} missing"
-        return int(match.group(1))
-
-    assert limits.max_tool_calls == integer("maxToolCalls")
-    assert limits.max_model_turns == integer("maxModelTurns")
-    deadline = re.search(r"runDeadlineMs:\s*(\d+)\s*\*\s*(\d[\d_]*)", source)
-    assert deadline, "RUN_LIMITS.runDeadlineMs missing"
-    assert limits.run_deadline_seconds * 1000 == int(deadline.group(1)) * int(
-        deadline.group(2).replace("_", "")
-    )

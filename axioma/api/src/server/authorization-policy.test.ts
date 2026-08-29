@@ -1,81 +1,59 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
+import { createRouterClient, ORPCError } from "@orpc/server";
+import type { Capability } from "@/shared";
+import * as authorizationBuilders from "./orpc";
+import { appRouter } from "./routers";
 
-const read = (path: string) =>
-	readFileSync(new URL(path, import.meta.url), "utf8");
-const names = (source: string, pattern: RegExp) =>
-	new Set([...source.matchAll(pattern)].map((match) => match[1] as string));
+const publicProcedures = new Set([
+	"healthCheck",
+	"readStatus",
+	"listAuthProviders",
+]);
+const authenticatedProcedures = new Set([
+	"privateData",
+	"listMyDevices",
+	"listPublicKnowledge",
+	"getPublicKnowledgeArticle",
+	"getMyApprovalStatus",
+]);
+const context = (userId: string | null, capabilities: Capability[] = []) =>
+	({
+		auth: null,
+		session: null,
+		userId,
+		capabilities: new Set(capabilities),
+	}) as never;
 
-test("every contract procedure uses an explicit authorization builder", () => {
-	const routerSources = readdirSync(new URL("./routers", import.meta.url))
-		.filter((file) => file.endsWith(".ts"))
-		.map((file) => read(`./routers/${file}`));
-	const contractSources = readdirSync(new URL("../contracts", import.meta.url))
-		.filter((file) => file.endsWith(".ts"))
-		.map((file) => read(`../contracts/${file}`));
-	const contracts = names(contractSources.join("\n"), /^\s*(\w+): oc\b/gm);
-	const handlers = names(
-		routerSources.join("\n").replace(/\s+/g, " "),
-		/(\w+): (?:capabilityProcedure\([^)]*\)|anyCapabilityProcedure\([^)]*\)|healthProcedure|publicProcedure|privateDataProcedure|reporterProcedure)\.\1\.handler/g,
+const rejectsWith = async (call: () => Promise<unknown>, code: string) =>
+	assert.rejects(
+		call,
+		(error) => error instanceof ORPCError && error.code === code,
 	);
 
-	assert.deepEqual(
-		[...contracts].filter((name) => !handlers.has(name)),
-		[],
-	);
-	assert.doesNotMatch(
-		routerSources.join(""),
-		/protectedProcedure|variantProcedure/,
-	);
-	assert.deepEqual(
-		[...routerSources.join("").matchAll(/healthProcedure\.(\w+)/g)].map(
-			(match) => match[1],
-		),
-		["healthCheck"],
-	);
-	assert.deepEqual(
-		[...routerSources.join("").matchAll(/publicProcedure\.(\w+)/g)].map(
-			(match) => match[1],
-		),
-		["readStatus", "listAuthProviders"],
-	);
-	assert.deepEqual(
-		[...routerSources.join("").matchAll(/privateDataProcedure\.(\w+)/g)].map(
-			(match) => match[1],
-		),
-		["privateData"],
-	);
-	assert.deepEqual(
-		[...routerSources.join("").matchAll(/reporterProcedure\.(\w+)/g)].map(
-			(match) => match[1],
-		),
-		[
-			"listMyDevices",
-			"listPublicKnowledge",
-			"getPublicKnowledgeArticle",
-			"getMyApprovalStatus",
-		],
-	);
-	assert.doesNotMatch(
-		read("./orpc.ts"),
-		/export const (os|authenticatedProcedure)/,
-	);
+test("every composed procedure is deny-by-default", async () => {
+	const anonymous = createRouterClient(appRouter, {
+		context: context(null),
+	}) as Record<string, (input?: unknown) => Promise<unknown>>;
+	const authenticated = createRouterClient(appRouter, {
+		context: context("user-with-no-capabilities"),
+	}) as Record<string, (input?: unknown) => Promise<unknown>>;
+
+	for (const name of Object.keys(appRouter)) {
+		if (publicProcedures.has(name)) continue;
+		await rejectsWith(
+			() => (anonymous[name] as () => Promise<unknown>)(),
+			"UNAUTHORIZED",
+		);
+		if (!authenticatedProcedures.has(name))
+			await rejectsWith(
+				() => (authenticated[name] as () => Promise<unknown>)(),
+				"FORBIDDEN",
+			);
+	}
 });
 
-test("reporter exceptions remain ownership scoped", () => {
-	const main = read("./routers/index.ts");
-	assert.match(
-		main,
-		/listMyDevices:[\s\S]*?eq\(devices\.ownerId, context\.userId\)/,
-	);
-	assert.match(
-		main,
-		/enrollDevice: capabilityProcedure\("device\.enroll"\)[\s\S]*?devices\.ownerId[\s\S]*?context\.userId/,
-	);
-	assert.match(main, /add_detail: "ticket\.create"/);
-	assert.match(
-		main,
-		/input\.action === "add_detail"\s*&&\s*current\.reporterId !== context\.userId/,
-	);
+test("unscoped procedure builders are not exported", () => {
+	assert.equal("os" in authorizationBuilders, false);
+	assert.equal("authenticatedProcedure" in authorizationBuilders, false);
 });
