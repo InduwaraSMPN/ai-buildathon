@@ -16,9 +16,9 @@ of who changed what.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> The 2026-08-29 close-out audit found **10 of 12 milestones complete**. Status behavior is data-driven
-> across API and frontends; pending, SLA/OLA and resolution reporting are wired. Two milestones remain
-> partial against their full tier definitions.
+> The fresh 2026-08-29 post-close-out audit found **12 of 12 milestones complete**. Status behavior and
+> labels are data-driven across API and frontends; pending, SLA/OLA, resolution, audit and satisfaction
+> surfaces meet the tier's definition of done.
 >
 > Section 7 remains the definition of done; [../execution/chat-b-tier1.md](../execution/chat-b-tier1.md)
 > is retained as execution history.

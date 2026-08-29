@@ -90,21 +90,12 @@ export const timingValues = {
 	blocked: "high",
 } as const;
 
-export const statusCopy: Record<string, { label: string; detail: string }> = {
-	new: {
-		label: "Received",
-		detail: "Your request is in the queue and ready for review.",
-	},
-	open: {
-		label: "In progress",
-		detail: "Support is working on your request.",
-	},
-	pending: {
-		label: "Waiting for your reply",
-		detail: "Support needs a little more information from you.",
-	},
-	resolved: { label: "Resolved", detail: "A solution is ready for you." },
-	closed: { label: "Closed", detail: "This request is complete." },
+export const statusDetailCopy: Record<string, string> = {
+	new: "Your request is in the queue and ready for review.",
+	open: "Support is working on your request.",
+	pending: "Support needs a little more information from you.",
+	resolved: "A solution is ready for you.",
+	closed: "This request is complete.",
 };
 
 export const approvalStatusCopy: Record<
@@ -144,12 +135,6 @@ export const progressMarkerCopy: Record<string, string> = {
 	applying_fix: "Applying a fix",
 	verifying_fix: "Making sure the fix worked",
 	handing_to_person: "Sharing the details with a specialist",
-};
-
-export const activeStatusCopy: Record<string, string> = {
-	new: "Your request is ready for review.",
-	open: "We’re working on your request now.",
-	pending: "We’re waiting for your reply before work can continue.",
 };
 
 export const isFinishedTicket = (stateType: string) => stateType === "closed";

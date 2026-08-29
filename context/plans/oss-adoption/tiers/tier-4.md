@@ -16,7 +16,7 @@ can be dropped without invalidating Tiers 0–3.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> The 2026-08-29 close-out audit found **9 of 9 milestones complete**. Mailbox administration, origins,
+> The fresh 2026-08-29 post-close-out audit found **9 of 9 milestones complete**. Mailbox administration, origins,
 > templates, production asset import provenance and dynamic-field mapping are wired; schema-only Tier 4
 > tables were either connected or retired.
 >

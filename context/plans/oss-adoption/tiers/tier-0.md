@@ -15,7 +15,7 @@ and §5 gives the reason.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> The 2026-08-29 close-out audit found **5 of 5 milestones complete**. Identity administration is wired
+> The fresh 2026-08-29 post-close-out audit found **5 of 5 milestones complete**. Identity administration is wired
 > end to end, and the live database contains a staff administrator with the required role grants.
 >
 > Section 7 remains the definition of done; [../execution/chat-a-identity.md](../execution/chat-a-identity.md)

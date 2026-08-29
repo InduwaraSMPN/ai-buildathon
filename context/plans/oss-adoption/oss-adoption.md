@@ -10,15 +10,13 @@
 > began and are kept as written — they are the baseline the programme was argued from, and rewriting them
 > would erase the reasoning. They no longer describe the tree.
 >
-> A close-out audit on **2026-08-29** checked every milestone against the code, the live database and the
-> generated API surface. **30 of 40 milestones are complete:** Tier 0 5/5, Tier 1 10/12, Tier 2 4/7,
-> Tier 3 2/7, Tier 4 9/9. The migration ledger is parity-checked against disk and the deployed database;
-> reference data, SLA reads, settlement metrics, mailbox administration, API-key security metadata and
-> the deferred architecture/parity work are now live rather than schema-only.
+> A fresh post-close-out audit on **2026-08-29** checked every milestone against its own definition of done,
+> the code, the live database and the generated API surface. **40 of 40 milestones are complete:** Tier 0
+> 5/5, Tier 1 12/12, Tier 2 7/7, Tier 3 7/7, Tier 4 9/9. The migration ledger is parity-checked against
+> disk and the deployed database; the final portal status-copy tail was removed after this audit.
 >
-> **[execution/](execution/README.md) carries the remaining work** — six briefs, each with the confirmed
-> `file:line` evidence, a reserved migration range and a definition of done. Read those for what is left;
-> read the tier documents below for why any of it is shaped the way it is.
+> **[execution/](execution/README.md) is retained as execution history.** Read the tier documents below
+> for why the implementation is shaped the way it is.
 
 The MVP proved the thesis: an employee opens a ticket, Axel resolves it against Kubernetes or against a
 laptop, and it closes — or it escalates with its reasoning intact. This programme turns that into a
@@ -187,9 +185,9 @@ is the last mile. Do not read this column as current state; the per-milestone ve
 written: 1.9, 1.12 and 1.17 partial; 3.11 and 4.8 mostly done; 4.6 partial.
 
 Since then the tiers have been built and audited. The milestone-level verdict — which is the useful one,
-because milestones are what the tier documents define *done* against — is **30 of 40 complete: Tier 0
-5/5, Tier 1 10/12, Tier 2 4/7, Tier 3 2/7, Tier 4 9/9**. [execution/](execution/README.md) has the
-breakdown and the remaining work.
+because milestones are what the tier documents define *done* against — is **40 of 40 complete: Tier 0
+5/5, Tier 1 12/12, Tier 2 7/7, Tier 3 7/7, Tier 4 9/9**. [execution/](execution/README.md) retains the
+execution breakdown and close-out record.
 
 ---
 

@@ -187,7 +187,7 @@ export async function startTicketRun(
 					progressMarker: ticket.progressMarker,
 					updatedAt: new Date(),
 				})
-				.where(and(eq(tickets.id, ticketId), eq(tickets.status, "routing")));
+				.where(and(eq(tickets.id, ticketId), eq(tickets.status, nextStatus)));
 		});
 		throw new ORPCError("SERVICE_UNAVAILABLE", {
 			message: error instanceof Error ? error.message : "Axel is not connected",

@@ -7,6 +7,7 @@ import {
 	ticketNumberHistory,
 	ticketRuleFirings,
 	ticketRules,
+	ticketStatuses,
 	tickets,
 } from "@/db/schema";
 import type { Impact, Priority, RecordType, Urgency } from "@/shared";
@@ -71,15 +72,23 @@ export async function createTicketInTransaction(
 	if (!normalized.title || !normalized.body)
 		throw new Error("Ticket title and body are required");
 
-	const [subcategory] = await tx
-		.select({
-			id: serviceSubcategories.id,
-			serviceId: serviceSubcategories.serviceId,
-		})
-		.from(serviceSubcategories)
-		.where(eq(serviceSubcategories.id, normalized.serviceSubcategoryId))
-		.limit(1);
+	const [[subcategory], [defaultStatus]] = await Promise.all([
+		tx
+			.select({
+				id: serviceSubcategories.id,
+				serviceId: serviceSubcategories.serviceId,
+			})
+			.from(serviceSubcategories)
+			.where(eq(serviceSubcategories.id, normalized.serviceSubcategoryId))
+			.limit(1),
+		tx
+			.select({ key: ticketStatuses.key })
+			.from(ticketStatuses)
+			.where(eq(ticketStatuses.isDefault, true))
+			.limit(1),
+	]);
 	if (!subcategory) throw new Error("Ticket service subcategory was not found");
+	if (!defaultStatus) throw new Error("Default ticket status was not found");
 	if (subcategory.serviceId !== normalized.serviceId)
 		throw new Error("Ticket service and subcategory do not match");
 
@@ -131,7 +140,7 @@ export async function createTicketInTransaction(
 		impact: settled.impact,
 		urgency: settled.urgency,
 		priority,
-		status: "open",
+		status: defaultStatus.key,
 		serviceId: normalized.serviceId,
 		serviceSubcategoryId: normalized.serviceSubcategoryId,
 		route: settled.route,

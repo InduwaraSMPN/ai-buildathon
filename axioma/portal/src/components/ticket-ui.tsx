@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	fallbackStatusCopy,
-	statusCopy,
+	statusDetailCopy,
 	ticketUiCopy,
 } from "@/features/tickets/copy";
 import { cn } from "@/lib/utils";
@@ -25,9 +25,10 @@ const statusIcons: Record<string, LucideIcon> = {
 	closed: CircleCheck,
 };
 
-export function getStatus(stateType: string) {
+export function getStatus(stateType: string, label = fallbackStatusCopy.label) {
 	return {
-		...(statusCopy[stateType] ?? fallbackStatusCopy),
+		label,
+		detail: statusDetailCopy[stateType] ?? fallbackStatusCopy.detail,
 		icon: statusIcons[stateType] ?? Clock3,
 	};
 }
@@ -39,7 +40,7 @@ export function StatusBadge({
 	stateType: string;
 	label?: string;
 }) {
-	const { label } = getStatus(stateType);
+	const { label } = getStatus(stateType, configuredLabel);
 	return (
 		<span
 			className={cn(

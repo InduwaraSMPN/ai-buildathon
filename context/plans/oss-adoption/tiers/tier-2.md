@@ -15,9 +15,9 @@ ticket system with an agent and becomes a service management system.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> The 2026-08-29 close-out audit found **4 of 7 milestones complete**. Forms, catalogue-backed ticket
-> classification, change transitions and the principal human surfaces are wired; three milestones remain
-> partial against their full tier definitions.
+> The fresh 2026-08-29 post-close-out audit found **7 of 7 milestones complete**. Catalogue forms,
+> problems, known errors, change controls and PIRs, lexical knowledge retrieval and approvals are wired
+> through their required human and agent surfaces.
 >
 > Section 7 remains the definition of done; [../execution/chat-c-tier2.md](../execution/chat-c-tier2.md)
 > is retained as execution history.

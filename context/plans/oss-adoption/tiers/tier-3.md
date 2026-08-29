@@ -16,9 +16,9 @@ everything, and an API other systems can call.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> The 2026-08-29 close-out audit found **2 of 7 milestones complete** under the tier's strict definitions.
-> Rules can now stop model dispatch, action handling is explicit, CMDB impact data is seeded, settlement is
-> measurable and API keys are database-limited, but five broader milestones remain partial.
+> The fresh 2026-08-29 post-close-out audit found **7 of 7 milestones complete** under the tier's strict
+> definitions. Rules stop model dispatch and are measurable; CMDB impact/linkage, dynamic fields,
+> workflows, notifications, saved views, scoped search and the public API are wired end to end.
 >
 > Section 7 remains the definition of done; [../execution/chat-d-tier3.md](../execution/chat-d-tier3.md)
 > is retained as execution history.

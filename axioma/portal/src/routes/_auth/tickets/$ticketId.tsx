@@ -126,7 +126,7 @@ function RouteComponent() {
 	}
 
 	const data = ticket.data;
-	const progress = getStatus(data.statusStateType);
+	const progress = getStatus(data.statusStateType, data.statusLabel);
 	const approvalCopy = approval.data
 		? approvalStatusCopy[approval.data.status]
 		: undefined;

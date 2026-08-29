@@ -1,8 +1,8 @@
 import { Check, Circle } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import {
-	activeStatusCopy,
 	getProgressMarkerCopy,
+	statusDetailCopy,
 	ticketStages,
 	timelineCopy,
 } from "@/features/tickets/copy";
@@ -25,7 +25,7 @@ export function ProgressTimeline({
 }) {
 	const current = stageIndex[stateType] ?? 0;
 	const marker = getProgressMarkerCopy(progressMarker);
-	const detail = activeStatusCopy[stateType];
+	const detail = statusDetailCopy[stateType];
 
 	return (
 		<section

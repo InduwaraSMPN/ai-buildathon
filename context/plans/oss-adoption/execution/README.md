@@ -4,11 +4,10 @@
 **Parent:** [oss-adoption.md](../oss-adoption.md)
 **Written:** 2026-08-29, from a verification audit of the working tree, the live database and the running API
 
-The programme is **30 of 40 milestones complete**: Tier 0 5/5, Tier 1 10/12, Tier 2 4/7, Tier 3 2/7,
-and Tier 4 9/9. The close-out repaired and strengthened the migration ledger, seeded the reference data
-needed by shipped features, removed legacy ticket categories, completed the SLA and settlement read
-surfaces, hardened API keys, and closed the deferred architecture and parity issues. Remaining partial
-milestones are explicitly tracked in the tier definitions rather than hidden behind schema-only work.
+A fresh post-close-out audit against each tier's definition of done, the current code, the live database
+and the generated API surface found **40 of 40 milestones complete**: Tier 0 5/5, Tier 1 12/12, Tier 2
+7/7, Tier 3 7/7, and Tier 4 9/9. The final Tier 1 status-copy tail was removed after the audit; the durable
+tool-contract parity test and the guarded `cmdb_items` retirement had already landed in `4cec882`.
 
 Five briefs divide that remaining work so five sessions can run at once without fighting over the same
 files. Each brief is self-contained: it carries the confirmed evidence, so no session needs to re-audit.
@@ -67,9 +66,9 @@ urgent, roughly in dependency order:
 | 10 | Correct dependency direction — `db/schema/rules.ts` importing from `server/rules`, routers importing document policy from an HTTP adapter — and split `index.ts` into a side-effect-free `app.ts` factory plus a minimal entry point. Unlocks real router tests. |
 | 9 | `t4-asset-import.ts` is test-only; production uses `assets/import.ts`. Move the planning logic across, test the production path, delete the pair. |
 | 2 | CI freshness checks so a stale contract or proto copy fails the build instead of drifting quietly. |
-| 5 | A full tool-contract parity harness across API, agent, proto and CLI. Brief P settles the one confirmed mismatch and reports on device-action names; this is the durable fix. |
-| 7 | Narrow the portal to a reporter-facing contract subset and centralize the multipart document upload. |
-| 4 | Retire `cmdb_items` after a rollback window. The `category` / `subcategory` half is brief C's task C7. |
+| 5 | Closed: `api/src/server/tools/parity.test.ts` compares API/agent tool names and validates device actions across API, agent, proto and CLI. |
+| 7 | Closed: the portal uses its reporter-facing contract and centralized document upload path. |
+| 4 | Closed: migration `0038_drop_cmdb_items.sql` verifies row/provenance parity before dropping the legacy table. |
 
 ---
 
