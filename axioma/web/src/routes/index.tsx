@@ -127,35 +127,39 @@ function HomePage() {
 function TicketVisual() {
 	return (
 		<div className="ticket-visual">
-			<div className="ticket-topline">
-				<span>AX-1042</span>
-				<span className="live-pill">In progress</span>
-			</div>
-			<h2>Deployment will not start</h2>
-			<p>Reported by Maya · Platform Engineering</p>
-			<div className="ticket-route">
-				<div>
-					<span className="node active">A</span>
-					<strong>Ticket received</strong>
-					<small>Context attached</small>
+			<div className="ticket-holes" aria-hidden="true" />
+			<div className="ticket-sheet">
+				<div className="ticket-topline">
+					<span>AX-1042</span>
+					<span className="work-order-label">Work order</span>
+					<span className="live-pill">In progress</span>
 				</div>
-				<div>
-					<span className="node active">A</span>
-					<strong>Evidence gathered</strong>
-					<small>ImagePullBackOff</small>
+				<h2>Deployment will not start</h2>
+				<p>Reported by Maya · Platform Engineering</p>
+				<div className="ticket-route">
+					<div>
+						<span className="node active">A</span>
+						<strong>Ticket received</strong>
+						<small>Context attached</small>
+					</div>
+					<div>
+						<span className="node active">A</span>
+						<strong>Evidence gathered</strong>
+						<small>ImagePullBackOff</small>
+					</div>
+					<div>
+						<span className="node">A</span>
+						<strong>Fix checked</strong>
+						<small>Watching rollout</small>
+					</div>
 				</div>
-				<div>
-					<span className="node">A</span>
-					<strong>Fix checked</strong>
-					<small>Watching rollout</small>
+				<div className="ticket-note">
+					<span>Axel</span>
+					<p>
+						Bad image tag identified. Verifying the intended image before
+						patching.
+					</p>
 				</div>
-			</div>
-			<div className="ticket-note">
-				<span>Axel</span>
-				<p>
-					Bad image tag identified. Verifying the intended image before
-					patching.
-				</p>
 			</div>
 		</div>
 	);
