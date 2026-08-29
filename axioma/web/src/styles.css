@@ -77,12 +77,12 @@ h3 {
 .page-sheet {
 	min-width: 0;
 	background:
-		linear-gradient(#d4dce6, #d4dce6) padding-box,
 		repeating-linear-gradient(
 			180deg,
 			transparent 0 31px,
 			rgba(21, 32, 43, 0.035) 31px 32px
-		);
+		),
+		linear-gradient(#d4dce6, #d4dce6) padding-box;
 }
 
 .shell {
