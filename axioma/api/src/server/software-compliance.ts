@@ -62,13 +62,14 @@ export function assessSoftwareCompliance(
 		const entitlement = allocation
 			? byId.get(allocation.entitlementId)
 			: undefined;
-		const status: "unlicensed" | "expired" | "over-allocated" | "compliant" = !entitlement
-			? "unlicensed"
-			: !activeAt(entitlement, at)
-				? "expired"
-				: overAllocatedEntitlementIds.includes(entitlement.id)
-					? "over-allocated"
-					: "compliant";
+		const status: "unlicensed" | "expired" | "over-allocated" | "compliant" =
+			!entitlement
+				? "unlicensed"
+				: !activeAt(entitlement, at)
+					? "expired"
+					: overAllocatedEntitlementIds.includes(entitlement.id)
+						? "over-allocated"
+						: "compliant";
 		return { ...install, entitlementId: entitlement?.id ?? null, status };
 	});
 

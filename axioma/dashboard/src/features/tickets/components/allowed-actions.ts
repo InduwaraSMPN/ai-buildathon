@@ -12,7 +12,11 @@ const statusConfig: Partial<
 > = {
 	open: {
 		tone: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-		actions: ["assign", "reclassify"],
+		actions: ["assign", "reclassify", "pend"],
+	},
+	pending: {
+		tone: "border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
+		actions: ["unpend"],
 	},
 	routing: {
 		tone: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
@@ -44,6 +48,8 @@ const actionCapabilities: Record<TicketOperatorAction, string> = {
 	resolve: "ticket.resolve",
 	close: "ticket.close",
 	escalate: "ticket.escalate",
+	pend: "ticket.reclassify",
+	unpend: "ticket.reclassify",
 	assign: "ticket.assign",
 	reopen: "ticket.reopen",
 	reclassify: "ticket.reclassify",

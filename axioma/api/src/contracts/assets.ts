@@ -63,7 +63,45 @@ const assetImportInput = z.object({
 	fileName: z.string().trim().max(255).optional(),
 });
 
+const inventoryDisk = z.object({
+	deviceKey: z.string(),
+	model: z.string().nullable(),
+	serialNumber: z.string().nullable(),
+	sizeBytes: z.string().nullable(),
+	observedAt: z.date(),
+});
+
+const inventoryHardware = z.object({
+	manufacturer: z.string().nullable(),
+	model: z.string().nullable(),
+	serialNumber: z.string().nullable(),
+	cpu: z.string().nullable(),
+	memoryBytes: z.string().nullable(),
+	biosVersion: z.string().nullable(),
+	observedAt: z.date(),
+});
+
+const deviceInventory = z.object({
+	deviceId: z.string(),
+	assetId: z.string(),
+	reportedAt: z.date().nullable(),
+	disks: z.array(inventoryDisk),
+	hardware: inventoryHardware.nullable(),
+	software: z.array(
+		z.object({
+			name: z.string(),
+			version: z.string().nullable(),
+			publisher: z.string().nullable(),
+			installDate: z.string().nullable(),
+			observedAt: z.date(),
+		}),
+	),
+});
+
 export const assetsContract = {
+	readDeviceInventory: oc
+		.input(z.object({ deviceId: z.string().min(1) }))
+		.output(deviceInventory),
 	listAssets: oc.output(
 		z.array(
 			z.object({

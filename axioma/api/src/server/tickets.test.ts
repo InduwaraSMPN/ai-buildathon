@@ -3,8 +3,8 @@ import test from "node:test";
 import { ORPCError } from "@orpc/server";
 import {
 	canRerun,
-	nextTicketStatus,
 	preserveUndefined,
+	resolveTicketStatus,
 	type TicketTransition,
 	ticketRunOrigin,
 } from "./tickets";
@@ -15,7 +15,22 @@ test("ticket run origin prefers mail, then channel, then portal", () => {
 	assert.equal(ticketRunOrigin(), "portal");
 });
 
-test("ticket lifecycle covers every state-changing transition", () => {
+test("ticket lifecycle table has the expected 31 edges", async () => {
+	const { db } = await import("@/db");
+	const { ticketStatusTransitions } = await import("@/db/schema");
+	const rows = await db.select().from(ticketStatusTransitions);
+	assert.equal(rows.length, 31);
+	assert.ok(
+		rows.some(
+			(row) =>
+				row.fromStatus === "open" &&
+				row.action === "startRun" &&
+				row.toStatus === "routing",
+		),
+	);
+});
+
+test("ticket lifecycle covers every state-changing transition", async () => {
 	const transitions = [
 		["open", "startRun", "routing"],
 		["routing", "firstTool", "resolving"],
@@ -31,7 +46,7 @@ test("ticket lifecycle covers every state-changing transition", () => {
 		["closed", "reopen", "open"],
 	] as const;
 	for (const [from, action, to] of transitions)
-		assert.equal(nextTicketStatus(from, action), to);
+		assert.equal(await resolveTicketStatus(from, action), to);
 });
 
 test("reruns require an escalated ticket and failed or exhausted latest run", () => {
@@ -42,16 +57,16 @@ test("reruns require an escalated ticket and failed or exhausted latest run", ()
 	assert.equal(canRerun("escalated"), false);
 });
 
-test("pending lifecycle pauses and returns to open", () => {
+test("pending lifecycle pauses and returns to open", async () => {
 	for (const status of ["open", "routing", "resolving"])
-		assert.equal(nextTicketStatus(status, "pend"), "pending");
-	assert.equal(nextTicketStatus("pending", "unpend"), "open");
-	assert.equal(nextTicketStatus("pending", "resolve"), "resolved");
+		assert.equal(await resolveTicketStatus(status, "pend"), "pending");
+	assert.equal(await resolveTicketStatus("pending", "unpend"), "open");
+	assert.equal(await resolveTicketStatus("pending", "resolve"), "resolved");
 });
 
-test("employees can add details without changing active state", () => {
+test("employees can add details without changing active state", async () => {
 	for (const status of ["open", "routing", "resolving"] as const)
-		assert.equal(nextTicketStatus(status, "add_detail"), status);
+		assert.equal(await resolveTicketStatus(status, "add_detail"), status);
 });
 
 test("classification preserves omitted values and applies changes", () => {
@@ -63,7 +78,7 @@ test("classification preserves omitted values and applies changes", () => {
 	assert.equal(preserveUndefined(null, "infrastructure"), null);
 });
 
-test("classification and assignment preserve active state", () => {
+test("classification and assignment preserve active state", async () => {
 	for (const status of [
 		"open",
 		"routing",
@@ -72,18 +87,18 @@ test("classification and assignment preserve active state", () => {
 		"escalated",
 	] as const)
 		for (const action of ["reclassify", "assign"] as TicketTransition[])
-			assert.equal(nextTicketStatus(status, action), status);
+			assert.equal(await resolveTicketStatus(status, action), status);
 });
 
-test("invalid lifecycle transitions return a named conflict", () => {
+test("invalid lifecycle transitions return a named conflict", async () => {
 	for (const [status, action] of [
 		["open", "close"],
 		["routing", "escalate"],
 		["resolving", "close"],
 		["escalated", "reopen"],
 	] as const) {
-		assert.throws(
-			() => nextTicketStatus(status, action),
+		await assert.rejects(
+			() => resolveTicketStatus(status, action),
 			(error) =>
 				error instanceof ORPCError &&
 				error.code === "CONFLICT" &&

@@ -18,6 +18,7 @@ const current: CurrentDirectoryPerson[] = [
 		jobTitle: "Engineer",
 		department: "IT",
 		managerExternalId: null,
+		kind: "staff",
 		leaver: false,
 	},
 	{
@@ -28,6 +29,7 @@ const current: CurrentDirectoryPerson[] = [
 		jobTitle: null,
 		department: "Finance",
 		managerExternalId: "directory-1",
+		kind: "reporter",
 		leaver: false,
 	},
 ];
@@ -40,6 +42,7 @@ const incoming = [
 		jobTitle: "Senior Engineer",
 		department: "IT",
 		managerExternalId: null,
+		kind: "staff",
 	},
 	{
 		externalId: "directory-3",
@@ -48,6 +51,7 @@ const incoming = [
 		jobTitle: null,
 		department: "IT",
 		managerExternalId: "directory-1",
+		kind: "staff",
 	},
 ] satisfies [DirectoryPerson, DirectoryPerson];
 

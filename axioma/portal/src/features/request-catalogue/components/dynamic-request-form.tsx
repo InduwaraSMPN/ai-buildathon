@@ -28,10 +28,13 @@ export type RequestFormField = {
 };
 
 function isActive(condition: unknown, values: RequestFormValues): boolean {
-	if (!condition || typeof condition !== "object" || Array.isArray(condition)) return true;
+	if (!condition || typeof condition !== "object" || Array.isArray(condition))
+		return true;
 	const node = condition as Record<string, unknown>;
-	if (Array.isArray(node.all)) return node.all.every((item) => isActive(item, values));
-	if (Array.isArray(node.any)) return node.any.some((item) => isActive(item, values));
+	if (Array.isArray(node.all))
+		return node.all.every((item) => isActive(item, values));
+	if (Array.isArray(node.any))
+		return node.any.some((item) => isActive(item, values));
 	if (node.not) return !isActive(node.not, values);
 	if (typeof node.field !== "string") return true;
 	const actual = values[node.field];
@@ -72,140 +75,142 @@ export function DynamicRequestForm({
 				onSubmit(values);
 			}}
 		>
-			{fields.filter((field) => isActive(field.condition, values)).map((field) => {
-				const id = `${formId}-${field.key}`;
-				const descriptionId = field.description
-					? `${id}-description`
-					: undefined;
-				const value = values[field.key];
-				if (field.type === "checkbox") {
+			{fields
+				.filter((field) => isActive(field.condition, values))
+				.map((field) => {
+					const id = `${formId}-${field.key}`;
+					const descriptionId = field.description
+						? `${id}-description`
+						: undefined;
+					const value = values[field.key];
+					if (field.type === "checkbox") {
+						return (
+							<div key={field.key} className="space-y-1">
+								<label htmlFor={id} className="flex items-start gap-3 text-sm">
+									<input
+										id={id}
+										name={field.key}
+										type="checkbox"
+										checked={value === true}
+										required={field.required}
+										disabled={field.readOnly}
+										aria-describedby={descriptionId}
+										onChange={(event) => set(field.key, event.target.checked)}
+										className="mt-0.5 size-4 accent-primary"
+									/>
+									<span>
+										{field.label}
+										{field.required ? <span aria-hidden="true"> *</span> : null}
+									</span>
+								</label>
+								{field.description ? (
+									<p
+										id={descriptionId}
+										className="pl-7 text-muted-foreground text-xs"
+									>
+										{field.description}
+									</p>
+								) : null}
+							</div>
+						);
+					}
+
+					const stringValue =
+						typeof value === "string" || typeof value === "number" ? value : "";
 					return (
-						<div key={field.key} className="space-y-1">
-							<label htmlFor={id} className="flex items-start gap-3 text-sm">
-								<input
-									id={id}
-									name={field.key}
-									type="checkbox"
-									checked={value === true}
-									required={field.required}
-									disabled={field.readOnly}
-									aria-describedby={descriptionId}
-									onChange={(event) => set(field.key, event.target.checked)}
-									className="mt-0.5 size-4 accent-primary"
-								/>
-								<span>
-									{field.label}
-									{field.required ? <span aria-hidden="true"> *</span> : null}
-								</span>
+						<div key={field.key} className="space-y-2">
+							<label htmlFor={id} className="font-medium text-sm">
+								{field.label}
+								{field.required ? <span aria-hidden="true"> *</span> : null}
 							</label>
 							{field.description ? (
-								<p
-									id={descriptionId}
-									className="pl-7 text-muted-foreground text-xs"
-								>
+								<p id={descriptionId} className="text-muted-foreground text-xs">
 									{field.description}
 								</p>
 							) : null}
+							{field.type === "select" || field.type === "multiselect" ? (
+								<select
+									id={id}
+									name={field.key}
+									value={
+										field.type === "multiselect" && Array.isArray(value)
+											? value
+											: stringValue
+									}
+									multiple={field.type === "multiselect"}
+									required={field.required}
+									disabled={field.readOnly}
+									aria-describedby={descriptionId}
+									onChange={(event) =>
+										set(
+											field.key,
+											field.type === "multiselect"
+												? [...event.target.selectedOptions].map(
+														(option) => option.value,
+													)
+												: event.target.value,
+										)
+									}
+									className={controlClass}
+								>
+									<option value="">Select an option</option>
+									{field.options?.map((option) => {
+										const item =
+											typeof option === "string"
+												? { label: option, value: option }
+												: option;
+										return (
+											<option key={item.value} value={item.value}>
+												{item.label}
+											</option>
+										);
+									})}
+								</select>
+							) : field.type === "textarea" ? (
+								<textarea
+									id={id}
+									name={field.key}
+									value={stringValue}
+									required={field.required}
+									readOnly={field.readOnly}
+									aria-describedby={descriptionId}
+									minLength={field.minLength}
+									maxLength={field.maxLength}
+									placeholder={field.placeholder}
+									onChange={(event) => set(field.key, event.target.value)}
+									className={`${controlClass} min-h-28 py-2`}
+								/>
+							) : (
+								<input
+									id={id}
+									name={field.key}
+									type={field.type}
+									value={stringValue}
+									required={field.required}
+									readOnly={field.readOnly}
+									aria-describedby={descriptionId}
+									min={field.min}
+									max={field.max}
+									step={field.step}
+									minLength={field.minLength}
+									maxLength={field.maxLength}
+									placeholder={field.placeholder}
+									onChange={(event) =>
+										set(
+											field.key,
+											field.type === "number"
+												? event.target.value === ""
+													? ""
+													: event.target.valueAsNumber
+												: event.target.value,
+										)
+									}
+									className={controlClass}
+								/>
+							)}
 						</div>
 					);
-				}
-
-				const stringValue =
-					typeof value === "string" || typeof value === "number" ? value : "";
-				return (
-					<div key={field.key} className="space-y-2">
-						<label htmlFor={id} className="font-medium text-sm">
-							{field.label}
-							{field.required ? <span aria-hidden="true"> *</span> : null}
-						</label>
-						{field.description ? (
-							<p id={descriptionId} className="text-muted-foreground text-xs">
-								{field.description}
-							</p>
-						) : null}
-						{field.type === "select" || field.type === "multiselect" ? (
-							<select
-								id={id}
-								name={field.key}
-								value={
-									field.type === "multiselect" && Array.isArray(value)
-										? value
-										: stringValue
-								}
-								multiple={field.type === "multiselect"}
-								required={field.required}
-								disabled={field.readOnly}
-								aria-describedby={descriptionId}
-								onChange={(event) =>
-									set(
-										field.key,
-										field.type === "multiselect"
-											? [...event.target.selectedOptions].map(
-													(option) => option.value,
-												)
-											: event.target.value,
-									)
-								}
-								className={controlClass}
-							>
-								<option value="">Select an option</option>
-								{field.options?.map((option) => {
-									const item =
-										typeof option === "string"
-											? { label: option, value: option }
-											: option;
-									return (
-										<option key={item.value} value={item.value}>
-											{item.label}
-										</option>
-									);
-								})}
-							</select>
-						) : field.type === "textarea" ? (
-							<textarea
-								id={id}
-								name={field.key}
-								value={stringValue}
-								required={field.required}
-								readOnly={field.readOnly}
-								aria-describedby={descriptionId}
-								minLength={field.minLength}
-								maxLength={field.maxLength}
-								placeholder={field.placeholder}
-								onChange={(event) => set(field.key, event.target.value)}
-								className={`${controlClass} min-h-28 py-2`}
-							/>
-						) : (
-							<input
-								id={id}
-								name={field.key}
-								type={field.type}
-								value={stringValue}
-								required={field.required}
-								readOnly={field.readOnly}
-								aria-describedby={descriptionId}
-								min={field.min}
-								max={field.max}
-								step={field.step}
-								minLength={field.minLength}
-								maxLength={field.maxLength}
-								placeholder={field.placeholder}
-								onChange={(event) =>
-									set(
-										field.key,
-										field.type === "number"
-											? event.target.value === ""
-												? ""
-												: event.target.valueAsNumber
-											: event.target.value,
-									)
-								}
-								className={controlClass}
-							/>
-						)}
-					</div>
-				);
-			})}
+				})}
 			{error ? (
 				<p className="text-destructive text-sm" role="alert">
 					{error}

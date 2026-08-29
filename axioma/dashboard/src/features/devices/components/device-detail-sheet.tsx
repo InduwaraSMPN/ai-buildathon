@@ -36,6 +36,7 @@ export function DeviceDetailSheet({
 
 function DeviceDetail({ device }: { device: Device }) {
 	const commands = useQuery(deviceQueries.commands(device.id));
+	const inventory = useQuery(deviceQueries.inventory(device.id));
 	const online = Date.now() - device.lastSeenAt.getTime() <= 30_000;
 
 	return (
@@ -107,6 +108,43 @@ function DeviceDetail({ device }: { device: Device }) {
 						tabular
 					/>
 				</dl>
+
+				{inventory.isSuccess && (
+					<section
+						className="space-y-3"
+						aria-labelledby="device-inventory-heading"
+					>
+						<h2 id="device-inventory-heading" className="font-semibold text-sm">
+							Inventory
+						</h2>
+						<p className="text-muted-foreground text-xs">
+							Last reported:{" "}
+							{inventory.data.reportedAt?.toLocaleString() ?? "Never"}
+						</p>
+						<div className="grid gap-3 sm:grid-cols-2">
+							<div>
+								<h3 className="font-medium text-sm">Hardware</h3>
+								<p className="text-sm">
+									{inventory.data.hardware?.model ??
+										inventory.data.hardware?.manufacturer ??
+										"No hardware report"}
+								</p>
+							</div>
+							<div>
+								<h3 className="font-medium text-sm">Disks</h3>
+								<p className="text-sm">
+									{inventory.data.disks.length} reported
+								</p>
+							</div>
+						</div>
+						<div>
+							<h3 className="font-medium text-sm">Software</h3>
+							<p className="text-sm">
+								{inventory.data.software.length} installed applications
+							</p>
+						</div>
+					</section>
+				)}
 
 				<a
 					href={`/tickets/?deviceId=${encodeURIComponent(device.id)}`}

@@ -39,6 +39,7 @@ export const statusIncidents = pgTable(
 	},
 	(t) => [
 		index("status_incidents_service_time_idx").on(t.serviceId, t.startedAt),
+		index("status_incidents_impact_level_idx").on(t.impactLevel),
 	],
 );
 

@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
 	Table,
 	TableBody,
@@ -13,124 +16,346 @@ import {
 } from "@/components/ui/table";
 import { client } from "@/utils/orpc";
 
-const capabilities = [
-	"ticket.read.own",
-	"ticket.read.all",
-	"ticket.create",
-	"ticket.update",
-	"ticket.resolve",
-	"ticket.close",
-	"ticket.escalate",
-	"ticket.reclassify",
-	"ticket.assign",
-	"ticket.reopen",
-	"run.start",
-	"run.cancel",
-	"run.read",
-	"device.read",
-	"device.enroll",
-	"device.command",
-	"stats.read",
-	"problem.manage",
-	"change.manage",
-	"change.approve",
-	"knowledge.read",
-	"knowledge.manage",
-	"approval.read",
-	"approval.decide",
-	"catalogue.manage",
-	"admin.roles",
-	"admin.settings",
-] as const;
-
 type Role = Awaited<ReturnType<typeof client.listRoles>>[number];
-type Capability = (typeof capabilities)[number];
+type Capability = Role["capabilities"][number];
+type Team = Awaited<ReturnType<typeof client.listTeams>>[number];
 
 export function RolesPage() {
 	const queryClient = useQueryClient();
+	const [departmentName, setDepartmentName] = useState("");
+	const [teamName, setTeamName] = useState("");
 	const roles = useQuery({
 		queryKey: ["roles"],
 		queryFn: () => client.listRoles(),
 	});
-	const update = useMutation({
+	const capabilities = useQuery({
+		queryKey: ["capabilities"],
+		queryFn: () => client.listCapabilities(),
+	});
+	const people = useQuery({
+		queryKey: ["admin-people"],
+		queryFn: () => client.listPeople(),
+	});
+	const teams = useQuery({
+		queryKey: ["admin-teams"],
+		queryFn: () => client.listTeams(),
+	});
+	const departments = useQuery({
+		queryKey: ["admin-departments"],
+		queryFn: () => client.listDepartments(),
+	});
+	const refresh = () =>
+		Promise.all([
+			queryClient.invalidateQueries({ queryKey: ["admin-people"] }),
+			queryClient.invalidateQueries({ queryKey: ["admin-teams"] }),
+			queryClient.invalidateQueries({ queryKey: ["admin-departments"] }),
+		]);
+	const updateRole = useMutation({
 		mutationFn: (input: { roleId: string; capabilities: Capability[] }) =>
 			client.updateRoleCapabilities(input),
-		onSuccess: (role) => {
-			queryClient.setQueryData<Role[]>(["roles"], (current = []) =>
-				current.map((item) => (item.id === role.id ? role : item)),
-			);
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ["roles"] });
 			toast.success("Role updated");
 		},
 		onError: (error) => toast.error(error.message),
 	});
-	if (roles.isPending)
+	const assignRole = useMutation({
+		mutationFn: (input: Parameters<typeof client.assignRole>[0]) =>
+			client.assignRole(input),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ["admin-people"] });
+			void queryClient.invalidateQueries({ queryKey: ["admin-teams"] });
+		},
+		onError: (error) => toast.error(error.message),
+	});
+	const setKind = useMutation({
+		mutationFn: (input: Parameters<typeof client.setUserKind>[0]) =>
+			client.setUserKind(input),
+		onSuccess: () => {
+			void queryClient.invalidateQueries({ queryKey: ["admin-people"] });
+			toast.success("User kind updated");
+		},
+		onError: (error) => toast.error(error.message),
+	});
+	const createDepartment = useMutation({
+		mutationFn: () => client.createDepartment({ name: departmentName }),
+		onSuccess: () => {
+			setDepartmentName("");
+			void queryClient.invalidateQueries({ queryKey: ["admin-departments"] });
+		},
+		onError: (error) => toast.error(error.message),
+	});
+	const createTeam = useMutation({
+		mutationFn: () =>
+			client.createTeam({
+				name: teamName,
+				departmentId: null,
+				memberIds: [],
+				roleIds: [],
+			}),
+		onSuccess: () => {
+			setTeamName("");
+			void queryClient.invalidateQueries({ queryKey: ["admin-teams"] });
+		},
+		onError: (error) => toast.error(error.message),
+	});
+	const updateTeam = useMutation({
+		mutationFn: (team: Team) => client.updateTeam(team),
+		onSuccess: refresh,
+		onError: (error) => toast.error(error.message),
+	});
+	if (
+		[roles, capabilities, people, teams, departments].some(
+			(query) => query.isPending,
+		)
+	)
 		return (
-			<PageContainer title="Roles">
+			<PageContainer title="Identity administration">
 				<PageState
 					kind="loading"
-					title="Loading roles"
-					description="Retrieving capability grants…"
+					title="Loading identity settings"
+					description="Retrieving people, roles, teams and departments…"
 				/>
 			</PageContainer>
 		);
-	if (roles.isError)
+	const failed = [roles, capabilities, people, teams, departments].find(
+		(query) => query.isError,
+	);
+	if (failed?.error)
 		return (
-			<PageContainer title="Roles">
+			<PageContainer title="Identity administration">
 				<PageState
 					kind="error"
-					title="Roles unavailable"
-					description={roles.error.message}
-					onRetry={() => roles.refetch()}
+					title="Identity settings unavailable"
+					description={failed.error.message}
+					onRetry={() => location.reload()}
 				/>
 			</PageContainer>
 		);
+	const roleRows = roles.data ?? [];
+	const peopleRows = people.data ?? [];
+	const teamRows = teams.data ?? [];
+	const departmentRows = departments.data ?? [];
+	const capabilityRows = capabilities.data ?? [];
 	return (
 		<PageContainer
-			title="Roles"
-			description="Capabilities granted to each platform role."
+			title="Identity administration"
+			description="Manage access, people and organization structure."
 		>
-			<div className="rounded-xl border bg-card shadow-sm">
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead className="sticky left-0 bg-card">
-								Capability
-							</TableHead>
-							{roles.data.map((role) => (
-								<TableHead key={role.id}>{role.name}</TableHead>
-							))}
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{capabilities.map((capability) => (
-							<TableRow key={capability}>
-								<TableCell className="sticky left-0 bg-card font-mono">
-									{capability}
-								</TableCell>
-								{roles.data.map((role) => (
-									<TableCell key={role.id}>
-										<Checkbox
-											aria-label={`${capability} for ${role.name}`}
-											checked={role.capabilities.includes(capability)}
-											disabled={update.isPending}
-											onCheckedChange={(checked) =>
-												update.mutate({
-													roleId: role.id,
-													capabilities: checked
-														? [...role.capabilities, capability]
-														: role.capabilities.filter(
-																(item) => item !== capability,
-															),
-												})
-											}
-										/>
-									</TableCell>
+			<section className="space-y-3">
+				<h2 className="font-semibold">Role capabilities</h2>
+				<div className="overflow-auto border">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Capability</TableHead>
+								{roleRows.map((role) => (
+									<TableHead key={role.id}>{role.name}</TableHead>
 								))}
 							</TableRow>
-						))}
-					</TableBody>
-				</Table>
-			</div>
+						</TableHeader>
+						<TableBody>
+							{capabilityRows.map((capability) => (
+								<TableRow key={capability}>
+									<TableCell className="font-mono">{capability}</TableCell>
+									{roleRows.map((role) => (
+										<TableCell key={role.id}>
+											<Checkbox
+												aria-label={`${capability} for ${role.name}`}
+												checked={role.capabilities.includes(capability)}
+												disabled={updateRole.isPending}
+												onCheckedChange={(checked) =>
+													updateRole.mutate({
+														roleId: role.id,
+														capabilities: checked
+															? [...role.capabilities, capability]
+															: role.capabilities.filter(
+																	(item) => item !== capability,
+																),
+													})
+												}
+											/>
+										</TableCell>
+									))}
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</div>
+			</section>
+			<section className="space-y-3">
+				<h2 className="font-semibold">People</h2>
+				<div className="overflow-auto border">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Person</TableHead>
+								<TableHead>Kind</TableHead>
+								{roleRows.map((role) => (
+									<TableHead key={role.id}>{role.name}</TableHead>
+								))}
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{peopleRows.map((person) => (
+								<TableRow key={person.id}>
+									<TableCell>
+										{person.name}
+										<div className="text-muted-foreground text-xs">
+											{person.email}
+										</div>
+									</TableCell>
+									<TableCell>
+										<select
+											className="h-8 border bg-background px-2 text-xs"
+											value={person.kind}
+											onChange={(event) =>
+												setKind.mutate({
+													userId: person.id,
+													kind: event.target.value as "staff" | "reporter",
+												})
+											}
+										>
+											<option value="reporter">Reporter</option>
+											<option value="staff">Staff</option>
+										</select>
+									</TableCell>
+									{roleRows.map((role) => (
+										<TableCell key={role.id}>
+											<Checkbox
+												aria-label={`${role.name} for ${person.name}`}
+												checked={person.roleIds.includes(role.id)}
+												onCheckedChange={(assigned) =>
+													assignRole.mutate({
+														roleId: role.id,
+														targetType: "user",
+														targetId: person.id,
+														assigned: assigned === true,
+													})
+												}
+											/>
+										</TableCell>
+									))}
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</div>
+			</section>
+			<section className="space-y-3">
+				<h2 className="font-semibold">Departments</h2>
+				<form
+					className="flex gap-2"
+					onSubmit={(event) => {
+						event.preventDefault();
+						createDepartment.mutate();
+					}}
+				>
+					<Input
+						aria-label="Department name"
+						value={departmentName}
+						onChange={(event) => setDepartmentName(event.target.value)}
+						required
+					/>
+					<Button type="submit">Create department</Button>
+				</form>
+				<div className="text-sm">
+					{departmentRows.map((department) => department.name).join(", ") ||
+						"No departments"}
+				</div>
+			</section>
+			<section className="space-y-3">
+				<h2 className="font-semibold">Teams</h2>
+				<form
+					className="flex gap-2"
+					onSubmit={(event) => {
+						event.preventDefault();
+						createTeam.mutate();
+					}}
+				>
+					<Input
+						aria-label="Team name"
+						value={teamName}
+						onChange={(event) => setTeamName(event.target.value)}
+						required
+					/>
+					<Button type="submit">Create team</Button>
+				</form>
+				<div className="overflow-auto border">
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Team</TableHead>
+								<TableHead>Department</TableHead>
+								{peopleRows.map((person) => (
+									<TableHead key={person.id}>{person.name}</TableHead>
+								))}
+								{roleRows.map((role) => (
+									<TableHead key={role.id}>{role.name}</TableHead>
+								))}
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{teamRows.map((team) => (
+								<TableRow key={team.id}>
+									<TableCell>{team.name}</TableCell>
+									<TableCell>
+										<select
+											className="h-8 border bg-background px-2 text-xs"
+											value={team.departmentId ?? ""}
+											onChange={(event) =>
+												updateTeam.mutate({
+													...team,
+													departmentId: event.target.value || null,
+												})
+											}
+										>
+											<option value="">None</option>
+											{departmentRows.map((department) => (
+												<option key={department.id} value={department.id}>
+													{department.name}
+												</option>
+											))}
+										</select>
+									</TableCell>
+									{peopleRows.map((person) => (
+										<TableCell key={person.id}>
+											<Checkbox
+												aria-label={`${person.name} in ${team.name}`}
+												checked={team.memberIds.includes(person.id)}
+												onCheckedChange={(checked) =>
+													updateTeam.mutate({
+														...team,
+														memberIds: checked
+															? [...team.memberIds, person.id]
+															: team.memberIds.filter((id) => id !== person.id),
+													})
+												}
+											/>
+										</TableCell>
+									))}
+									{roleRows.map((role) => (
+										<TableCell key={role.id}>
+											<Checkbox
+												aria-label={`${role.name} for ${team.name}`}
+												checked={team.roleIds.includes(role.id)}
+												onCheckedChange={(checked) =>
+													updateTeam.mutate({
+														...team,
+														roleIds: checked
+															? [...team.roleIds, role.id]
+															: team.roleIds.filter((id) => id !== role.id),
+													})
+												}
+											/>
+										</TableCell>
+									))}
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
+				</div>
+			</section>
 		</PageContainer>
 	);
 }

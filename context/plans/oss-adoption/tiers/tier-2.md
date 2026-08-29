@@ -22,6 +22,10 @@ ticket system with an agent and becomes a service management system.
 > `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
 > against and is still current.
 
+## Lexical knowledge-search decision
+
+Tier 2 deliberately ships lexical PostgreSQL full-text search. The `embedding` column remains reserved for a future provider-backed migration; no embedding provider or vector index is introduced until its operational and privacy requirements are defined. The API reports `mode: lexical` so callers can distinguish this behavior.
+
 ## 1. Current state
 
 ### What exists

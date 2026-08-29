@@ -113,6 +113,41 @@
 			"when": 1787998000000,
 			"tag": "0015_ticket_update_capability",
 			"breakpoints": true
+		},
+		{
+			"idx": 16,
+			"version": "7",
+			"when": 1788015556502,
+			"tag": "0017_identity_admin",
+			"breakpoints": true
+		},
+		{
+			"idx": 17,
+			"version": "7",
+			"when": 1788016000000,
+			"tag": "0024_chat_c_tier2",
+			"breakpoints": true
+		},
+		{
+			"idx": 18,
+			"version": "7",
+			"when": 1788016083337,
+			"tag": "0018_foreign_key_indexes",
+			"breakpoints": true
+		},
+		{
+			"idx": 19,
+			"version": "7",
+			"when": 1787999000000,
+			"tag": "0032_chat_e_tier4",
+			"breakpoints": true
+		},
+		{
+			"idx": 20,
+			"version": "7",
+			"when": 1787999001000,
+			"tag": "0033_chat_e_templates",
+			"breakpoints": true
 		}
 	]
 }

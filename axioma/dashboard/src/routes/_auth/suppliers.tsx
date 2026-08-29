@@ -1,12 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
 import { SuppliersPage } from "@/features/suppliers/components";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/suppliers")({
 	component: SuppliersRoute,
-	beforeLoad: () => ({ breadcrumb: "Suppliers & contracts" }),
+	beforeLoad: ({ context }) => {
+		if (!context.capabilities.includes("admin.settings"))
+			throw redirect({ to: "/home" });
+		return { breadcrumb: "Suppliers & contracts" };
+	},
 	head: () => ({ meta: [{ title: "Suppliers & contracts · Axiōma" }] }),
 });
 

@@ -16,13 +16,16 @@ import { resolveContractSla } from "../contracts";
 import { elapsedWorkingMs } from "./calendar";
 import { transitionStopwatch } from "./stopwatch";
 
+type StopwatchDatabase = Pick<typeof db, "select" | "insert">;
+
 export async function attachTicketStopwatches(
 	ticketId: string,
 	priority: Priority,
 	at = new Date(),
+	database: StopwatchDatabase = db,
 ): Promise<void> {
 	const service = (
-		await db
+		await database
 			.select({ id: services.id, slaId: services.slaId, olaId: services.olaId })
 			.from(tickets)
 			.innerJoin(services, eq(tickets.serviceId, services.id))
@@ -30,7 +33,7 @@ export async function attachTicketStopwatches(
 			.limit(1)
 	)[0];
 	const coverage = service
-		? await db
+		? await database
 				.select({
 					contractId: contracts.id,
 					serviceId: contracts.serviceId,
@@ -62,14 +65,14 @@ export async function attachTicketStopwatches(
 			policyType === "sla" ? (contractSlaId ?? service?.slaId) : service?.olaId;
 		const servicePolicy = servicePolicyId
 			? (
-					await db
+					await database
 						.select()
 						.from(table)
 						.where(eq(table.id, servicePolicyId))
 						.limit(1)
 				)[0]
 			: undefined;
-		const candidates = await db
+		const candidates = await database
 			.select()
 			.from(table)
 			.where(or(eq(table.priority, priority), eq(table.isDefault, true)));
@@ -78,7 +81,7 @@ export async function attachTicketStopwatches(
 			candidates.find((candidate) => candidate.priority === priority) ??
 			candidates.find((candidate) => candidate.isDefault);
 		if (!policy) continue;
-		await db
+		await database
 			.insert(ticketStopwatches)
 			.values(
 				(["response", "resolution"] as const).map((targetType) => ({

@@ -124,15 +124,17 @@ export function TicketQueue({
 		const ticket = tickets[selected];
 		if (!ticket || !allowedActions(ticket, capabilities).includes(action))
 			return;
-		const note = window
-			.prompt(action === "escalate" ? "Escalation reason" : "Resolution note")
-			?.trim();
-		if (!note) return;
-		onShortcutAction(
-			action === "escalate"
-				? { id: ticket.id, action, note, route: "human_triage" }
-				: { id: ticket.id, action, resolution: note, resolutionCode: "fixed" },
-		);
+		if (action === "resolve") {
+			void navigate({
+				to: "/tickets/$ticketId",
+				params: { ticketId: ticket.id },
+				hash: "operator-resolve",
+			});
+			return;
+		}
+		const note = window.prompt("Escalation reason")?.trim();
+		if (note)
+			onShortcutAction({ id: ticket.id, action, note, route: "human_triage" });
 	};
 	const shortcuts = useKeyboardShortcuts({
 		search: () => searchRef.current?.focus(),

@@ -41,5 +41,6 @@ export const ticketStatusTransitions = pgTable(
 			t.fromStatus,
 			t.action,
 		),
+		index("ticket_status_transitions_to_status_idx").on(t.toStatus),
 	],
 );

@@ -55,11 +55,14 @@ test("an existing ticket thread becomes a public case-log append", () => {
 });
 
 test("normalizes identifiers used by the persistence dedupe boundary", () => {
-	const plan = planThreadIngestion({
-		...incoming,
-		externalThreadId: " thread-1 ",
-		externalMessageId: " message-1 ",
-	}, null);
+	const plan = planThreadIngestion(
+		{
+			...incoming,
+			externalThreadId: " thread-1 ",
+			externalMessageId: " message-1 ",
+		},
+		null,
+	);
 	assert.equal(plan.deduplicationKey, "customer-chat-eu:thread-1:message-1");
 });
 

@@ -91,4 +91,45 @@ export const cmdbContract = {
 	unlinkTicketCmdbObject: oc
 		.input(z.object({ ticketId: z.string(), objectId: z.string() }))
 		.output(z.object({ deleted: z.boolean() })),
+	listCmdbRelationshipTypes: oc.output(
+		z.array(
+			z.object({
+				id: z.string(),
+				key: z.string(),
+				verb: z.string(),
+				inverseVerb: z.string(),
+				impactDirection: z.enum(["forward", "reverse", "both", "none"]),
+			}),
+		),
+	),
+	createCmdbRelationshipType: oc
+		.input(
+			z.object({
+				key: z.string().min(1),
+				verb: z.string().min(1),
+				inverseVerb: z.string().min(1),
+				impactDirection: z
+					.enum(["forward", "reverse", "both", "none"])
+					.default("none"),
+			}),
+		)
+		.output(
+			z.object({
+				id: z.string(),
+				key: z.string(),
+				verb: z.string(),
+				inverseVerb: z.string(),
+				impactDirection: z.enum(["forward", "reverse", "both", "none"]),
+			}),
+		),
+	createCmdbObjectRelationship: oc
+		.input(
+			z.object({
+				typeId: z.string(),
+				sourceObjectId: z.string(),
+				targetObjectId: z.string(),
+				propertyId: z.string().nullable().optional(),
+			}),
+		)
+		.output(z.object({ ok: z.literal(true), relationship: z.unknown() })),
 };

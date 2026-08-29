@@ -76,6 +76,7 @@ export const knowledgeArticles = pgTable(
 	},
 	(t) => [
 		index("knowledge_articles_folder_idx").on(t.folderId),
+		index("knowledge_articles_author_id_idx").on(t.authorId),
 		index("knowledge_articles_publication_idx").on(
 			t.status,
 			t.audience,
@@ -110,6 +111,7 @@ export const knowledgeArticleVersions = pgTable(
 			t.articleId,
 			t.version,
 		),
+		index("knowledge_article_versions_author_id_idx").on(t.authorId),
 	],
 );
 
@@ -128,7 +130,10 @@ export const knowledgeArticleTags = pgTable(
 			.notNull()
 			.references(() => knowledgeTags.id, { onDelete: "cascade" }),
 	},
-	(t) => [primaryKey({ columns: [t.articleId, t.tagId] })],
+	(t) => [
+		primaryKey({ columns: [t.articleId, t.tagId] }),
+		index("knowledge_article_tags_tag_id_idx").on(t.tagId),
+	],
 );
 
 /** Restricted article/folder grants. `principalId` names a user, team, or role. */
@@ -187,7 +192,10 @@ export const knowledgeGapClusters = pgTable(
 			.$onUpdate(() => new Date())
 			.notNull(),
 	},
-	(t) => [index("knowledge_gap_clusters_status_idx").on(t.status, t.createdAt)],
+	(t) => [
+		index("knowledge_gap_clusters_status_idx").on(t.status, t.createdAt),
+		index("knowledge_gap_clusters_article_id_idx").on(t.articleId),
+	],
 );
 
 export const knowledgeGapTickets = pgTable(

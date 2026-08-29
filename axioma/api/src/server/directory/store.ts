@@ -9,6 +9,8 @@ import {
 	teams,
 	user,
 } from "@/db/schema";
+import { roleGrants, roles, userRoles } from "@/db/schema/rbac";
+import { assertAdministratorRemains } from "@/server/authorization";
 import type {
 	CurrentDirectoryPerson,
 	DirectoryPerson,
@@ -44,6 +46,7 @@ export class DatabaseDirectorySyncStore implements DirectorySyncStore {
 			managerExternalId: person.managerId
 				? (externalIdByUser.get(person.managerId) ?? null)
 				: null,
+			kind: person.kind,
 			leaver: identity.leaver,
 		}));
 	}
@@ -91,7 +94,7 @@ export class DatabaseDirectorySyncStore implements DirectorySyncStore {
 						email: change.person.email,
 						name: change.person.name,
 						jobTitle: change.person.jobTitle,
-						kind: "reporter",
+						kind: change.person.kind,
 					});
 				else
 					await tx
@@ -100,6 +103,7 @@ export class DatabaseDirectorySyncStore implements DirectorySyncStore {
 							email: change.person.email,
 							name: change.person.name,
 							jobTitle: change.person.jobTitle,
+							kind: change.person.kind,
 							updatedAt: now,
 						})
 						.where(eq(user.id, userId));
@@ -127,8 +131,10 @@ export class DatabaseDirectorySyncStore implements DirectorySyncStore {
 						},
 					});
 				await this.applyDepartment(tx, userId, change.person);
+				await this.applyDefaultRole(tx, userId, change.person.kind);
 			}
 			await this.applyManagers(tx, plan);
+			await assertAdministratorRemains(tx);
 			await tx.insert(directorySyncRuns).values({
 				id: crypto.randomUUID(),
 				providerId: this.providerId,
@@ -192,6 +198,34 @@ export class DatabaseDirectorySyncStore implements DirectorySyncStore {
 				.insert(teamMembers)
 				.values({ teamId: team.id, userId })
 				.onConflictDoNothing();
+	}
+
+	private async applyDefaultRole(
+		tx: Transaction,
+		userId: string,
+		kind: "staff" | "reporter",
+	) {
+		const roleName = kind === "staff" ? "IT Analyst" : "Employee";
+		const [role] = await tx
+			.select({ id: roles.id })
+			.from(roles)
+			.where(eq(roles.name, roleName))
+			.limit(1);
+		if (!role) throw new Error(`Seeded ${roleName} role is missing`);
+		const inserted = await tx
+			.insert(userRoles)
+			.values({ userId, roleId: role.id })
+			.onConflictDoNothing()
+			.returning({ userId: userRoles.userId });
+		if (inserted[0])
+			await tx.insert(roleGrants).values({
+				id: crypto.randomUUID(),
+				action: "grant",
+				roleId: role.id,
+				roleName,
+				targetType: "user",
+				targetId: userId,
+			});
 	}
 
 	private async applyManagers(tx: Transaction, plan: DirectorySyncPlan) {

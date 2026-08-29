@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
@@ -11,7 +11,11 @@ import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/mail-templates")({
 	component: MailTemplates,
-	beforeLoad: () => ({ breadcrumb: "Mail templates" }),
+	beforeLoad: ({ context }) => {
+		if (!context.capabilities.includes("admin.settings"))
+			throw redirect({ to: "/home" });
+		return { breadcrumb: "Mail templates" };
+	},
 	head: () => ({ meta: [{ title: "Mail templates · Axiōma" }] }),
 });
 

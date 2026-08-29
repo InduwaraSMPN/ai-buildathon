@@ -154,6 +154,14 @@ export function OverviewPage() {
 						))}
 					</ul>
 				</ChartCard>
+				<ChartCard title="CSAT" description="Reporter satisfaction">
+					<div className="font-semibold text-3xl">
+						{stats.csat.average?.toFixed(1) ?? "—"}
+					</div>
+					<p className="text-muted-foreground text-sm">
+						Average rating from {stats.csat.responses} responses
+					</p>
+				</ChartCard>
 				<ChartCard
 					title="Ticket volume"
 					description={`Daily intake · last ${DAYS} days`}

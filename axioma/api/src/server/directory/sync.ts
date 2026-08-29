@@ -7,6 +7,7 @@ export type DirectoryPerson = {
 	jobTitle: string | null;
 	department: string | null;
 	managerExternalId: string | null;
+	kind: "staff" | "reporter";
 };
 
 export type CurrentDirectoryPerson = DirectoryPerson & {
@@ -52,7 +53,8 @@ const samePerson = (left: DirectoryPerson, right: DirectoryPerson) =>
 	left.name === right.name &&
 	left.jobTitle === right.jobTitle &&
 	left.department === right.department &&
-	left.managerExternalId === right.managerExternalId;
+	left.managerExternalId === right.managerExternalId &&
+	left.kind === right.kind;
 
 export function calculateDirectorySync(
 	current: CurrentDirectoryPerson[],

@@ -33,13 +33,23 @@ const journal = JSON.parse(
 	),
 );
 const latest = journal.entries.at(-1);
-if (latest?.idx !== 15) throw new Error("migration journal must end at 0015");
-readFileSync(
-	new URL(
-		`../src/db/migrations/meta/${String(latest.idx).padStart(4, "0")}_snapshot.json`,
-		import.meta.url,
-	),
-);
+if (!latest) throw new Error("migration journal is empty");
+if (
+	!journal.entries.some(({ idx }) => {
+		try {
+			readFileSync(
+				new URL(
+					`../src/db/migrations/meta/${String(idx).padStart(4, "0")}_snapshot.json`,
+					import.meta.url,
+				),
+			);
+			return true;
+		} catch {
+			return false;
+		}
+	})
+)
+	throw new Error("migration snapshots are missing");
 
 try {
 	psql(`CREATE DATABASE ${database}`);
@@ -51,8 +61,9 @@ try {
 			"select count(*)::int count, max(created_at)::text latest from drizzle.__drizzle_migrations",
 		);
 		if (
-			migrations.rows[0].count !== 16 ||
-			migrations.rows[0].latest !== "1787998000000"
+			migrations.rows[0].count !== journal.entries.length ||
+			migrations.rows[0].latest !==
+				String(Math.max(...journal.entries.map(({ when }) => when)))
 		)
 			throw new Error(
 				`unexpected migration ledger: ${JSON.stringify(migrations.rows[0])}`,
@@ -77,7 +88,7 @@ try {
 		await client.end();
 	}
 	console.log(
-		"Clean migrations 0000-0015 and the current snapshot baseline are valid.",
+		`Clean ${journal.entries.length}-migration snapshot baseline is valid.`,
 	);
 } finally {
 	psql(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);

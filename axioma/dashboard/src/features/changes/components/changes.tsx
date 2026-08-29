@@ -1,5 +1,6 @@
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -33,6 +34,11 @@ export type ChangeDetail = ChangeSummary & {
 	reasonForChange: string | null;
 	testPlan: string | null;
 	rollbackPlan: string | null;
+	pirWasSuccessful: boolean | null;
+	pirActualStartAt: Date | string | null;
+	pirActualEndAt: Date | string | null;
+	pirLessonsLearned: string | null;
+	pirFollowUp: string | null;
 	cabRequired: boolean;
 	ticketIds: string[];
 	cabMembers: {
@@ -60,10 +66,31 @@ export function ChangesPage({
 	);
 }
 
-export function ChangeDetailPage({ change }: { change: ChangeDetail }) {
+export function ChangeDetailPage({
+	change,
+	onVote,
+	onUpdate,
+	pending,
+}: {
+	change: ChangeDetail;
+	onVote?: (vote: "approve" | "reject" | "abstain") => void;
+	onUpdate?: (value: {
+		pirWasSuccessful?: boolean;
+		pirActualStartAt?: Date;
+		pirActualEndAt?: Date;
+		pirLessonsLearned?: string;
+		pirFollowUp?: string;
+	}) => void;
+	pending?: boolean;
+}) {
 	return (
 		<PageContainer title={change.changeNumber} description={change.title}>
-			<ChangeDetailView change={change} />
+			<ChangeDetailView
+				change={change}
+				onVote={onVote}
+				onUpdate={onUpdate}
+				pending={pending}
+			/>
 		</PageContainer>
 	);
 }
@@ -134,7 +161,23 @@ export function ChangeList({
 	);
 }
 
-export function ChangeDetailView({ change }: { change: ChangeDetail }) {
+export function ChangeDetailView({
+	change,
+	onVote,
+	onUpdate,
+	pending,
+}: {
+	change: ChangeDetail;
+	onVote?: (vote: "approve" | "reject" | "abstain") => void;
+	onUpdate?: (value: {
+		pirWasSuccessful?: boolean;
+		pirActualStartAt?: Date;
+		pirActualEndAt?: Date;
+		pirLessonsLearned?: string;
+		pirFollowUp?: string;
+	}) => void;
+	pending?: boolean;
+}) {
 	return (
 		<div className="grid gap-4 lg:grid-cols-3">
 			<Card className="lg:col-span-2">
@@ -150,6 +193,103 @@ export function ChangeDetailView({ change }: { change: ChangeDetail }) {
 					<Section title="Reason for change" value={change.reasonForChange} />
 					<Section title="Test plan" value={change.testPlan} />
 					<Section title="Rollback plan" value={change.rollbackPlan} />
+					<Section
+						title="PIR outcome"
+						value={
+							change.pirWasSuccessful === null
+								? null
+								: change.pirWasSuccessful
+									? "Successful"
+									: "Unsuccessful"
+						}
+					/>
+					<Section
+						title="PIR actual start"
+						value={
+							change.pirActualStartAt
+								? new Date(change.pirActualStartAt).toLocaleString()
+								: null
+						}
+					/>
+					<Section
+						title="PIR actual end"
+						value={
+							change.pirActualEndAt
+								? new Date(change.pirActualEndAt).toLocaleString()
+								: null
+						}
+					/>
+					<Section
+						title="PIR lessons learned"
+						value={change.pirLessonsLearned}
+					/>
+					<Section title="PIR follow-up" value={change.pirFollowUp} />
+					{onUpdate ? (
+						<form
+							className="space-y-2"
+							onSubmit={(event) => {
+								event.preventDefault();
+								const data = new FormData(event.currentTarget);
+								onUpdate({
+									pirWasSuccessful: data.get("successful") === "true",
+									pirActualStartAt: data.get("start")
+										? new Date(String(data.get("start")))
+										: undefined,
+									pirActualEndAt: data.get("end")
+										? new Date(String(data.get("end")))
+										: undefined,
+									pirLessonsLearned: String(data.get("lessons")),
+									pirFollowUp: String(data.get("followUp")),
+								});
+							}}
+						>
+							<select
+								name="successful"
+								defaultValue={
+									change.pirWasSuccessful === false ? "false" : "true"
+								}
+								className="h-8 border bg-background px-2"
+							>
+								<option value="true">Successful</option>
+								<option value="false">Unsuccessful</option>
+							</select>
+							<input
+								name="start"
+								type="datetime-local"
+								defaultValue={
+									change.pirActualStartAt
+										? new Date(change.pirActualStartAt)
+												.toISOString()
+												.slice(0, 16)
+										: ""
+								}
+								className="h-8 border px-2"
+							/>
+							<input
+								name="end"
+								type="datetime-local"
+								defaultValue={
+									change.pirActualEndAt
+										? new Date(change.pirActualEndAt).toISOString().slice(0, 16)
+										: ""
+								}
+								className="h-8 border px-2"
+							/>
+							<textarea
+								name="lessons"
+								defaultValue={change.pirLessonsLearned ?? ""}
+								placeholder="Lessons learned"
+								className="w-full border p-2"
+							/>
+							<textarea
+								name="followUp"
+								defaultValue={change.pirFollowUp ?? ""}
+								placeholder="Follow-up"
+								className="w-full border p-2"
+							/>
+							<Button disabled={pending}>Save PIR</Button>
+						</form>
+					) : null}
 				</CardContent>
 			</Card>
 			<Card>
@@ -177,6 +317,15 @@ export function ChangeDetailView({ change }: { change: ChangeDetail }) {
 									>
 										{member.vote ?? "pending"}
 									</Badge>
+									{onVote && !member.vote ? (
+										<Button
+											size="sm"
+											disabled={pending}
+											onClick={() => onVote("approve")}
+										>
+											Approve
+										</Button>
+									) : null}
 								</li>
 							))}
 						</ul>

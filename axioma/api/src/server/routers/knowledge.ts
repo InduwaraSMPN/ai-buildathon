@@ -1,5 +1,5 @@
 import { ORPCError } from "@orpc/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { knowledgeArticles, knowledgeArticleVersions } from "@/db/schema";
 import { capabilityProcedure, reporterProcedure } from "../orpc";
@@ -18,6 +18,9 @@ const publicArticleSelection = {
 	publishedAt: knowledgeArticles.publishedAt,
 	updatedAt: knowledgeArticles.updatedAt,
 };
+
+const aclVisible = (userId: string) =>
+	sql`(${knowledgeArticles.isRestricted} = false OR EXISTS (SELECT 1 FROM knowledge_acl acl WHERE acl.article_id = ${knowledgeArticles.id} AND acl.principal_type = 'user' AND acl.principal_id = ${userId} AND acl.permission IN ('read', 'edit', 'manage')))`;
 
 const articleSelection = {
 	id: knowledgeArticles.id,
@@ -38,21 +41,24 @@ const articleSelection = {
 export const knowledgeRouter = {
 	listKnowledgeArticles: capabilityProcedure(
 		"knowledge.read",
-	).listKnowledgeArticles.handler(() =>
+	).listKnowledgeArticles.handler(({ context }) =>
 		db
 			.select(articleSelection)
 			.from(knowledgeArticles)
+			.where(aclVisible(context.userId))
 			.orderBy(desc(knowledgeArticles.updatedAt)),
 	),
 	getKnowledgeArticle: capabilityProcedure(
 		"knowledge.read",
 	).getKnowledgeArticle.handler(
-		async ({ input }) =>
+		async ({ context, input }) =>
 			(
 				await db
 					.select(articleSelection)
 					.from(knowledgeArticles)
-					.where(eq(knowledgeArticles.id, input.id))
+					.where(
+						and(eq(knowledgeArticles.id, input.id), aclVisible(context.userId)),
+					)
 					.limit(1)
 			)[0] ?? null,
 	),

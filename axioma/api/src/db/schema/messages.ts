@@ -20,5 +20,8 @@ export const ticketMessages = pgTable(
 			.default("public"),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
-	(t) => [index("ticket_messages_ticket_idx").on(t.ticketId, t.createdAt)],
+	(t) => [
+		index("ticket_messages_ticket_idx").on(t.ticketId, t.createdAt),
+		index("ticket_messages_author_id_idx").on(t.authorId),
+	],
 );

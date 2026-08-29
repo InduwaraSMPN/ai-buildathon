@@ -1,5 +1,8 @@
 export const statusCopy = {
 	title: "Service status",
+	loading: "Loading service status…",
+	unavailable: "Service status is unavailable",
+	unavailableDescription: "Try again shortly to view the latest availability.",
 	summary: "See how our services have been running recently.",
 	operational: "Available",
 	disrupted: "Some disruption",

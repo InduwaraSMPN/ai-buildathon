@@ -13,6 +13,16 @@ export const env = createEnv({
 		AXIOMA_MAIL_INBOUND_TOKEN: z.string().min(16).optional(),
 		AXIOMA_DIRECTORY_SOURCE_URL: z.url().optional(),
 		AXIOMA_DIRECTORY_SOURCE_TOKEN: z.string().optional(),
+		AXIOMA_DIRECTORY_STAFF_ATTRIBUTE: z
+			.enum(["department", "jobTitle"])
+			.default("department"),
+		AXIOMA_DIRECTORY_STAFF_VALUE: z.string().default("IT"),
+		AXIOMA_BOOTSTRAP_ADMIN_EMAIL: z
+			.string()
+			.trim()
+			.toLowerCase()
+			.pipe(z.email())
+			.optional(),
 		CORS_ORIGIN: z.string().min(1),
 		KUBECONFIG: z.string().optional(),
 		AXIOMA_K8S_CONTEXT: z.string().optional(),

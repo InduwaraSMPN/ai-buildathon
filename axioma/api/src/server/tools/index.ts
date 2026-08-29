@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
-import { changes, tickets } from "@/db/schema";
+import { changes, changeTransitions, tickets } from "@/db/schema";
 import { patchImageWithChange } from "./change";
 import {
 	patchImageInput,
@@ -22,6 +22,7 @@ import {
 	deviceReadInput,
 } from "./device";
 import { knowledgeSearch, knowledgeSearchInput } from "./knowledge";
+import { ticketReadMessages, ticketReadMessagesInput } from "./messages";
 
 export type ToolContext = {
 	runId: string;
@@ -49,6 +50,10 @@ const pendingVerification = new Map<
 
 export const tools: Record<string, ToolHandler> = {
 	knowledge_search: { input: knowledgeSearchInput, run: knowledgeSearch },
+	ticket_read_messages: {
+		input: ticketReadMessagesInput,
+		run: ticketReadMessages,
+	},
 	cluster_read_pods: { input: readPodsInput, run: readPods },
 	cluster_read_deployment: {
 		input: readDeploymentInput,
@@ -104,19 +109,32 @@ export async function executeTool(
 	});
 	if (verifies) {
 		pendingVerification.delete(ctx.runId);
-		if (pending?.changeId) {
+		const changeId = pending?.changeId;
+		if (changeId) {
 			const completedAt = new Date();
-			await db
-				.update(changes)
-				.set({
-					status: "completed",
-					workEndAt: completedAt,
-					pirWasSuccessful: true,
-					pirActualEndAt: completedAt,
-					pirReview: JSON.stringify(output),
-					pirLessonsLearned: "Explicit post-change verification succeeded.",
-				})
-				.where(eq(changes.id, pending.changeId));
+			await db.transaction(async (tx) => {
+				await tx
+					.update(changes)
+					.set({
+						status: "completed",
+						workEndAt: completedAt,
+						pirWasSuccessful: true,
+						pirActualEndAt: completedAt,
+						pirReview: JSON.stringify(output),
+						pirLessonsLearned: "Explicit post-change verification succeeded.",
+					})
+					.where(eq(changes.id, changeId));
+				await tx.insert(changeTransitions).values({
+					id: crypto.randomUUID(),
+					changeId,
+					fromStatus: "in_progress",
+					toStatus: "completed",
+					actorType: "agent",
+					actorId: ctx.runId,
+					runId: ctx.runId,
+					stepId: ctx.stepId,
+				});
+			});
 		}
 	}
 	if (handler.verifiedBy) {

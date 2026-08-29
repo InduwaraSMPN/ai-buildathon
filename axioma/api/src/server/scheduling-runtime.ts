@@ -6,6 +6,10 @@ import {
 	tickets,
 } from "@/db/schema";
 import { dueRecurrenceOccurrences } from "./scheduling";
+import {
+	createTicketInTransaction,
+	finalizeCreatedTicket,
+} from "./tickets/create";
 
 export async function generateDueRecurrences(now = new Date(), limit = 100) {
 	const rules = await db
@@ -46,9 +50,8 @@ export async function generateDueRecurrences(now = new Date(), limit = 100) {
 					throw new Error(
 						`Recurring source ticket not found: ${rule.sourceTicketId}`,
 					);
-				const generatedTicketId = crypto.randomUUID();
-				await tx.insert(tickets).values({
-					id: generatedTicketId,
+				const generated = await createTicketInTransaction(tx, {
+					source: "recurrence",
 					reporterId: source.reporterId,
 					deviceId: source.deviceId,
 					title: source.title,
@@ -56,24 +59,22 @@ export async function generateDueRecurrences(now = new Date(), limit = 100) {
 					recordType: source.recordType,
 					impact: source.impact,
 					urgency: source.urgency,
-					priority: source.priority,
 					serviceId: source.serviceId,
 					serviceSubcategoryId: source.serviceSubcategoryId,
-					category: source.category,
-					subcategory: source.subcategory,
-					status: "open",
-					route: source.route,
-					assigneeId: source.assigneeId,
-					ownerId: source.ownerId,
-					teamId: source.teamId,
 				});
+				const generatedTicketId = generated.ticketId;
 				await tx
 					.update(recurringTicketOccurrences)
 					.set({ generatedTicketId })
 					.where(eq(recurringTicketOccurrences.id, claimed.id));
-				return true;
+				return { generated, reporterId: source.reporterId };
 			});
-			generated ? created++ : skipped++;
+			if (generated !== false) {
+				await finalizeCreatedTicket(generated.generated, {
+					reporterId: generated.reporterId,
+				});
+				created++;
+			} else skipped++;
 		}
 	}
 	return { created, skipped };

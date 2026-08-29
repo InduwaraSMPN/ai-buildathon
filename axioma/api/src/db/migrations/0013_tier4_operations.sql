@@ -1,6 +1,7 @@
 BEGIN;
 
 -- Tier 4 mail and templates.
+-- Origin vocabulary is seeded below before mailbox/thread foreign keys are used.
 CREATE TABLE IF NOT EXISTS "mailboxes" (
   "id" text PRIMARY KEY, "address" text NOT NULL UNIQUE, "name" text NOT NULL,
   "ticket_origin" text NOT NULL, "enabled" boolean DEFAULT true NOT NULL,

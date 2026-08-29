@@ -3,7 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createDb } from "@/db";
 import * as schema from "@/db/schema/auth";
 import { env } from "@/env";
-import { assignDefaultReporterRole } from "@/server/authorization";
+import { assignDefaultRole } from "@/server/authorization";
 import { type OidcProvider, oidcAuthOptions } from "./oidc";
 import {
 	aesGcmProviderSecretLoader,
@@ -34,7 +34,7 @@ export function createAuth(providers: readonly OidcProvider[] = []) {
 			user: {
 				create: {
 					after: async (created) =>
-						assignDefaultReporterRole(
+						assignDefaultRole(
 							created.id,
 							created.kind === "staff" ? "staff" : "reporter",
 						),

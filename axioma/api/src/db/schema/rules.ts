@@ -50,5 +50,8 @@ export const ticketRuleFirings = pgTable(
 		result: jsonb("result").$type<RuleFiring>().notNull(),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
-	(t) => [index("ticket_rule_firings_ticket_idx").on(t.ticketId, t.createdAt)],
+	(t) => [
+		index("ticket_rule_firings_ticket_idx").on(t.ticketId, t.createdAt),
+		index("ticket_rule_firings_rule_id_idx").on(t.ruleId),
+	],
 );

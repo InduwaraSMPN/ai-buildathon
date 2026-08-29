@@ -17,13 +17,11 @@ import { navigation } from "./app-sidebar";
 
 const labels: Record<string, string> = {
 	ticket: "Tickets",
-	device: "Devices",
-	cmdb_item: "CMDB",
+	problem: "Problems",
+	change: "Changes",
 	knowledge_article: "Knowledge",
-	service: "Services",
-	service_family: "Service families",
-	form: "Forms",
-	approval: "Approvals",
+	cmdb_object: "CMDB",
+	asset: "Assets",
 };
 
 export function CommandMenu({

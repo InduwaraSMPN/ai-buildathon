@@ -18,13 +18,13 @@ function PublicStatusPage() {
 					role="status"
 					className="rounded-xl border p-8 text-center text-muted-foreground"
 				>
-					Loading service status…
+					{statusCopy.loading}
 				</p>
 			) : query.isError ? (
 				<div role="alert" className="rounded-xl border p-8 text-center">
-					<p className="font-medium">Service status is unavailable</p>
+					<p className="font-medium">{statusCopy.unavailable}</p>
 					<p className="mt-1 text-muted-foreground text-sm">
-						{query.error.message}
+						{statusCopy.unavailableDescription}
 					</p>
 					<button
 						type="button"

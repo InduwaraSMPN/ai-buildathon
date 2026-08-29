@@ -7,7 +7,7 @@ import {
 	timestamp,
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
-
+import { ticketOrigins } from "./channels";
 import { tickets } from "./tickets";
 
 export const INBOUND_EMAIL_STATUSES = [
@@ -31,7 +31,9 @@ export const mailboxes = pgTable("mailboxes", {
 	id: text("id").primaryKey(),
 	address: text("address").notNull().unique(),
 	name: text("name").notNull(),
-	ticketOrigin: text("ticket_origin").notNull(),
+	ticketOrigin: text("ticket_origin")
+		.notNull()
+		.references(() => ticketOrigins.key, { onDelete: "restrict" }),
 	enabled: boolean("enabled").notNull().default(true),
 	createdAt: timestamp("created_at").defaultNow().notNull(),
 	updatedAt: timestamp("updated_at")
@@ -113,7 +115,11 @@ export const mailboxActivityLog = pgTable(
 		details: jsonb("details").$type<Record<string, unknown>>(),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
-	(t) => [index("mailbox_activity_mailbox_idx").on(t.mailboxId, t.createdAt)],
+	(t) => [
+		index("mailbox_activity_mailbox_idx").on(t.mailboxId, t.createdAt),
+		index("mailbox_activity_log_inbound_email_id_idx").on(t.inboundEmailId),
+		index("mailbox_activity_log_ticket_id_idx").on(t.ticketId),
+	],
 );
 
 /** Isolated ticket provenance avoids modifying the concurrently-owned tickets table. */
@@ -126,13 +132,18 @@ export const ticketMailOrigins = pgTable(
 		mailboxId: text("mailbox_id")
 			.notNull()
 			.references(() => mailboxes.id, { onDelete: "restrict" }),
-		ticketOrigin: text("ticket_origin").notNull(),
+		ticketOrigin: text("ticket_origin")
+			.notNull()
+			.references(() => ticketOrigins.key, { onDelete: "restrict" }),
 		inboundEmailId: text("inbound_email_id")
 			.notNull()
 			.references(() => inboundEmails.id, { onDelete: "restrict" }),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
-	(t) => [index("ticket_mail_origins_mailbox_idx").on(t.mailboxId)],
+	(t) => [
+		index("ticket_mail_origins_mailbox_idx").on(t.mailboxId),
+		index("ticket_mail_origins_inbound_email_id_idx").on(t.inboundEmailId),
+	],
 );
 
 /** One row per provider call, whether it returned or threw. */

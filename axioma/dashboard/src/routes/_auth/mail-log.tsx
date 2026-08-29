@@ -12,9 +12,12 @@ export const Route = createFileRoute("/_auth/mail-log")({
 
 function MailLogRoute() {
 	const query = useQuery(
+		orpc.listMailboxActivity.queryOptions({ input: { limit: 50 } }),
+	);
+	const sendQuery = useQuery(
 		orpc.listEmailSendLog.queryOptions({ input: { limit: 50 } }),
 	);
-	if (query.isPending)
+	if (query.isPending || sendQuery.isPending)
 		return (
 			<PageState
 				kind="loading"
@@ -22,14 +25,16 @@ function MailLogRoute() {
 				description="Retrieving delivery attempts…"
 			/>
 		);
-	if (query.isError)
+	if (query.isError || sendQuery.isError) {
+		const failed = query.isError ? query : sendQuery;
 		return (
 			<PageState
 				kind="error"
 				title="Mail log unavailable"
-				description={query.error.message}
-				onRetry={() => query.refetch()}
+				description={failed.error?.message ?? "Try again shortly."}
+				onRetry={() => void failed.refetch()}
 			/>
 		);
-	return <MailLogPage entries={query.data} />;
+	}
+	return <MailLogPage entries={sendQuery.data} activity={query.data} />;
 }

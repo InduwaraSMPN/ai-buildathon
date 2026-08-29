@@ -35,9 +35,7 @@ async def test_unknown_invalid_and_malformed_decisions_recover() -> None:
     ctx, bus, recorder = context(
         model, FakeToolBus({"cluster_read_pods": [{"pods": []}, {"pods": []}, {"pods": []}]})
     )
-
     result = await run(ctx)
-
     assert result.status is RunStatus.RESOLVED
     assert result.resolution_code == "fixed"
     assert [name for name, _ in bus.calls] == ["knowledge_search", *(["cluster_read_pods"] * 3)]
@@ -59,19 +57,14 @@ async def test_explicit_duplicate_resolution_is_coded() -> None:
             [Decision(kind="resolved", reasoning="Same incident.", resolution="Duplicate ticket.")]
         )
     )
-
     result = await run(ctx)
-
     assert result.resolution_code == "duplicate"
 
 
 async def test_consecutive_failure_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config, "max_consecutive_failures", 3, raising=False)
-    model = ScriptedModel([call("missing.tool", {}) for _ in range(3)])
-    ctx, bus, recorder = context(model)
-
+    ctx, bus, recorder = context(ScriptedModel([call("missing.tool", {}) for _ in range(3)]))
     result = await run(ctx)
-
     assert result.status is RunStatus.EXHAUSTED
     assert result.outcome == "consecutive failure ceiling reached"
     assert [name for name, _ in bus.calls] == ["knowledge_search"]
@@ -90,7 +83,6 @@ async def test_deadline_interrupts_hanging_tool(monkeypatch: pytest.MonkeyPatch)
     ctx, _, recorder = context(model)
     ctx.call_tool = hangs
     result = await run(ctx)
-
     assert result.status is RunStatus.EXHAUSTED
     assert result.outcome == "run deadline exceeded"
     assert any(step.error == result.outcome for step in recorder.steps)
@@ -119,9 +111,7 @@ async def test_transcript_shape_truncation_and_usage(monkeypatch: pytest.MonkeyP
     )
     full_output = {"pods": [{"name": "pod-" + "x" * 100}]}
     ctx, _, recorder = context(model, FakeToolBus({"cluster_read_pods": full_output}))
-
     result = await run(ctx)
-
     assert (result.prompt_tokens, result.completion_tokens, result.model) == (
         28,
         8,
@@ -144,3 +134,38 @@ async def test_transcript_shape_truncation_and_usage(monkeypatch: pytest.MonkeyP
     )
     assert observation.tool_output == full_output
     assert "truncated" not in str(observation.tool_output)
+
+
+async def test_matching_known_error_result_is_recorded_for_citation() -> None:
+    model = ScriptedModel(
+        [
+            Decision(
+                kind="resolved",
+                reasoning="Use PRB-42 VPN DNS failure.",
+                resolution="Applied workaround from PRB-42 VPN DNS failure.",
+            )
+        ]
+    )
+    ctx, bus, recorder = context(
+        model,
+        FakeToolBus(
+            {
+                "knowledge_search": {
+                    "mode": "lexical",
+                    "items": [
+                        {
+                            "source": "known_error",
+                            "reference": "PRB-42",
+                            "title": "VPN DNS failure",
+                            "workaround": "Flush DNS",
+                        }
+                    ],
+                }
+            }
+        ),
+    )
+    result = await run(ctx)
+    assert result.status is RunStatus.RESOLVED
+    assert bus.calls[0][0] == "knowledge_search"
+    assert any(step.tool_output and "PRB-42" in str(step.tool_output) for step in recorder.steps)
+    assert "PRB-42" in result.outcome

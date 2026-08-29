@@ -209,7 +209,11 @@ export async function recordObservation(
 			.values({ ticketId: ctx.ticketId, objectId: id })
 			.onConflictDoNothing();
 	});
-	await indexCmdbObject(db, id);
+	try {
+		await indexCmdbObject(db, id);
+	} catch (error) {
+		console.error("[cmdb] search indexing failed", error);
+	}
 	return { ok: true as const, id };
 }
 

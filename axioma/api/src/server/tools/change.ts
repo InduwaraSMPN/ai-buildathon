@@ -1,7 +1,11 @@
 import { eq } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
-import { changes, changeTicketLinks } from "@/db/schema/changes";
+import {
+	changes,
+	changeTicketLinks,
+	changeTransitions,
+} from "@/db/schema/changes";
 import { patchImage, type patchImageInput, readDeployment } from "./cluster";
 import type { ToolContext } from "./index";
 
@@ -54,6 +58,16 @@ export async function patchImageWithChange(
 			sourceRunId: ctx.runId,
 			sourceStepId: ctx.stepId,
 		});
+		await tx.insert(changeTransitions).values({
+			id: crypto.randomUUID(),
+			changeId,
+			fromStatus: "draft",
+			toStatus: "in_progress",
+			actorType: "agent",
+			actorId: ctx.runId,
+			runId: ctx.runId,
+			stepId: ctx.stepId,
+		});
 		await tx.insert(changeTicketLinks).values({
 			id: crypto.randomUUID(),
 			changeId,
@@ -66,16 +80,28 @@ export async function patchImageWithChange(
 		return { ...result, changeId, previousImage };
 	} catch (error) {
 		const failedAt = new Date();
-		await db
-			.update(changes)
-			.set({
-				status: "failed",
-				workEndAt: failedAt,
-				pirWasSuccessful: false,
-				pirActualEndAt: failedAt,
-				pirFollowUp: error instanceof Error ? error.message : String(error),
-			})
-			.where(eq(changes.id, changeId));
+		await db.transaction(async (tx) => {
+			await tx
+				.update(changes)
+				.set({
+					status: "failed",
+					workEndAt: failedAt,
+					pirWasSuccessful: false,
+					pirActualEndAt: failedAt,
+					pirFollowUp: error instanceof Error ? error.message : String(error),
+				})
+				.where(eq(changes.id, changeId));
+			await tx.insert(changeTransitions).values({
+				id: crypto.randomUUID(),
+				changeId,
+				fromStatus: "in_progress",
+				toStatus: "failed",
+				actorType: "agent",
+				actorId: ctx.runId,
+				runId: ctx.runId,
+				stepId: ctx.stepId,
+			});
+		});
 		throw error;
 	}
 }

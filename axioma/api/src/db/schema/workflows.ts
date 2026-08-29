@@ -107,6 +107,8 @@ export const workflowScheduledEmissions = pgTable(
 			t.idempotencyKey,
 		),
 		index("workflow_scheduled_emissions_due_idx").on(t.status, t.emitAt),
+		index("workflow_scheduled_emissions_workflow_id_idx").on(t.workflowId),
+		index("workflow_scheduled_emissions_execution_id_idx").on(t.executionId),
 	],
 );
 
@@ -156,6 +158,7 @@ export const webhookDeliveries = pgTable(
 	(t) => [
 		index("webhook_deliveries_due_idx").on(t.status, t.nextAttemptAt),
 		index("webhook_deliveries_execution_idx").on(t.executionId, t.createdAt),
+		index("webhook_deliveries_message_format_id_idx").on(t.messageFormatId),
 		check(
 			"webhook_deliveries_attempt_count_nonnegative",
 			sql`${t.attemptCount} >= 0`,

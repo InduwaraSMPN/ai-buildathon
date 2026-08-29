@@ -86,6 +86,7 @@ export const serviceSubcategories = pgTable(
 		),
 		uniqueIndex("service_subcategories_id_service_uidx").on(t.id, t.serviceId),
 		index("service_subcategories_approver_idx").on(t.approverOverrideId),
+		index("service_subcategories_form_id_idx").on(t.formId),
 	],
 );
 

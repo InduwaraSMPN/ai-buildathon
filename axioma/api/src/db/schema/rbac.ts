@@ -80,13 +80,13 @@ export const roleGrants = pgTable(
 	"role_grants",
 	{
 		id: text("id").primaryKey(),
-		action: text("action", { enum: ["grant", "revoke"] }).notNull(),
-		roleId: text("role_id")
-			.notNull()
-			.references(() => roles.id, { onDelete: "restrict" }),
-		roleName: text("role_name").notNull(),
+		action: text("action", { enum: ["grant", "revoke", "set_kind"] }).notNull(),
+		roleId: text("role_id").references(() => roles.id, {
+			onDelete: "restrict",
+		}),
+		roleName: text("role_name"),
 		targetType: text("target_type", {
-			enum: ["user", "team", "capability"],
+			enum: ["user", "team", "capability", "user_kind"],
 		}).notNull(),
 		targetId: text("target_id").notNull(),
 		actorId: text("actor_id").references(() => user.id, {
@@ -95,10 +95,17 @@ export const roleGrants = pgTable(
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
 	(t) => [
-		check("role_grants_action_check", sql`${t.action} in ('grant', 'revoke')`),
+		check(
+			"role_grants_action_check",
+			sql`${t.action} in ('grant', 'revoke', 'set_kind')`,
+		),
 		check(
 			"role_grants_target_type_check",
-			sql`${t.targetType} in ('user', 'team', 'capability')`,
+			sql`${t.targetType} in ('user', 'team', 'capability', 'user_kind')`,
+		),
+		check(
+			"role_grants_role_check",
+			sql`(${t.targetType} = 'user_kind') = (${t.roleId} is null and ${t.roleName} is null)`,
 		),
 		check(
 			"role_grants_capability_check",
@@ -106,6 +113,7 @@ export const roleGrants = pgTable(
 		),
 		index("role_grants_target_idx").on(t.targetType, t.targetId, t.createdAt),
 		index("role_grants_role_idx").on(t.roleId, t.createdAt),
+		index("role_grants_actor_id_idx").on(t.actorId),
 	],
 );
 

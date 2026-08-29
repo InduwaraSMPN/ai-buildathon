@@ -90,7 +90,32 @@ const catalogueSchema = z.object({
 	subcategories: z.array(serviceSubcategorySchema),
 });
 
+const formFieldInput = z.object({
+	key: z.string().trim().min(1).max(100),
+	label: z.string().trim().min(1).max(200),
+	description: z.string().trim().max(2_000).nullable().optional(),
+	type: formFieldType,
+	options: z.unknown().nullable().optional(),
+	validation: z.unknown().nullable().optional(),
+	condition: z.unknown().nullable().optional(),
+	isMandatory: z.boolean().default(false),
+	isHidden: z.boolean().default(false),
+	isReadonly: z.boolean().default(false),
+	predefinedValue: z.unknown().nullable().optional(),
+});
+
+const formInput = z.object({
+	key: z.string().trim().min(1).max(100),
+	name: z.string().trim().min(1).max(200),
+	description: z.string().trim().max(2_000).nullable().optional(),
+	fields: z.array(formFieldInput).max(100).default([]),
+});
+
 export const catalogueContract = {
+	listForms: oc.output(z.array(formSchema)),
+	createForm: oc.input(formInput).output(formSchema),
+	updateForm: oc.input(formInput.extend({ id })).output(formSchema),
+	publishForm: oc.input(z.object({ id })).output(formSchema),
 	listCatalogue: oc.output(catalogueSchema),
 	listRequestCatalogue: oc.output(
 		z.array(

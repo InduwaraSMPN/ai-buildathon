@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageState } from "@/components/support-ui";
@@ -8,7 +8,11 @@ import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/assets")({
 	component: AssetsRoute,
-	beforeLoad: () => ({ breadcrumb: "Assets" }),
+	beforeLoad: ({ context }) => {
+		if (!context.capabilities.includes("admin.settings"))
+			throw redirect({ to: "/home" });
+		return { breadcrumb: "Assets" };
+	},
 	head: () => ({ meta: [{ title: "Assets · Axiōma" }] }),
 });
 
@@ -18,8 +22,18 @@ function AssetsRoute() {
 	const runs = useQuery(orpc.listAssetImportRuns.queryOptions());
 	const [runId, setRunId] = useState<string>();
 	const [assetId, setAssetId] = useState<string>();
-	const rejections = useQuery(orpc.listAssetImportRejections.queryOptions({ input: { runId: runId ?? "" }, enabled: Boolean(runId) }));
-	const history = useQuery(orpc.listAssetHistory.queryOptions({ input: { assetId: assetId ?? "" }, enabled: Boolean(assetId) }));
+	const rejections = useQuery(
+		orpc.listAssetImportRejections.queryOptions({
+			input: { runId: runId ?? "" },
+			enabled: Boolean(runId),
+		}),
+	);
+	const history = useQuery(
+		orpc.listAssetHistory.queryOptions({
+			input: { assetId: assetId ?? "" },
+			enabled: Boolean(assetId),
+		}),
+	);
 	const [input, setInput] = useState<{
 		profileId: string;
 		identityColumns: string[];
@@ -31,20 +45,28 @@ function AssetsRoute() {
 			onError: (error) => toast.error(error.message),
 		}),
 	);
-	const checkout = useMutation(orpc.checkoutAsset.mutationOptions({
-		onSuccess: () => queryClient.invalidateQueries({ queryKey: orpc.listAssets.key() }),
-		onError: (error) => toast.error(error.message),
-	}));
-	const checkin = useMutation(orpc.checkinAsset.mutationOptions({
-		onSuccess: () => queryClient.invalidateQueries({ queryKey: orpc.listAssets.key() }),
-		onError: (error) => toast.error(error.message),
-	}));
+	const checkout = useMutation(
+		orpc.checkoutAsset.mutationOptions({
+			onSuccess: () =>
+				queryClient.invalidateQueries({ queryKey: orpc.listAssets.key() }),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const checkin = useMutation(
+		orpc.checkinAsset.mutationOptions({
+			onSuccess: () =>
+				queryClient.invalidateQueries({ queryKey: orpc.listAssets.key() }),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 	const importAssets = useMutation(
 		orpc.importAssets.mutationOptions({
 			onSuccess: async (result) => {
 				await Promise.all([
 					queryClient.invalidateQueries({ queryKey: orpc.listAssets.key() }),
-					queryClient.invalidateQueries({ queryKey: orpc.listAssetImportRuns.key() }),
+					queryClient.invalidateQueries({
+						queryKey: orpc.listAssetImportRuns.key(),
+					}),
 				]);
 				toast.success(
 					`Imported ${result.inserted} new and ${result.updated} updated assets`,

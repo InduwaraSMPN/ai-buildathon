@@ -1,37 +1,18 @@
 import { createHmac } from "node:crypto";
+import {
+	ACTION_TYPES,
+	type Action,
+	type ActionType,
+	actionTypeSet,
+	isAction,
+} from "../automation/actions";
 
-/** Keep aligned with rules actions until their shared module is integrated. */
-export const ACTION_TYPES = [
-	"set_service",
-	"set_category",
-	"set_impact",
-	"set_urgency",
-	"set_team",
-	"set_assignee",
-	"set_sla",
-	"set_ola",
-	"set_record_type",
-	"set_route",
-	"send_webhook",
-	"send_notification",
-] as const;
-export type ActionType = (typeof ACTION_TYPES)[number];
-
-export type WorkflowAction = Readonly<{
-	type: ActionType;
-	value?: unknown;
-}>;
-
-const actionTypes = new Set<string>(ACTION_TYPES);
+export type { Action, ActionType };
+export { ACTION_TYPES };
+export type WorkflowAction = Action;
 
 export function isWorkflowAction(value: unknown): value is WorkflowAction {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		"type" in value &&
-		typeof value.type === "string" &&
-		actionTypes.has(value.type)
-	);
+	return isAction(value);
 }
 
 export function assertWorkflowActions(
@@ -114,3 +95,5 @@ export function collapseNotificationRepeats(
 	}
 	return [...collapsed.values()];
 }
+
+export { actionTypeSet };

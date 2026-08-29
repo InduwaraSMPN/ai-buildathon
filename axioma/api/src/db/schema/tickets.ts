@@ -116,6 +116,15 @@ export const tickets = pgTable(
 		index("tickets_type_idx").on(t.recordType, t.status),
 		index("tickets_device_idx").on(t.deviceId),
 		index("tickets_service_idx").on(t.serviceId, t.serviceSubcategoryId),
+		index("tickets_assignee_id_idx").on(t.assigneeId),
+		index("tickets_owner_id_idx").on(t.ownerId),
+		index("tickets_team_id_idx").on(t.teamId),
+		index("tickets_pending_reason_id_idx").on(t.pendingReasonId),
+		index("tickets_merged_into_id_idx").on(t.mergedIntoId),
+		index("tickets_service_subcategory_id_service_id_idx").on(
+			t.serviceSubcategoryId,
+			t.serviceId,
+		),
 		foreignKey({
 			columns: [t.serviceSubcategoryId, t.serviceId],
 			foreignColumns: [serviceSubcategories.id, serviceSubcategories.serviceId],

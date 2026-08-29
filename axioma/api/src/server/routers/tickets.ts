@@ -29,11 +29,8 @@ import {
 	ticketLinks,
 	ticketMerges,
 	ticketMessages,
-	ticketNumberCounters,
 	ticketNumberHistory,
 	ticketPresence,
-	ticketRuleFirings,
-	ticketRules,
 	ticketScheduling,
 	ticketStatuses,
 	tickets,
@@ -64,14 +61,11 @@ import {
 } from "../orpc";
 import { nextPendingFollowupAt } from "../pending";
 import { listLinkedPublishedWorkarounds } from "../problems";
-import { evaluateTicketRules } from "../rules";
 import { indexTicket } from "../search/projections";
-import {
-	attachTicketStopwatches,
-	transitionTicketStopwatches,
-} from "../sla/runtime";
-import { auditChanges, formatTicketNumber } from "../ticket-records";
+import { transitionTicketStopwatches } from "../sla/runtime";
+import { auditChanges } from "../ticket-records";
 import { preserveUndefined, resolveTicketStatus } from "../tickets";
+import { createTicket } from "../tickets/create";
 import { fireEvent } from "../workflows/runtime";
 import { startTicketRun } from "./shared";
 
@@ -215,104 +209,34 @@ export const ticketsRouter = {
 						.limit(1)
 				)[0]?.id;
 			}
-			const id = crypto.randomUUID();
-			const evaluation = evaluateTicketRules(
-				{
-					title: input.title,
-					body: input.body,
-					requesterId: context.userId,
-					recordType: input.recordType,
-					impact: input.impact,
-					urgency: input.urgency,
-				},
-				await db
-					.select()
-					.from(ticketRules)
-					.where(eq(ticketRules.enabled, true)),
-			);
-			const settled = evaluation.ticket;
-			const year = String(new Date().getUTCFullYear());
-			const prefix = settled.recordType === "incident" ? "INC" : "REQ";
-			await db.transaction(async (tx) => {
-				const counter = (
-					await tx
-						.insert(ticketNumberCounters)
-						.values({ prefix, year, lastValue: 1 })
-						.onConflictDoUpdate({
-							target: [ticketNumberCounters.prefix, ticketNumberCounters.year],
-							set: { lastValue: sql`${ticketNumberCounters.lastValue} + 1` },
-						})
-						.returning({ value: ticketNumberCounters.lastValue })
-				)[0];
-				if (!counter) throw new ORPCError("INTERNAL_SERVER_ERROR");
-				const number = formatTicketNumber(
-					settled.recordType,
-					Number(year),
-					counter.value,
-				);
-				await tx.insert(tickets).values({
-					id,
-					number,
-					reporterId: context.userId,
-					deviceId,
-					title: input.title,
-					body: input.body,
-					recordType: settled.recordType,
-					impact: settled.impact,
-					urgency: settled.urgency,
-					priority: derivePriority(settled.impact, settled.urgency),
-					serviceId: input.serviceId ?? "svc-general",
-					serviceSubcategoryId: input.serviceSubcategoryId ?? "ss-general",
-					category: settled.category,
-					route: settled.route,
-					teamId: settled.teamId,
-					assigneeId: settled.assigneeId,
-				});
-				await tx.insert(ticketNumberHistory).values({ number, ticketId: id });
-				if (evaluation.firings.length) {
-					await tx.insert(ticketRuleFirings).values(
-						evaluation.firings.map((firing) => ({
-							id: crypto.randomUUID(),
-							ticketId: id,
-							ruleId: firing.ruleId,
-							rulePosition: firing.rulePosition,
-							result: firing,
-						})),
-					);
-					await tx.insert(ticketAudit).values(
-						evaluation.firings.flatMap((firing) =>
-							firing.applied.map((action) => ({
-								id: crypto.randomUUID(),
-								ticketId: id,
-								fieldName: action.type,
-								oldValue: null,
-								newValue: "value" in action ? action.value : true,
-								actorId: `rule:${firing.ruleId}`,
-							})),
-						),
-					);
-				}
+			const createdCore = await createTicket({
+				source: "portal",
+				reporterId: context.userId,
+				title: input.title,
+				body: input.body,
+				serviceId: input.serviceId,
+				serviceSubcategoryId: input.serviceSubcategoryId,
+				recordType: input.recordType,
+				impact: input.impact,
+				urgency: input.urgency,
+				deviceId,
 			});
-			await attachTicketStopwatches(
-				id,
-				derivePriority(settled.impact, settled.urgency),
-			);
 			if (Object.keys(input.customFields).length)
-				await writeDynamicFieldValues(db, "ticket", id, input.customFields);
-			await indexTicket(db, id);
-			void fireEvent({
-				type: "ticket.created",
-				source: "ticket",
-				recordType: "ticket",
-				recordId: id,
-				actorId: context.userId,
-				payload: { number: prefix, settledActions: evaluation.settledActions },
-			});
-			let created = await findTicket(id);
+				await writeDynamicFieldValues(
+					db,
+					"ticket",
+					createdCore.ticketId,
+					input.customFields,
+				);
+			let created = await findTicket(createdCore.ticketId);
 			if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR");
-			if (env.AXIOMA_AUTO_DISPATCH && grpcGateway.hasWorker()) {
+			if (
+				env.AXIOMA_AUTO_DISPATCH &&
+				grpcGateway.hasWorker() &&
+				!createdCore.settledActions.includes("route_human")
+			) {
 				await startTicketRun(created);
-				created = await findTicket(id);
+				created = await findTicket(createdCore.ticketId);
 				if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR");
 			}
 			return withCustomFields(created);
@@ -409,6 +333,7 @@ export const ticketsRouter = {
 				? or(
 						ilike(tickets.title, `%${input.search}%`),
 						ilike(tickets.id, `%${input.search}%`),
+						ilike(tickets.number, `%${input.search}%`),
 						ilike(user.name, `%${input.search}%`),
 					)
 				: undefined,
@@ -526,7 +451,7 @@ export const ticketsRouter = {
 			ticketTeams,
 		] = await Promise.all([
 			db
-				.select({ key: ticketStatuses.key })
+				.select({ key: ticketStatuses.key, label: ticketStatuses.label })
 				.from(ticketStatuses)
 				.where(eq(ticketStatuses.isActive, true))
 				.orderBy(asc(ticketStatuses.displayOrder)),
@@ -585,8 +510,9 @@ export const ticketsRouter = {
 			items,
 			nextCursor,
 			facets: {
-				status: statusDefinitions.map(({ key: value }) => ({
+				status: statusDefinitions.map(({ key: value, label }) => ({
 					value,
+					label,
 					count: statuses.find((row) => row.value === value)?.count ?? 0,
 				})),
 				priority: PRIORITIES.map((value) => ({
@@ -1013,6 +939,11 @@ export const ticketsRouter = {
 			.from(teams)
 			.orderBy(asc(teams.name)),
 	})),
+	listPendingReasons: capabilityProcedure(
+		"ticket.update",
+	).listPendingReasons.handler(async () =>
+		db.select().from(pendingReasons).orderBy(asc(pendingReasons.name)),
+	),
 	updateTicket: anyCapabilityProcedure(
 		"ticket.create",
 		"ticket.resolve",
@@ -1169,6 +1100,12 @@ export const ticketsRouter = {
 							: current.resolutionCode,
 				escalationNote:
 					input.action === "escalate" ? input.note : current.escalationNote,
+				escalationFlag: ["reopen", "pend", "unpend"].includes(input.action)
+					? "none"
+					: current.escalationFlag,
+				escalationReason: ["reopen", "pend", "unpend"].includes(input.action)
+					? null
+					: current.escalationReason,
 				progressMarker:
 					input.action === "escalate"
 						? "handing_to_person"
@@ -1248,7 +1185,11 @@ export const ticketsRouter = {
 			});
 		const updated = await findTicket(input.id);
 		if (!updated) throw new ORPCError("NOT_FOUND");
-		await indexTicket(db, input.id);
+		try {
+			await indexTicket(db, input.id);
+		} catch (error) {
+			console.error("[tickets] search indexing failed", error);
+		}
 		void fireEvent({
 			type: "ticket.updated",
 			source: "ticket",
@@ -1270,6 +1211,9 @@ export const ticketsRouter = {
 				category: current.category,
 				subcategory: current.subcategory,
 				route: current.route,
+				assigneeId: current.assigneeId,
+				ownerId: current.ownerId,
+				teamId: current.teamId,
 			},
 			{
 				recordType: updated.recordType,
@@ -1279,6 +1223,9 @@ export const ticketsRouter = {
 				category: updated.category,
 				subcategory: updated.subcategory,
 				route: updated.route,
+				assigneeId: updated.assigneeId,
+				ownerId: updated.ownerId,
+				teamId: updated.teamId,
 			},
 		);
 		if (changes.length)

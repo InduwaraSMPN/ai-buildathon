@@ -25,7 +25,20 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 		accessorKey: "status",
 		header: "Status",
 		cell: ({ row }) => (
-			<StatusBadge status={row.original.status} label={row.original.statusLabel} />
+			<div className="flex items-center gap-2">
+				<StatusBadge
+					status={row.original.status}
+					label={row.original.statusLabel}
+				/>
+				{row.original.escalationFlag !== "none" ? (
+					<Badge
+						variant="destructive"
+						title={row.original.escalationReason ?? undefined}
+					>
+						{row.original.escalationFlag}
+					</Badge>
+				) : null}
+			</div>
 		),
 	},
 	{

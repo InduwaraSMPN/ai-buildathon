@@ -267,7 +267,7 @@ export const ticketsContract = {
 		.input(
 			z.object({
 				scope: z.enum(["mine", "all"]),
-				status: z.array(ticketStatus).max(6).optional(),
+				status: z.array(ticketStatus).max(100).optional(),
 				priority: z.array(priority).max(4).optional(),
 				recordType: z.array(recordType).max(2).optional(),
 				serviceId: z.array(z.string().min(1)).max(100).optional(),
@@ -298,6 +298,7 @@ export const ticketsContract = {
 					status: z.array(
 						z.object({
 							value: ticketStatus,
+							label: z.string(),
 							count: z.number().int().nonnegative(),
 						}),
 					),
@@ -450,6 +451,16 @@ export const ticketsContract = {
 			users: z.array(z.object({ id: z.string(), name: z.string() })),
 			teams: z.array(z.object({ id: z.string(), name: z.string() })),
 		}),
+	),
+	listPendingReasons: oc.output(
+		z.array(
+			z.object({
+				id: z.string(),
+				name: z.string(),
+				followupFrequencyMinutes: z.number().int().positive(),
+				followupsBeforeResolution: z.number().int().positive(),
+			}),
+		),
 	),
 	updateTicket: oc
 		.input(

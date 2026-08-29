@@ -57,6 +57,7 @@ export const ssoIdentities = pgTable(
 	(t) => [
 		uniqueIndex("sso_identities_issuer_subject_uidx").on(t.issuer, t.subject),
 		index("sso_identities_user_idx").on(t.userId),
+		index("sso_identities_provider_id_idx").on(t.providerId),
 	],
 );
 
@@ -87,6 +88,7 @@ export const directoryIdentities = pgTable(
 			t.userId,
 		),
 		index("directory_identities_leaver_idx").on(t.providerId, t.leaver),
+		index("directory_identities_user_id_idx").on(t.userId),
 	],
 );
 

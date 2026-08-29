@@ -28,6 +28,7 @@ const status = values<TicketStatus>([
 	"open",
 	"routing",
 	"resolving",
+	"pending",
 	"resolved",
 	"escalated",
 	"closed",

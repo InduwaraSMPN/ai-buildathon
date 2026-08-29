@@ -6,7 +6,7 @@ import {
 	RotateCcw,
 	UserRoundCheck,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -77,18 +77,26 @@ export function TicketActions({
 	onAction: (input: ActionInput) => Promise<unknown>;
 }) {
 	const actions = allowedActions(ticket, capabilities);
-	const has = (action: TicketOperatorAction) => actions.includes(action);
+	const has = useCallback(
+		(action: TicketOperatorAction) => actions.includes(action),
+		[actions],
+	);
 	const canAssign = has("assign");
 	const canReclassify = has("reclassify");
+	const canPend = has("pend");
+	const canUnpend = has("unpend");
 	const [classificationOpen, setClassificationOpen] = useState(false);
+	const pendingReasons = useQuery(orpc.listPendingReasons.queryOptions());
 
 	useEffect(() => {
 		const target = window.location.hash.slice(1);
-		if (target === "operator-reclassify" && canReclassify)
+		if (target === "operator-resolve" && has("resolve"))
+			document.getElementById(target)?.focus();
+		else if (target === "operator-reclassify" && canReclassify)
 			setClassificationOpen(true);
 		else if (target === "operator-assign" && canAssign)
 			document.getElementById(target)?.focus();
-	}, [canAssign, canReclassify]);
+	}, [canAssign, canReclassify, has]);
 
 	return (
 		<section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
@@ -117,6 +125,35 @@ export function TicketActions({
 			{has("escalate") && (
 				<EscalateForm pending={pending} onAction={onAction} />
 			)}
+			{canPend && pendingReasons.data?.length ? (
+				<Select
+					value=""
+					onValueChange={(reasonId) => {
+						if (reasonId) void onAction({ action: "pend", reasonId });
+					}}
+				>
+					<SelectTrigger disabled={pending}>
+						<SelectValue placeholder="Put on hold" />
+					</SelectTrigger>
+					<SelectContent>
+						{pendingReasons.data.map((reason) => (
+							<SelectItem key={reason.id} value={reason.id}>
+								{reason.name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			) : null}
+			{canUnpend ? (
+				<Button
+					type="button"
+					variant="outline"
+					disabled={pending}
+					onClick={() => void onAction({ action: "unpend" })}
+				>
+					Resume ticket
+				</Button>
+			) : null}
 			{has("assign") && (
 				<AssignForm ticket={ticket} pending={pending} onAction={onAction} />
 			)}
@@ -212,7 +249,7 @@ function NoteForm({
 							}
 							disabled={pending}
 						>
-							<SelectTrigger id="ticket-resolution-code" className="w-full">
+							<SelectTrigger id="operator-resolve" className="w-full">
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>

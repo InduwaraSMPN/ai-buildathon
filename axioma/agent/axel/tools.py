@@ -30,10 +30,18 @@ class Effect(StrEnum):
 
 
 class Surface(StrEnum):
+    TICKET = "ticket"
     CLUSTER = "cluster"
     DEVICE = "device"
     CMDB = "cmdb"
     KNOWLEDGE = "knowledge"
+
+
+# --- ticket ------------------------------------------------------------------
+
+
+class TicketReadMessages(StrictToolInput):
+    ticket_id: str = Field(min_length=1)
 
 
 # --- knowledge ---------------------------------------------------------------
@@ -151,6 +159,16 @@ REGISTRY: dict[str, Tool] = {
     t.name: t
     for t in [
         Tool(
+            name="ticket_read_messages",
+            surface=Surface.TICKET,
+            effect=Effect.READ,
+            description=(
+                "Read public case-log messages for the current ticket. "
+                "Private entries are never returned and this tool cannot write."
+            ),
+            schema_model=TicketReadMessages,
+        ),
+        Tool(
             name="knowledge_search",
             surface=Surface.KNOWLEDGE,
             effect=Effect.READ,
@@ -247,9 +265,7 @@ def as_llm_tools(*, strict: bool = True) -> list[dict[str, object]]:
             **schema,
             "properties": properties,
             "required": (
-                list(properties)
-                if strict
-                else ["reasoning", *schema.get("required", [])]
+                list(properties) if strict else ["reasoning", *schema.get("required", [])]
             ),
             "additionalProperties": False,
         }

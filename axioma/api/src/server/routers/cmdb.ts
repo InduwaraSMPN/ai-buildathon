@@ -5,9 +5,11 @@ import {
 	cmdbClasses,
 	cmdbClassProperties,
 	cmdbObjects,
+	cmdbRelationshipTypes,
 	ticketCmdbObjects,
 } from "@/db/schema";
 import { impactForObject } from "../cmdb/impact";
+import { insertRelationship } from "../cmdb/relationships";
 import { capabilityProcedure } from "../orpc";
 
 export const cmdbRouter = {
@@ -96,6 +98,30 @@ export const cmdbRouter = {
 	cmdbImpact: capabilityProcedure("ticket.read.all").cmdbImpact.handler(
 		({ input }) => impactForObject(input.objectId, input.maxDepth),
 	),
+	listCmdbRelationshipTypes: capabilityProcedure(
+		"ticket.read.all",
+	).listCmdbRelationshipTypes.handler(() =>
+		db.select().from(cmdbRelationshipTypes).orderBy(cmdbRelationshipTypes.key),
+	),
+	createCmdbRelationshipType: capabilityProcedure(
+		"admin.settings",
+	).createCmdbRelationshipType.handler(
+		async ({ input }) =>
+			(
+				await db
+					.insert(cmdbRelationshipTypes)
+					.values({ id: crypto.randomUUID(), ...input })
+					.returning()
+			)[0]!,
+	),
+	createCmdbObjectRelationship: capabilityProcedure(
+		"admin.settings",
+	).createCmdbObjectRelationship.handler(async ({ input }) => {
+		const result = await insertRelationship(db, input);
+		if (!result.ok)
+			throw new ORPCError("BAD_REQUEST", { message: result.error.message });
+		return result;
+	}),
 	listTicketCmdbObjects: capabilityProcedure(
 		"ticket.read.all",
 	).listTicketCmdbObjects.handler(({ input }) =>

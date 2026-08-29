@@ -4,6 +4,7 @@ import { db } from "@/db";
 import {
 	olas,
 	slaEscalationEvents,
+	slaNotificationRules,
 	slas,
 	ticketStopwatches,
 	tickets,
@@ -31,14 +32,27 @@ export async function sweepSla(now = new Date()): Promise<number> {
 			(watch.targetType === "response"
 				? policy.ttoWorkingMinutes
 				: policy.ttrWorkingMinutes) * 60_000;
-		const triggerType =
-			elapsed >= targetMs
-				? "breach"
-				: elapsed >= targetMs * 0.8
-					? "warning"
-					: null;
-		if (!triggerType) continue;
-		const idempotencyKey = `${watch.id}:${triggerType}`;
+		const rules = await db
+			.select()
+			.from(slaNotificationRules)
+			.where(
+				and(
+					eq(slaNotificationRules.policyType, watch.policyType),
+					eq(slaNotificationRules.policyId, watch.policyId),
+					eq(slaNotificationRules.enabled, true),
+				),
+			);
+		const rule = rules
+			.filter(
+				(candidate) =>
+					(candidate.targetType === watch.targetType ||
+						candidate.targetType === "both") &&
+					elapsed >= targetMs * (candidate.thresholdPercent / 100),
+			)
+			.sort((a, b) => b.thresholdPercent - a.thresholdPercent)[0];
+		if (!rule) continue;
+		const triggerType = rule.triggerType;
+		const idempotencyKey = `${watch.id}:${rule.id}`;
 		const inserted = await db
 			.insert(slaEscalationEvents)
 			.values({
@@ -46,6 +60,7 @@ export async function sweepSla(now = new Date()): Promise<number> {
 				idempotencyKey,
 				ticketId: watch.ticketId,
 				stopwatchId: watch.id,
+				ruleId: rule.id,
 				triggerType,
 				targetType: watch.targetType,
 				reason: `${watch.policyType.toUpperCase()} ${watch.targetType} target ${triggerType === "breach" ? "missed" : "at risk"}`,

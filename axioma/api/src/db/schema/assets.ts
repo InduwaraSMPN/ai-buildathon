@@ -86,7 +86,10 @@ export const assetCheckoutLog = pgTable(
 		checkedInAt: timestamp("checked_in_at"),
 		note: text("note"),
 	},
-	(t) => [index("asset_checkout_asset_idx").on(t.assetId, t.checkedOutAt)],
+	(t) => [
+		index("asset_checkout_asset_idx").on(t.assetId, t.checkedOutAt),
+		index("asset_checkout_log_custodian_id_idx").on(t.custodianId),
+	],
 );
 
 export const assetHistory = pgTable(
@@ -103,7 +106,10 @@ export const assetHistory = pgTable(
 		changes: jsonb("changes").notNull(),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
-	(t) => [index("asset_history_asset_idx").on(t.assetId, t.createdAt)],
+	(t) => [
+		index("asset_history_asset_idx").on(t.assetId, t.createdAt),
+		index("asset_history_actor_id_idx").on(t.actorId),
+	],
 );
 
 export const assetImportProfiles = pgTable(

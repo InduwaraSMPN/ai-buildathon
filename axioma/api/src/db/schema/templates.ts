@@ -42,6 +42,7 @@ export const emailTemplateRules = pgTable(
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
 	(t) => [
+		index("email_template_rules_template_id_idx").on(t.templateId),
 		index("email_template_rules_lookup_idx").on(
 			t.enabled,
 			t.scope,

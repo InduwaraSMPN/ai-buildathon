@@ -1,5 +1,7 @@
+import type { ReactNode } from "react";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -7,6 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
 	Table,
 	TableBody,
@@ -39,17 +42,51 @@ export type ProblemDetail = ProblemSummary & {
 export function ProblemsPage({
 	problems,
 	onSelect,
+	action,
 }: {
 	problems: readonly ProblemSummary[];
 	onSelect?: (problem: ProblemSummary) => void;
+	action?: ReactNode;
 }) {
 	return (
 		<PageContainer
 			title="Problems"
 			description="Root causes, known errors, and linked incidents."
+			action={action}
 		>
 			<ProblemList problems={problems} onSelect={onSelect} />
 		</PageContainer>
+	);
+}
+
+export function ProblemEditor({
+	pending = false,
+	onSubmit,
+}: {
+	pending?: boolean;
+	onSubmit: (value: { title: string; description: string }) => void;
+}) {
+	return (
+		<form
+			className="flex gap-2"
+			onSubmit={(event) => {
+				event.preventDefault();
+				const data = new FormData(event.currentTarget);
+				onSubmit({
+					title: String(data.get("title")),
+					description: String(data.get("description")),
+				});
+			}}
+		>
+			<Input name="title" placeholder="Problem title" required minLength={3} />
+			<Input
+				name="description"
+				placeholder="Description"
+				required
+				minLength={1}
+			/>
+			<Button disabled={pending}>Create</Button>
+		</form>
 	);
 }
 

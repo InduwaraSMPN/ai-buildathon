@@ -2,11 +2,13 @@ import { eq, gte } from "drizzle-orm";
 import type { createDb } from "@/db";
 import {
 	assets,
+	changes,
 	cmdbClasses,
 	cmdbObjects,
 	dynamicFields,
 	dynamicFieldValues,
 	knowledgeArticles,
+	problems,
 	tickets,
 } from "@/db/schema";
 import {
@@ -50,6 +52,34 @@ const cmdbDocument = (
 		externalId: object.externalId,
 	},
 	sourceUpdatedAt: object.observedAt,
+});
+
+const problemDocument = (
+	problem: typeof problems.$inferSelect,
+): SearchDocumentInput => ({
+	objectType: "problem",
+	objectId: problem.id,
+	title: `${problem.problemNumber} ${problem.title}`,
+	body: [problem.description, problem.rootCause, problem.workaround]
+		.filter(Boolean)
+		.join("\n"),
+	url: `/problems/${problem.id}`,
+	metadata: { status: problem.status, priority: problem.priority },
+	sourceUpdatedAt: problem.updatedAt,
+});
+
+const changeDocument = (
+	change: typeof changes.$inferSelect,
+): SearchDocumentInput => ({
+	objectType: "change",
+	objectId: change.id,
+	title: `${change.changeNumber} ${change.title}`,
+	body: [change.description, change.reasonForChange, change.rollbackPlan]
+		.filter(Boolean)
+		.join("\n"),
+	url: `/changes/${change.id}`,
+	metadata: { status: change.status, changeType: change.changeType },
+	sourceUpdatedAt: change.updatedAt,
 });
 
 export const knowledgeArticleDocument = (
@@ -181,6 +211,26 @@ export function reconcileCoreSearchDocuments(
 							assetDocument(asset, await assetFields(db, asset.id)),
 						),
 					),
+			},
+			{
+				objectType: "problem",
+				loadChanged: async (changedSince) =>
+					(
+						await db
+							.select()
+							.from(problems)
+							.where(gte(problems.updatedAt, changedSince))
+					).map(problemDocument),
+			},
+			{
+				objectType: "change",
+				loadChanged: async (changedSince) =>
+					(
+						await db
+							.select()
+							.from(changes)
+							.where(gte(changes.updatedAt, changedSince))
+					).map(changeDocument),
 			},
 			{
 				objectType: "knowledge_article",

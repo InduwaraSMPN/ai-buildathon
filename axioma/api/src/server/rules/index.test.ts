@@ -4,6 +4,7 @@ import {
 	evaluateTicketRules,
 	measureTokensPerTicket,
 	type RuleTicket,
+	routesToHuman,
 	settleTicketBeforeModel,
 	type TicketRule,
 } from ".";
@@ -165,6 +166,8 @@ test("rules fire before model and partial settlement is model context", async ()
 	);
 	assert.equal(complete.modelResult, null);
 	assert.equal(called, false);
+	assert.equal(routesToHuman(complete.evaluation.firings), true);
+	assert.equal(routesToHuman(partial.evaluation.firings), false);
 });
 
 test("measures tokens per unique ticket including zero-run tickets", () => {

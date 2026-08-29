@@ -46,6 +46,7 @@ export const notifications = pgTable(
 			t.recordId,
 			t.eventType,
 		),
+		index("notifications_actor_id_idx").on(t.actorId),
 		index("notifications_recipient_unread_idx").on(
 			t.recipientId,
 			t.readAt,

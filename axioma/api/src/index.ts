@@ -8,6 +8,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { auth } from "@/auth";
 import { env } from "@/env";
+import { bootstrapAdministrator } from "@/server/authorization";
 import { createContext } from "@/server/context";
 import { documentHttp } from "@/server/documents/http";
 import { grpcGateway } from "@/server/grpc";
@@ -24,6 +25,15 @@ import {
 	closeRecurrenceSweep,
 	startRecurrenceSweep,
 } from "@/server/scheduling-runtime";
+
+if (env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL) {
+	const found = await bootstrapAdministrator(env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL);
+	console.log(
+		found
+			? `[auth] bootstrapped administrator ${env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL}`
+			: `[auth] bootstrap account not found: ${env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL}`,
+	);
+}
 
 export const app = new Hono();
 
@@ -70,21 +80,32 @@ app.use("/*", async (c, next) => {
 	try {
 		context = await createContext({ context: c });
 	} catch (error) {
-		if (
-			error instanceof Error &&
-			"code" in error &&
-			error.code === "TOO_MANY_REQUESTS"
-		) {
+		const code =
+			error instanceof Error && "code" in error
+				? (error as { code?: unknown }).code
+				: undefined;
+		if (code === "TOO_MANY_REQUESTS") {
 			const retryAfterMs = Number(
 				(error as { data?: { retryAfterMs?: number } }).data?.retryAfterMs ??
 					1_000,
 			);
 			return c.json(
-				{ code: "TOO_MANY_REQUESTS", message: error.message },
+				{
+					code,
+					message: error instanceof Error ? error.message : String(error),
+				},
 				429,
 				{ "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1_000))) },
 			);
 		}
+		if (code === "UNAUTHORIZED")
+			return c.json(
+				{
+					code,
+					message: error instanceof Error ? error.message : "Unauthorized",
+				},
+				401,
+			);
 		throw error;
 	}
 

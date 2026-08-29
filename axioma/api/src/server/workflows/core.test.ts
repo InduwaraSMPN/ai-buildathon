@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { SHARED_ACTION_TYPES } from "../rules";
 import {
+	ACTION_TYPES,
 	assertWorkflowActions,
 	canTriggerWorkflow,
 	collapseNotificationRepeats,
@@ -25,15 +27,16 @@ test("retryDelayMs exponentially backs off, caps, and stops", () => {
 	assert.throws(() => retryDelayMs(0), RangeError);
 });
 
-test("workflow actions share rules vocabulary and workflows cannot trigger workflows", () => {
+test("workflow actions share the shared vocabulary and workflows cannot trigger workflows", () => {
+	assert.deepEqual(new Set(SHARED_ACTION_TYPES), new Set(ACTION_TYPES));
 	assert.deepEqual(
 		assertWorkflowActions([
 			{ type: "set_category", value: "device" },
-			{ type: "send_webhook", value: "endpoint-1" },
+			{ type: "send_webhook", value: { url: "endpoint-1" } },
 		]),
 		[
 			{ type: "set_category", value: "device" },
-			{ type: "send_webhook", value: "endpoint-1" },
+			{ type: "send_webhook", value: { url: "endpoint-1" } },
 		],
 	);
 	assert.throws(

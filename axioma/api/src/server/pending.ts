@@ -4,10 +4,13 @@ import { db } from "@/db";
 import {
 	pendingFollowups,
 	pendingReasons,
+	ticketMessages,
+	ticketStatuses,
 	tickets,
 	ticketTransitions,
 } from "@/db/schema";
 import { transitionTicketStopwatches } from "./sla/runtime";
+import { resolveTicketStatus } from "./tickets";
 
 export const nextPendingFollowupAt = (
 	lastPendingAt: Date,
@@ -19,15 +22,25 @@ export async function sweepPending(now = new Date()): Promise<number> {
 		.select({ ticket: tickets, reason: pendingReasons })
 		.from(tickets)
 		.innerJoin(pendingReasons, eq(tickets.pendingReasonId, pendingReasons.id))
-		.where(and(eq(tickets.status, "pending"), lte(tickets.pendingUntil, now)));
+		.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
+		.where(
+			and(
+				eq(ticketStatuses.stateType, "pending"),
+				lte(tickets.pendingUntil, now),
+			),
+		);
 	let changed = 0;
 	for (const { ticket, reason } of due) {
 		const ordinal = ticket.pendingFollowups + 1;
 		if (ordinal > reason.followupsBeforeResolution) {
+			const resolvedStatus = await resolveTicketStatus(
+				ticket.status,
+				"resolve",
+			);
 			const resolved = await db
 				.update(tickets)
 				.set({
-					status: "resolved",
+					status: resolvedStatus,
 					resolution: `Auto-resolved after ${ticket.pendingFollowups} unanswered follow-ups`,
 					resolutionCode: "no_action_required",
 					resolvedAt: now,
@@ -35,19 +48,21 @@ export async function sweepPending(now = new Date()): Promise<number> {
 					pendingUntil: null,
 					updatedAt: now,
 				})
-				.where(and(eq(tickets.id, ticket.id), eq(tickets.status, "pending")))
+				.where(
+					and(eq(tickets.id, ticket.id), eq(tickets.status, ticket.status)),
+				)
 				.returning({ id: tickets.id });
 			if (resolved[0]) {
 				await db.insert(ticketTransitions).values({
 					id: crypto.randomUUID(),
 					ticketId: ticket.id,
-					fromStatus: "pending",
-					toStatus: "resolved",
+					fromStatus: ticket.status,
+					toStatus: resolvedStatus,
 					action: "resolve",
 					actorType: "agent",
 					actorId: "pending-sweep",
 				});
-				await transitionTicketStopwatches(ticket.id, "resolved", now);
+				await transitionTicketStopwatches(ticket.id, resolvedStatus, now);
 				changed++;
 			}
 			continue;
@@ -76,6 +91,14 @@ export async function sweepPending(now = new Date()): Promise<number> {
 			ticketId: ticket.id,
 			reasonId: reason.id,
 			ordinal,
+		});
+		await db.insert(ticketMessages).values({
+			id: crypto.randomUUID(),
+			ticketId: ticket.id,
+			authorId: null,
+			authorType: "staff",
+			body: "We’re still waiting for the information needed to continue.",
+			visibility: "public",
 		});
 		changed++;
 	}

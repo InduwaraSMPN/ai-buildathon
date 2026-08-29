@@ -36,7 +36,10 @@ export const messagingChannels = pgTable(
 		),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
-	(t) => [uniqueIndex("messaging_channels_key_uidx").on(t.key)],
+	(t) => [
+		uniqueIndex("messaging_channels_key_uidx").on(t.key),
+		index("messaging_channels_default_origin_id_idx").on(t.defaultOriginId),
+	],
 );
 
 export const messagingThreads = pgTable(
@@ -52,7 +55,9 @@ export const messagingThreads = pgTable(
 		ticketId: text("ticket_id").references(() => tickets.id, {
 			onDelete: "set null",
 		}),
-		originKey: text("origin_key").notNull(),
+		originKey: text("origin_key")
+			.notNull()
+			.references(() => ticketOrigins.key, { onDelete: "restrict" }),
 		participantRef: text("participant_ref"),
 		openedAt: timestamp("opened_at").notNull(),
 		lastMessageAt: timestamp("last_message_at").notNull(),

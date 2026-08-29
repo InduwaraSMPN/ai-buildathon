@@ -187,7 +187,7 @@ export const automationRouter = {
 			listSavedViews(db, await savedViewContext(context.userId)),
 	),
 	createSavedView: capabilityProcedure(
-		"admin.settings",
+		"ticket.read.all",
 	).createSavedView.handler(async ({ context, input }) => {
 		const ownerType = input.ownerType ?? "user";
 		const ownerId = input.ownerId ?? context.userId;
@@ -212,7 +212,7 @@ export const automationRouter = {
 		)[0]!;
 	}),
 	updateSavedView: capabilityProcedure(
-		"admin.settings",
+		"ticket.read.all",
 	).updateSavedView.handler(async ({ context, input: { id, ...patch } }) => {
 		const current = (
 			await db.select().from(savedViews).where(eq(savedViews.id, id)).limit(1)
@@ -231,7 +231,7 @@ export const automationRouter = {
 		)[0]!;
 	}),
 	deleteSavedView: capabilityProcedure(
-		"admin.settings",
+		"ticket.read.all",
 	).deleteSavedView.handler(async ({ context, input }) => {
 		const [current] = await db
 			.select()

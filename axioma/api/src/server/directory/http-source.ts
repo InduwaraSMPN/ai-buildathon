@@ -1,14 +1,23 @@
 import { z } from "zod";
 import { env } from "@/env";
 
-const person = z.object({
-	externalId: z.string().trim().min(1),
-	email: z.email(),
-	name: z.string().trim().min(1),
-	jobTitle: z.string().nullable().default(null),
-	department: z.string().nullable().default(null),
-	managerExternalId: z.string().nullable().default(null),
-});
+const person = z
+	.object({
+		externalId: z.string().trim().min(1),
+		email: z.email(),
+		name: z.string().trim().min(1),
+		jobTitle: z.string().nullable().default(null),
+		department: z.string().nullable().default(null),
+		managerExternalId: z.string().nullable().default(null),
+	})
+	.transform((value) => ({
+		...value,
+		kind:
+			value[env.AXIOMA_DIRECTORY_STAFF_ATTRIBUTE]?.trim().toLowerCase() ===
+			env.AXIOMA_DIRECTORY_STAFF_VALUE.trim().toLowerCase()
+				? ("staff" as const)
+				: ("reporter" as const),
+	}));
 const responseBody = z.union([
 	z.array(person),
 	z.object({ people: z.array(person) }).transform(({ people }) => people),

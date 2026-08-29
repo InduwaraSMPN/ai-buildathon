@@ -30,7 +30,14 @@ export type TicketActionInput<Action extends TicketAction> = Omit<
 >;
 export type TicketOperatorAction = Extract<
 	TicketAction,
-	"resolve" | "close" | "escalate" | "assign" | "reopen" | "reclassify"
+	| "resolve"
+	| "close"
+	| "escalate"
+	| "assign"
+	| "reopen"
+	| "reclassify"
+	| "pend"
+	| "unpend"
 >;
 export type TicketOperatorActionInput = {
 	[Action in TicketOperatorAction]: TicketActionInput<Action>;

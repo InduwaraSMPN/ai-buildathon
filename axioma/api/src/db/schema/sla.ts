@@ -43,12 +43,14 @@ const policyColumns = () => ({
 
 export const slas = pgTable("slas", policyColumns(), (t) => [
 	index("slas_priority_idx").on(t.priority),
+	index("slas_calendar_id_idx").on(t.calendarId),
 	check("slas_tto_positive", sql`${t.ttoWorkingMinutes} > 0`),
 	check("slas_ttr_positive", sql`${t.ttrWorkingMinutes} > 0`),
 ]);
 
 export const olas = pgTable("olas", policyColumns(), (t) => [
 	index("olas_priority_idx").on(t.priority),
+	index("olas_calendar_id_idx").on(t.calendarId),
 	check("olas_tto_positive", sql`${t.ttoWorkingMinutes} > 0`),
 	check("olas_ttr_positive", sql`${t.ttrWorkingMinutes} > 0`),
 ]);
@@ -149,5 +151,7 @@ export const slaEscalationEvents = pgTable(
 	(t) => [
 		uniqueIndex("sla_escalation_events_idempotency_uidx").on(t.idempotencyKey),
 		index("sla_escalation_events_ticket_idx").on(t.ticketId, t.createdAt),
+		index("sla_escalation_events_stopwatch_id_idx").on(t.stopwatchId),
+		index("sla_escalation_events_rule_id_idx").on(t.ruleId),
 	],
 );

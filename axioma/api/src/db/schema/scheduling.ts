@@ -59,6 +59,7 @@ export const recurringTickets = pgTable(
 	},
 	(t) => [
 		index("recurring_tickets_due_idx").on(t.enabled, t.startsAt),
+		index("recurring_tickets_source_ticket_id_idx").on(t.sourceTicketId),
 		check("recurring_tickets_interval_positive", sql`${t.interval} > 0`),
 		check(
 			"recurring_tickets_until_check",

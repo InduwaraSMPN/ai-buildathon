@@ -123,6 +123,7 @@ export const changes = pgTable(
 		index("changes_risk_idx").on(t.riskLevel, t.riskScore),
 		index("changes_source_run_idx").on(t.sourceRunId),
 		index("changes_source_step_idx").on(t.sourceStepId),
+		index("changes_created_by_id_idx").on(t.createdById),
 	],
 );
 

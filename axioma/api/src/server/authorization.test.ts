@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ORPCError } from "@orpc/server";
 import type { Capability } from "@/shared";
-import { hasEveryCapability } from "./authorization";
+import { hasEveryCapability, LAST_ADMIN_CONFLICT } from "./authorization";
 import { assertCapabilities } from "./orpc";
+
+test("last administrator conflict has a stable machine-readable name", () => {
+	assert.equal(LAST_ADMIN_CONFLICT, "LAST_ADMIN_REQUIRED");
+});
 
 test("capability checks require the complete requested set", () => {
 	const effective = new Set<Capability>(["ticket.read.own", "ticket.create"]);

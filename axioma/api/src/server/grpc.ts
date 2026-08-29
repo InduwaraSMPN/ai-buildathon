@@ -19,8 +19,10 @@ import { sweepPending } from "./pending";
 import { reconcileCoreSearchDocuments } from "./search/projections";
 import { transitionTicketStopwatches } from "./sla/runtime";
 import { sweepPresence, sweepSla } from "./sla/sweep";
+import { resolveTicketStatus } from "./tickets";
 import { executeTool } from "./tools";
 import { readContextForTicket } from "./tools/cmdb";
+import { sweepWorkflowScheduledEmissions } from "./workflows/runtime";
 import { sweepWebhookDeliveries } from "./workflows/webhooks";
 
 type Message = Record<string, unknown>;
@@ -220,10 +222,13 @@ class Gateway {
 					.returning({ ticketId: agentRuns.ticketId })
 			)[0];
 			if (!run) return;
+			const nextStatus = activeTicket
+				? await resolveTicketStatus(activeTicket.status, "fail")
+				: "escalated";
 			const ticket = (
 				await tx
 					.update(tickets)
-					.set({ status: "escalated", progressMarker: "handing_to_person" })
+					.set({ status: nextStatus, progressMarker: "handing_to_person" })
 					.where(
 						and(
 							eq(tickets.id, run.ticketId),
@@ -517,12 +522,19 @@ class Gateway {
 				dispatchDevice: (toolName, input) =>
 					this.dispatchDeviceTool(runId, toolName, input, stepId),
 			});
+			const structuredFailure =
+				typeof output === "object" &&
+				output !== null &&
+				"ok" in output &&
+				output.ok === false;
 			stream.write({
 				toolResult: {
 					runId,
 					callId: request.callId,
-					ok: true,
-					outputJson: JSON.stringify(output),
+					ok: !structuredFailure,
+					...(structuredFailure
+						? { error: JSON.stringify(output) }
+						: { outputJson: JSON.stringify(output) }),
 				},
 			});
 		} catch (error) {
@@ -992,6 +1004,7 @@ class Gateway {
 			sweepPending(new Date(now)),
 			sweepPresence(new Date(now)),
 			sweepWebhookDeliveries(db, 25, fetch, new Date(now)),
+			sweepWorkflowScheduledEmissions(25, new Date(now)),
 			reconcileCoreSearchDocuments(db, new Date(now - HEARTBEAT_MS * 2)),
 		]);
 		for (const { stream } of this.agents.values()) {

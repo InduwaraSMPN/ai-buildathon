@@ -5,12 +5,16 @@ import {
 	agentRuns,
 	approvals,
 	messagingThreads,
+	ticketAudit,
 	ticketMailOrigins,
+	ticketRuleFirings,
+	ticketStatuses,
 	tickets,
 	ticketTransitions,
 } from "@/db/schema";
 import { grpcGateway } from "../grpc";
 import { healthProcedure } from "../orpc";
+import { routesToHuman } from "../rules";
 import { canRerun, resolveTicketStatus, ticketRunOrigin } from "../tickets";
 import { readContextForTicket } from "../tools/cmdb";
 import type { findTicket } from "./tickets";
@@ -23,6 +27,24 @@ export async function startTicketRun(
 	ticket: Awaited<ReturnType<typeof findTicket>>,
 ) {
 	if (!ticket) throw new ORPCError("NOT_FOUND");
+	const firings = await db
+		.select({ result: ticketRuleFirings.result })
+		.from(ticketRuleFirings)
+		.where(eq(ticketRuleFirings.ticketId, ticket.id));
+	if (
+		ticket.route === "human_triage" ||
+		routesToHuman(firings.map(({ result }) => result))
+	) {
+		await db.insert(ticketAudit).values({
+			id: crypto.randomUUID(),
+			ticketId: ticket.id,
+			fieldName: "dispatch",
+			oldValue: "agent",
+			newValue: "human",
+			actorId: "rule:settlement",
+		});
+		return ticket;
+	}
 	const ticketId = ticket.id;
 	const approval = (
 		await db
@@ -64,7 +86,18 @@ export async function startTicketRun(
 			message: "Axel is not connected",
 		});
 	let nextStatus: typeof ticket.status;
-	if (ticket.status === "escalated") {
+	const ticketState = (
+		await db
+			.select({ stateType: ticketStatuses.stateType })
+			.from(ticketStatuses)
+			.where(eq(ticketStatuses.key, ticket.status))
+			.limit(1)
+	)[0]?.stateType;
+	if (
+		ticketState === "open" &&
+		ticket.status !== "routing" &&
+		ticket.status !== "resolving"
+	) {
 		const previous = (
 			await db
 				.select({ status: agentRuns.status })

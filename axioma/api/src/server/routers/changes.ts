@@ -6,6 +6,7 @@ import {
 	changeCabVotes,
 	changes,
 	changeTicketLinks,
+	changeTransitions,
 	ticketNumberCounters,
 } from "@/db/schema";
 import { canChangeProceed, changeApproval } from "../changes";
@@ -88,6 +89,14 @@ export const changesRouter = {
 					requesterId: context.userId,
 					createdById: context.userId,
 				});
+				await tx.insert(changeTransitions).values({
+					id: crypto.randomUUID(),
+					changeId: id,
+					fromStatus: "draft",
+					toStatus: "pending_approval",
+					actorType: "human",
+					actorId: context.userId,
+				});
 				const memberIds = [...new Set(input.cabMemberIds)];
 				if (memberIds.length)
 					await tx.insert(changeCabMembers).values(
@@ -111,7 +120,7 @@ export const changesRouter = {
 		},
 	),
 	updateChange: capabilityProcedure("change.manage").updateChange.handler(
-		async ({ input: { id, status, ...pir } }) => {
+		async ({ context, input: { id, status, ...pir } }) => {
 			const current = await requireChange(id);
 			if (
 				status === "in_progress" &&
@@ -139,13 +148,25 @@ export const changesRouter = {
 				...(status ? { status } : {}),
 				updatedAt: new Date(),
 			};
-			const updated = await db
-				.update(changes)
-				.set(patch)
-				.where(eq(changes.id, id))
-				.returning({ id: changes.id });
-			if (!updated[0]) throw new ORPCError("NOT_FOUND");
-			return requireChange(id);
+			const updated = await db.transaction(async (tx) => {
+				const row = await tx
+					.update(changes)
+					.set(patch)
+					.where(eq(changes.id, id))
+					.returning({ id: changes.id, status: changes.status });
+				if (!row[0]) throw new ORPCError("NOT_FOUND");
+				if (status && status !== current.status)
+					await tx.insert(changeTransitions).values({
+						id: crypto.randomUUID(),
+						changeId: id,
+						fromStatus: current.status,
+						toStatus: status,
+						actorType: "human",
+						actorId: context.userId,
+					});
+				return row[0];
+			});
+			return requireChange(updated.id);
 		},
 	),
 	voteOnChange: capabilityProcedure("change.approve").voteOnChange.handler(
@@ -178,18 +199,28 @@ export const changesRouter = {
 					set: { vote: input.vote, comment: input.comment, votedAt },
 				});
 			const detail = await requireChange(input.changeId);
-			await db
-				.update(changes)
-				.set({
-					status: changeApproval(
-						detail.changeType,
-						detail.cabMembers,
-						detail.cabRequired,
-						detail.cabApprovalType,
-					),
-					updatedAt: votedAt,
-				})
-				.where(eq(changes.id, input.changeId));
+			const nextStatus = changeApproval(
+				detail.changeType,
+				detail.cabMembers,
+				detail.cabRequired,
+				detail.cabApprovalType,
+			);
+			if (nextStatus !== detail.status) {
+				await db.transaction(async (tx) => {
+					await tx
+						.update(changes)
+						.set({ status: nextStatus, updatedAt: votedAt })
+						.where(eq(changes.id, input.changeId));
+					await tx.insert(changeTransitions).values({
+						id: crypto.randomUUID(),
+						changeId: input.changeId,
+						fromStatus: detail.status,
+						toStatus: nextStatus,
+						actorType: "human",
+						actorId: context.userId,
+					});
+				});
+			}
 			return requireChange(input.changeId);
 		},
 	),

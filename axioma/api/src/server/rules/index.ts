@@ -5,6 +5,11 @@ import type {
 	TicketRoute,
 	Urgency,
 } from "@/shared";
+import type {
+	Action,
+	ActionType as SharedActionType,
+} from "../automation/actions";
+import { ACTION_TYPES } from "../automation/actions";
 
 export const RULE_FIELDS = [
 	"serviceId",
@@ -26,15 +31,36 @@ export type RuleCriterion =
 	  }
 	| { field: "title" | "body"; operator: "contains" | "equals"; value: string };
 
-export type RuleAction =
-	| { type: "set_category"; value: Category }
-	| { type: "set_impact"; value: Impact }
-	| { type: "set_urgency"; value: Urgency }
-	| { type: "set_record_type"; value: RecordType }
-	| { type: "set_route"; value: TicketRoute }
-	| { type: "set_team"; value: string }
-	| { type: "set_assignee"; value: string }
-	| { type: "route_human" };
+export type RuleAction = Extract<
+	Action,
+	{
+		type:
+			| "set_category"
+			| "set_impact"
+			| "set_urgency"
+			| "set_record_type"
+			| "set_route"
+			| "set_team"
+			| "set_assignee"
+			| "route_human";
+	}
+>;
+
+export const RULE_ACTION_TYPES = [
+	"set_category",
+	"set_impact",
+	"set_urgency",
+	"set_record_type",
+	"set_route",
+	"set_team",
+	"set_assignee",
+	"route_human",
+] as const satisfies readonly SharedActionType[];
+
+export const SHARED_ACTION_TYPES = ACTION_TYPES;
+
+export type RuleActionType = (typeof RULE_ACTION_TYPES)[number];
+export type WorkflowAction = Action;
 
 export interface RuleTicket {
 	title: string;
@@ -89,6 +115,11 @@ export interface RuleEvaluation {
 	firings: RuleFiring[];
 	settledActions: ActionType[];
 }
+
+export const routesToHuman = (firings: readonly RuleFiring[]) =>
+	firings.some((firing) =>
+		firing.applied.some((action) => action.type === "route_human"),
+	);
 
 const actionField = {
 	set_category: "category",

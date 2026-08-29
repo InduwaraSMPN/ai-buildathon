@@ -4,11 +4,14 @@ import { db } from "@/db";
 import {
 	assetCheckoutLog,
 	assetDevices,
+	assetDisks,
+	assetHardware,
 	assetHistory,
 	assetImportRejections,
 	assetImportRuns,
 	assetStatuses,
 	assets,
+	inventoryReports,
 	softwareInventoryApps,
 	softwareLicenceAllocations,
 	softwareLicenceEntitlements,
@@ -24,6 +27,72 @@ import { capabilityProcedure } from "../orpc";
 import { assessSoftwareCompliance } from "../software-compliance";
 
 export const assetsRouter = {
+	readDeviceInventory: capabilityProcedure(
+		"device.read",
+	).readDeviceInventory.handler(async ({ input }) => {
+		const [link] = await db
+			.select({
+				deviceId: assetDevices.deviceId,
+				assetId: assetDevices.assetId,
+				lastReportedAt: assetDevices.lastReportedAt,
+			})
+			.from(assetDevices)
+			.where(eq(assetDevices.deviceId, input.deviceId))
+			.limit(1);
+		if (!link) throw new ORPCError("NOT_FOUND");
+		const [report] = await db
+			.select({ reportedAt: inventoryReports.reportedAt })
+			.from(inventoryReports)
+			.where(eq(inventoryReports.assetDeviceId, link.assetId))
+			.orderBy(desc(inventoryReports.reportedAt))
+			.limit(1);
+		const [hardware] = await db
+			.select({
+				manufacturer: assetHardware.manufacturer,
+				model: assetHardware.model,
+				serialNumber: assetHardware.serialNumber,
+				cpu: assetHardware.cpu,
+				memoryBytes: assetHardware.memoryBytes,
+				biosVersion: assetHardware.biosVersion,
+				observedAt: assetHardware.observedAt,
+			})
+			.from(assetHardware)
+			.where(eq(assetHardware.assetDeviceId, link.assetId))
+			.orderBy(desc(assetHardware.observedAt))
+			.limit(1);
+		const [disks, software] = await Promise.all([
+			db
+				.select({
+					deviceKey: assetDisks.deviceKey,
+					model: assetDisks.model,
+					serialNumber: assetDisks.serialNumber,
+					sizeBytes: assetDisks.sizeBytes,
+					observedAt: assetDisks.observedAt,
+				})
+				.from(assetDisks)
+				.where(eq(assetDisks.assetDeviceId, link.assetId))
+				.orderBy(asc(assetDisks.deviceKey)),
+			db
+				.select({
+					name: softwareInventoryApps.name,
+					version: softwareInventoryApps.version,
+					publisher: softwareInventoryApps.publisher,
+					installDate: softwareInventoryApps.installDate,
+					observedAt: softwareInventoryApps.observedAt,
+				})
+				.from(softwareInventoryApps)
+				.where(eq(softwareInventoryApps.assetDeviceId, link.assetId))
+				.orderBy(asc(softwareInventoryApps.name)),
+		]);
+		return {
+			deviceId: link.deviceId,
+			assetId: link.assetId,
+			reportedAt: report?.reportedAt ?? link.lastReportedAt ?? null,
+			disks,
+			hardware: hardware ?? null,
+			software,
+		};
+	}),
 	listAssets: capabilityProcedure("admin.settings").listAssets.handler(
 		async () =>
 			Promise.all(

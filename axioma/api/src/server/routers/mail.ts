@@ -1,30 +1,67 @@
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	channelMessages,
 	emailSendLog,
 	emailTemplateRules,
 	emailTemplates,
+	mailboxActivityLog,
+	mailboxes,
 	messagingChannels,
 	messagingThreads,
-	ticketAudit,
 	ticketMessages,
-	ticketNumberCounters,
-	ticketNumberHistory,
-	ticketRuleFirings,
-	ticketRules,
-	tickets,
 } from "@/db/schema";
-import { derivePriority } from "@/shared";
 import { planThreadIngestion } from "../channel-ingestion";
 import { capabilityProcedure } from "../orpc";
-import { evaluateTicketRules } from "../rules";
-import { indexTicket } from "../search/projections";
-import { attachTicketStopwatches } from "../sla/runtime";
-import { formatTicketNumber } from "../ticket-records";
+import {
+	createTicketInTransaction,
+	finalizeCreatedTicket,
+} from "../tickets/create";
 
 export const mailRouter = {
+	listMailboxes: capabilityProcedure("admin.settings").listMailboxes.handler(
+		() => db.select().from(mailboxes).orderBy(asc(mailboxes.name)),
+	),
+	upsertMailbox: capabilityProcedure("admin.settings").upsertMailbox.handler(
+		async ({ input }) => {
+			const id = input.id ?? crypto.randomUUID();
+			const { id: _id, ...values } = { ...input, id };
+			const [row] = await db
+				.insert(mailboxes)
+				.values({ id, ...values })
+				.onConflictDoUpdate({ target: mailboxes.id, set: values })
+				.returning();
+			if (!row) throw new ORPCError("INTERNAL_SERVER_ERROR");
+			return row;
+		},
+	),
+	deleteMailbox: capabilityProcedure("admin.settings").deleteMailbox.handler(
+		async ({ input }) => ({
+			deleted: Boolean(
+				(
+					await db
+						.delete(mailboxes)
+						.where(eq(mailboxes.id, input.id))
+						.returning({ id: mailboxes.id })
+				)[0],
+			),
+		}),
+	),
+	listMailboxActivity: capabilityProcedure(
+		"admin.settings",
+	).listMailboxActivity.handler(({ input }) =>
+		db
+			.select()
+			.from(mailboxActivityLog)
+			.where(
+				input.mailboxId
+					? eq(mailboxActivityLog.mailboxId, input.mailboxId)
+					: undefined,
+			)
+			.orderBy(desc(mailboxActivityLog.createdAt))
+			.limit(input.limit),
+	),
 	ingestChannelMessage: capabilityProcedure(
 		"ticket.create",
 	).ingestChannelMessage.handler(async ({ context, input }) => {
@@ -131,98 +168,33 @@ export const mailRouter = {
 					created: false,
 				};
 			}
-			const title =
-				input.title ?? input.body.trim().split(/\r?\n/, 1)[0]!.slice(0, 160);
-			const evaluation = evaluateTicketRules(
-				{
-					title,
-					body: input.body.trim(),
-					requesterId: context.userId,
-					origin: thread.originKey,
-					recordType: "incident",
-					impact: "medium",
-					urgency: "medium",
-				},
-				await tx
-					.select()
-					.from(ticketRules)
-					.where(eq(ticketRules.enabled, true)),
-			);
-			const ticketId = crypto.randomUUID();
-			const year = String(input.receivedAt.getUTCFullYear());
-			const counter = (
-				await tx
-					.insert(ticketNumberCounters)
-					.values({ prefix: "INC", year, lastValue: 1 })
-					.onConflictDoUpdate({
-						target: [ticketNumberCounters.prefix, ticketNumberCounters.year],
-						set: { lastValue: sql`${ticketNumberCounters.lastValue} + 1` },
-					})
-					.returning({ value: ticketNumberCounters.lastValue })
-			)[0]!;
-			const number = formatTicketNumber(
-				"incident",
-				Number(year),
-				counter.value,
-			);
-			await tx.insert(tickets).values({
-				id: ticketId,
-				number,
+			const created = await createTicketInTransaction(tx, {
+				source: "channel",
 				reporterId: context.userId,
-				title,
-				body: input.body.trim(),
-				recordType: evaluation.ticket.recordType,
-				impact: evaluation.ticket.impact,
-				urgency: evaluation.ticket.urgency,
-				priority: derivePriority(
-					evaluation.ticket.impact,
-					evaluation.ticket.urgency,
-				),
-				category: evaluation.ticket.category,
-				route: evaluation.ticket.route,
-				teamId: evaluation.ticket.teamId,
-				assigneeId: evaluation.ticket.assigneeId,
+				title:
+					input.title ??
+					input.body.trim().split(/\r?\n/, 1)[0]?.slice(0, 160) ??
+					"Untitled message",
+				body: input.body,
+				origin: thread.originKey,
 			});
-			await tx.insert(ticketNumberHistory).values({ number, ticketId });
-			if (evaluation.firings.length) {
-				await tx.insert(ticketRuleFirings).values(
-					evaluation.firings.map((firing) => ({
-						id: crypto.randomUUID(),
-						ticketId,
-						ruleId: firing.ruleId,
-						rulePosition: firing.rulePosition,
-						result: firing,
-					})),
-				);
-				await tx.insert(ticketAudit).values(
-					evaluation.firings.flatMap((firing) =>
-						firing.applied.map((action) => ({
-							id: crypto.randomUUID(),
-							ticketId,
-							fieldName: action.type,
-							oldValue: null,
-							newValue: "value" in action ? action.value : true,
-							actorId: `rule:${firing.ruleId}`,
-						})),
-					),
-				);
-			}
 			await tx
 				.update(messagingThreads)
-				.set({ ticketId, lastMessageAt: input.receivedAt })
+				.set({ ticketId: created.ticketId, lastMessageAt: input.receivedAt })
 				.where(eq(messagingThreads.id, thread.id));
 			return {
 				duplicate: false,
-				ticketId,
+				ticketId: created.ticketId,
 				threadId: thread.id,
 				messageId: message.id,
 				created: true,
+				createdTicket: created,
 			};
 		});
-		if (result.created) {
-			await attachTicketStopwatches(result.ticketId, "P3");
-			await indexTicket(db, result.ticketId);
-		}
+		if ("createdTicket" in result && result.createdTicket)
+			await finalizeCreatedTicket(result.createdTicket, {
+				reporterId: context.userId,
+			});
 		return {
 			accepted: true as const,
 			duplicate: result.duplicate,

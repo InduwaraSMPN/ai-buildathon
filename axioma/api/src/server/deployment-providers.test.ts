@@ -58,6 +58,7 @@ test("directory source is server-configured and validates its payload", async ()
 			jobTitle: null,
 			department: null,
 			managerExternalId: null,
+			kind: "reporter",
 		});
 	} finally {
 		globalThis.fetch = originalFetch;

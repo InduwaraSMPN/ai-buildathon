@@ -27,6 +27,7 @@ export const ticketPresence = pgTable(
 	(t) => [
 		primaryKey({ columns: [t.ticketId, t.userId] }),
 		index("ticket_presence_expiry_idx").on(t.ticketId, t.expiresAt),
+		index("ticket_presence_user_id_idx").on(t.userId),
 	],
 );
 

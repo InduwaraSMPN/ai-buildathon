@@ -87,6 +87,8 @@ export const changesContract = {
 				id,
 				status: changeStatus.optional(),
 				pirWasSuccessful: z.boolean().optional(),
+				pirActualStartAt: z.coerce.date().optional(),
+				pirActualEndAt: z.coerce.date().optional(),
 				pirLessonsLearned: z.string().trim().max(10_000).optional(),
 				pirFollowUp: z.string().trim().max(10_000).optional(),
 			}),

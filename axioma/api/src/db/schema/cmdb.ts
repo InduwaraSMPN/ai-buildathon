@@ -22,7 +22,10 @@ export const cmdbClasses = pgTable(
 			{ onDelete: "set null" },
 		),
 	},
-	(t) => [uniqueIndex("cmdb_classes_key_uidx").on(t.key)],
+	(t) => [
+		uniqueIndex("cmdb_classes_key_uidx").on(t.key),
+		index("cmdb_classes_parent_class_id_idx").on(t.parentClassId),
+	],
 );
 
 export const cmdbClassProperties = pgTable(
@@ -92,6 +95,7 @@ export const cmdbObjectProperties = pgTable(
 	},
 	(t) => [
 		uniqueIndex("cmdb_object_properties_uidx").on(t.objectId, t.propertyId),
+		index("cmdb_object_properties_property_id_idx").on(t.propertyId),
 	],
 );
 
@@ -131,6 +135,8 @@ export const cmdbObjectRelationships = pgTable(
 	(t) => [
 		index("cmdb_object_relationships_source_idx").on(t.sourceObjectId),
 		index("cmdb_object_relationships_target_idx").on(t.targetObjectId),
+		index("cmdb_object_relationships_property_id_idx").on(t.propertyId),
+		index("cmdb_object_relationships_type_id_idx").on(t.typeId),
 	],
 );
 

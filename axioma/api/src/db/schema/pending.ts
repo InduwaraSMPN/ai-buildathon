@@ -43,5 +43,8 @@ export const pendingFollowups = pgTable(
 		ordinal: integer("ordinal").notNull(),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
-	(t) => [index("pending_followups_ticket_idx").on(t.ticketId, t.createdAt)],
+	(t) => [
+		index("pending_followups_ticket_idx").on(t.ticketId, t.createdAt),
+		index("pending_followups_reason_id_idx").on(t.reasonId),
+	],
 );

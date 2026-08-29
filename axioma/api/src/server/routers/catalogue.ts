@@ -9,15 +9,116 @@ import {
 	serviceFamilies,
 	serviceSubcategories,
 	services,
-	ticketNumberCounters,
-	tickets,
 	user,
 } from "@/db/schema";
 import { validateFormSubmission } from "../forms";
 import { capabilityProcedure, reporterProcedure } from "../orpc";
-import { attachTicketStopwatches } from "../sla/runtime";
+import {
+	createTicketInTransaction,
+	finalizeCreatedTicket,
+} from "../tickets/create";
+
+async function getForm(id: string) {
+	const form = (
+		await db.select().from(forms).where(eq(forms.id, id)).limit(1)
+	)[0];
+	if (!form) throw new ORPCError("NOT_FOUND");
+	return {
+		...form,
+		fields: await db
+			.select()
+			.from(formFields)
+			.where(eq(formFields.formId, id))
+			.orderBy(asc(formFields.ordinal)),
+	};
+}
 
 export const catalogueRouter = {
+	listForms: capabilityProcedure("catalogue.manage").listForms.handler(
+		async () => {
+			const rows = await db.select().from(forms).orderBy(desc(forms.updatedAt));
+			return Promise.all(rows.map((form) => getForm(form.id)));
+		},
+	),
+	createForm: capabilityProcedure("catalogue.manage").createForm.handler(
+		async ({ context, input }) => {
+			const id = crypto.randomUUID();
+			await db.transaction(async (tx) => {
+				await tx.insert(forms).values({
+					id,
+					key: input.key,
+					version: 1,
+					name: input.name,
+					description: input.description ?? null,
+					createdById: context.userId,
+				});
+				if (input.fields.length)
+					await tx.insert(formFields).values(
+						input.fields.map((field, ordinal) => ({
+							id: crypto.randomUUID(),
+							formId: id,
+							ordinal,
+							...field,
+						})),
+					);
+			});
+			return getForm(id);
+		},
+	),
+	updateForm: capabilityProcedure("catalogue.manage").updateForm.handler(
+		async ({ input }) => {
+			await db.transaction(async (tx) => {
+				const current = (
+					await tx.select().from(forms).where(eq(forms.id, input.id)).limit(1)
+				)[0];
+				if (current?.status !== "draft")
+					throw new ORPCError("CONFLICT", {
+						message: "Only draft forms can be edited",
+					});
+				await tx
+					.update(forms)
+					.set({
+						key: input.key,
+						name: input.name,
+						description: input.description ?? null,
+						updatedAt: new Date(),
+					})
+					.where(eq(forms.id, input.id));
+				await tx.delete(formFields).where(eq(formFields.formId, input.id));
+				if (input.fields.length)
+					await tx.insert(formFields).values(
+						input.fields.map((field, ordinal) => ({
+							id: crypto.randomUUID(),
+							formId: input.id,
+							ordinal,
+							...field,
+						})),
+					);
+			});
+			return getForm(input.id);
+		},
+	),
+	publishForm: capabilityProcedure("catalogue.manage").publishForm.handler(
+		async ({ input }) => {
+			const fields = await db
+				.select()
+				.from(formFields)
+				.where(eq(formFields.formId, input.id));
+			if (!fields.length)
+				throw new ORPCError("BAD_REQUEST", {
+					message: "A form needs at least one field",
+				});
+			await db
+				.update(forms)
+				.set({
+					status: "published",
+					publishedAt: new Date(),
+					updatedAt: new Date(),
+				})
+				.where(and(eq(forms.id, input.id), eq(forms.status, "draft")));
+			return getForm(input.id);
+		},
+	),
 	listCatalogue: capabilityProcedure("catalogue.manage").listCatalogue.handler(
 		async () => {
 			const [families, serviceRows, subcategories] = await Promise.all([
@@ -122,23 +223,9 @@ export const catalogueRouter = {
 						error instanceof Error ? error.message : "Invalid form submission",
 				});
 			}
-			const ticketId = crypto.randomUUID();
 			const submissionId = crypto.randomUUID();
-			const year = String(new Date().getUTCFullYear());
-			const counter = (
-				await tx
-					.insert(ticketNumberCounters)
-					.values({ prefix: "REQ", year, lastValue: 1 })
-					.onConflictDoUpdate({
-						target: [ticketNumberCounters.prefix, ticketNumberCounters.year],
-						set: { lastValue: sql`${ticketNumberCounters.lastValue} + 1` },
-					})
-					.returning({ value: ticketNumberCounters.lastValue })
-			)[0];
-			if (!counter) throw new ORPCError("INTERNAL_SERVER_ERROR");
-			await tx.insert(tickets).values({
-				id: ticketId,
-				number: `REQ-${year}-${String(counter.value).padStart(5, "0")}`,
+			const created = await createTicketInTransaction(tx, {
+				source: "catalogue",
 				reporterId: context.userId,
 				title: input.title,
 				body: input.body,
@@ -146,6 +233,8 @@ export const catalogueRouter = {
 				serviceId: selected.subcategory.serviceId,
 				serviceSubcategoryId: selected.subcategory.id,
 			});
+			const ticketId = created.ticketId;
+			/* numbering is owned by createTicketInTransaction */
 			await tx.insert(formSubmissions).values({
 				id: submissionId,
 				formId: selected.form.id,
@@ -176,9 +265,9 @@ export const catalogueRouter = {
 					)[0] ?? null;
 				if (!approval) throw new ORPCError("INTERNAL_SERVER_ERROR");
 			}
-			return { ticketId, approval };
+			return { ticketId, approval, created };
 		});
-		await attachTicketStopwatches(result.ticketId, "P3");
+		await finalizeCreatedTicket(result.created, { reporterId: context.userId });
 		return result;
 	}),
 	listApprovals: capabilityProcedure("approval.read").listApprovals.handler(

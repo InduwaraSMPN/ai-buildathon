@@ -73,6 +73,7 @@ export const contractCoverageWindows = pgTable(
 	},
 	(t) => [
 		index("contract_coverage_windows_contract_idx").on(t.contractId, t.weekday),
+		index("contract_coverage_windows_sla_id_idx").on(t.slaId),
 		check(
 			"contract_coverage_windows_weekday_check",
 			sql`${t.weekday} between 0 and 6`,

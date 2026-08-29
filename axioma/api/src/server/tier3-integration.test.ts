@@ -9,11 +9,15 @@ import { assertCapabilities } from "./orpc";
 
 const databaseUrl = process.env.DATABASE_URL;
 
-test("Tier 3 migration preserves CMDB row count and provenance", { skip: !databaseUrl }, async () => {
+test("Tier 3 migration preserves CMDB row count and provenance", {
+	skip: !databaseUrl,
+}, async () => {
 	const client = new Client({ connectionString: databaseUrl });
 	await client.connect();
 	try {
-		const { rows: [row] } = await client.query(`
+		const {
+			rows: [row],
+		} = await client.query(`
 			SELECT
 				(SELECT count(*)::int FROM cmdb_items) legacy_rows,
 				(SELECT count(*)::int FROM cmdb_objects o JOIN cmdb_items i ON i.id = o.id) migrated_rows,
@@ -32,18 +36,46 @@ test("Tier 3 migration preserves CMDB row count and provenance", { skip: !databa
 
 test("read-only API key is denied write and then rate limited", async () => {
 	const now = new Date("2026-01-01T00:00:00Z");
-	const created = createApiKey({ userId: "u", name: "readonly", capabilities: ["ticket.read.own"], issuerCapabilities: ["ticket.read.own"] }, now);
-	const query = { from: () => query, where: () => query, limit: async () => [created.record] };
+	const created = createApiKey(
+		{
+			userId: "u",
+			name: "readonly",
+			capabilities: ["ticket.read.own"],
+			issuerCapabilities: ["ticket.read.own"],
+		},
+		now,
+	);
+	const query = {
+		from: () => query,
+		where: () => query,
+		limit: async () => [created.record],
+	};
 	const update = { set: () => update, where: async () => undefined };
 	const resolve = createApiKeyResolver({
 		db: { select: () => query, update: () => update } as unknown as ApiKeyDb,
-		limiter: new FixedWindowRateLimiter({ perKey: 1, global: 10, windowMs: 60_000 }),
+		limiter: new FixedWindowRateLimiter({
+			perKey: 1,
+			global: 10,
+			windowMs: 60_000,
+		}),
 		now: () => now,
 	});
 	const first = await resolve(created.token);
 	assert.equal(first.ok, true);
 	if (!first.ok) return;
-	assert.throws(() => assertCapabilities({ capabilities: new Set(first.auth.capabilities) }, "ticket.create"), (error: unknown) => error instanceof Error && "code" in error && error.code === "FORBIDDEN");
-	assert.deepEqual(await resolve(created.token), { ok: false, reason: "rate_limited", retryAfterMs: 60_000, resetAt: new Date("2026-01-01T00:01:00Z") });
+	assert.throws(
+		() =>
+			assertCapabilities(
+				{ capabilities: new Set(first.auth.capabilities) },
+				"ticket.create",
+			),
+		(error: unknown) =>
+			error instanceof Error && "code" in error && error.code === "FORBIDDEN",
+	);
+	assert.deepEqual(await resolve(created.token), {
+		ok: false,
+		reason: "rate_limited",
+		retryAfterMs: 60_000,
+		resetAt: new Date("2026-01-01T00:01:00Z"),
+	});
 });
-
