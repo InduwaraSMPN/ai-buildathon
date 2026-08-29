@@ -224,14 +224,13 @@ class Connection:
             outcome=outcome,
             error=error,
         )
-        if result is not None:
-            _set_if_present(
-                update,
-                prompt_tokens=getattr(result, "prompt_tokens", None),
-                completion_tokens=getattr(result, "completion_tokens", None),
-                model=getattr(result, "model", None),
-                evidence=terminal_evidence,
-            )
+        _set_if_present(
+            update,
+            prompt_tokens=getattr(result, "prompt_tokens", ctx.prompt_tokens),
+            completion_tokens=getattr(result, "completion_tokens", ctx.completion_tokens),
+            model=getattr(result, "model", ctx.model),
+            evidence=terminal_evidence,
+        )
         message = pb.AgentMessage(run_update=update)
         if self.closing:
             _RETAINED_TERMINALS[start.run_id] = message

@@ -72,7 +72,7 @@ function DeviceDetail({ device }: { device: Device }) {
 					/>
 					<Detail
 						label="Enrolled"
-						value={formatDate(device.enrolledAt)}
+						value={device.enrolledAt ? formatDate(device.enrolledAt) : null}
 						tabular
 					/>
 					<Detail

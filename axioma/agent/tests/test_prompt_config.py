@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from axel import tools
+from axel import model, tools
 from axel.config import Config
 from axel.prompt import SYSTEM_PROMPT, build_user_prompt
 
@@ -37,6 +37,21 @@ def test_prompt_contains_ticket_classification_device_and_prior_observation() ->
         assert expected in prompt
 
 
+def test_prompt_renders_actual_cmdb_row_attributes() -> None:
+    prompt = build_user_prompt(
+        title="Repeat failure",
+        body="The same deployment failed again.",
+        device_id=None,
+        context_json=(
+            '[{"kind":"deployment","externalId":"deployment/demo/checkout",'
+            '"name":"checkout","attributes":{"image":"nginx:broken"},'
+            '"observedAt":"2026-08-28T12:00:00Z"}]'
+        ),
+    )
+    assert "deployment/demo/checkout" in prompt
+    assert "nginx:broken" in prompt
+
+
 def test_prompt_states_missing_device_and_system_rules() -> None:
     prompt = build_user_prompt(title="Capacity", body="Pods pending", device_id=None)
     assert "Device ID: none provided; do not invent one." in prompt
@@ -55,6 +70,70 @@ def test_every_llm_tool_schema_is_strict_and_requires_reasoning() -> None:
         assert parameters["additionalProperties"] is False
         assert "reasoning" in parameters["properties"]
         assert set(parameters["required"]) == set(parameters["properties"])
+
+
+def test_marketrix_defaults_and_completion_options(monkeypatch) -> None:
+    settings = Config(_env_file=None, AXIOMA_LLM_KEY="secret")
+    assert settings.model == "openai/gpt-5.6-terra"
+    assert settings.api_base == "https://llm.marketrix.io/v1"
+    assert settings.reasoning_effort == "max"
+
+    monkeypatch.setattr(model, "config", settings)
+    captured = {}
+
+    async def completion(**kwargs):
+        captured.update(kwargs)
+        return type(
+            "Response",
+            (),
+            {
+                "choices": [
+                    type(
+                        "Choice",
+                        (),
+                        {
+                            "message": type(
+                                "Message",
+                                (),
+                                {
+                                    "tool_calls": [
+                                        type(
+                                            "Call",
+                                            (),
+                                            {
+                                                "id": "1",
+                                                "function": type(
+                                                    "Function",
+                                                    (),
+                                                    {
+                                                        "name": "resolve_ticket",
+                                                        "arguments": (
+                                                            '{"reasoning":"done",'
+                                                            '"resolution":"fixed"}'
+                                                        ),
+                                                    },
+                                                )(),
+                                            },
+                                        )()
+                                    ]
+                                },
+                            )()
+                        },
+                    )()
+                ],
+                "usage": None,
+                "model": "gpt-5.6-terra",
+            },
+        )()
+
+    monkeypatch.setattr(model.litellm, "acompletion", completion)
+    import asyncio
+
+    asyncio.run(model.think([{"role": "user", "content": "ticket"}]))
+    assert captured["api_base"] == settings.api_base
+    assert captured["api_key"] == "secret"
+    assert captured["reasoning_effort"] == "max"
+    assert "temperature" not in captured
 
 
 def test_run_limits_match_api() -> None:

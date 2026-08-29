@@ -48,10 +48,15 @@ _DECISION_TOOLS = [
                     "reasoning": {"type": "string", "minLength": 1},
                     "reason": {"type": "string", "minLength": 1},
                     "proposal": {
-                        "type": ["string", "null"],
+                        "anyOf": [
+                            {"type": "object", "additionalProperties": True},
+                            {"type": "array", "items": {"type": "object"}},
+                            {"type": "string"},
+                            {"type": "null"},
+                        ],
                         "description": (
                             "A concrete proposed remediation for the operator. For configuration "
-                            "changes, provide a JSON object with before/after or an RFC 6902 patch."
+                            "changes, provide before/after fields or an RFC 6902 patch."
                         ),
                     },
                 },
@@ -130,7 +135,12 @@ async def _completion(
             "tools": _llm_tools(strict=strict),
             "tool_choice": "required",
             "parallel_tool_calls": False,
+            "api_base": config.api_base,
         }
+        if config.api_key is not None:
+            kwargs["api_key"] = config.api_key.get_secret_value()
+        if config.reasoning_effort is not None:
+            kwargs["reasoning_effort"] = config.reasoning_effort
         if config.temperature is not None:
             kwargs["temperature"] = config.temperature
         try:
@@ -192,6 +202,10 @@ def _decision(name: str, raw_arguments: str | dict[str, Any]) -> Decision:
             proposal=(
                 {"description": arguments["proposal"]}
                 if isinstance(arguments.get("proposal"), str)
+                else {"patch": arguments["proposal"]}
+                if isinstance(arguments.get("proposal"), list)
+                else arguments.get("proposal")
+                if isinstance(arguments.get("proposal"), dict)
                 else None
             ),
         )

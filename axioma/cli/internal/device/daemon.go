@@ -190,6 +190,24 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 			outbound = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Result{Result: result}}
 		case msg := <-incoming:
 			resetTimer(liveness, timings.liveness)
+			if enrollment := msg.GetEnrollment(); enrollment != nil {
+				if enrollment.Claimed && id.EnrolmentCode != "" {
+					if err := SaveEnrolmentCode(*id, ""); err != nil {
+						return terminalError{fmt.Errorf("clear enrolment code: %w", err)}
+					}
+					id.EnrolmentCode = ""
+				} else if enrollment.CodeExpired && id.EnrolmentCode != "" {
+					if err := SaveEnrolmentCode(*id, ""); err != nil {
+						return terminalError{fmt.Errorf("rotate expired enrolment code: %w", err)}
+					}
+					id.EnrolmentCode = ""
+					if err := EnsureEnrolmentCode(id); err != nil {
+						return terminalError{err}
+					}
+					return fmt.Errorf("enrolment code expired; generated a replacement")
+				}
+				continue
+			}
 			command := msg.GetCommand()
 			if command == nil {
 				continue

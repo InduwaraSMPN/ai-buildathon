@@ -43,3 +43,15 @@ async def test_malformed_model_arguments_become_recoverable_invalid_decision(
         2,
         "provider/model",
     )
+
+
+def test_escalation_adapter_preserves_structured_proposal() -> None:
+    decision = model._decision(
+        "escalate_ticket",
+        {
+            "reasoning": "Capacity needs owner intent.",
+            "reason": "Policy decision required.",
+            "proposal": {"before": {"cpu": "64"}, "after": {"cpu": "2"}},
+        },
+    )
+    assert decision.proposal == {"before": {"cpu": "64"}, "after": {"cpu": "2"}}

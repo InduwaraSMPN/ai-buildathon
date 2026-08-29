@@ -147,7 +147,13 @@ message GatewayMessage {
   oneof payload {
     DeviceCommand command = 1;
     Heartbeat heartbeat = 2;
+    DeviceEnrollment enrollment = 3;
   }
+}
+
+message DeviceEnrollment {
+  bool claimed = 1;
+  bool code_expired = 2;
 }
 
 message DeviceHello {

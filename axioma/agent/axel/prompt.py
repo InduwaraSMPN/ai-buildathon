@@ -70,7 +70,16 @@ def build_user_prompt(
         for item in observations[:20]:
             if isinstance(item, dict):
                 observed_at = item.get("observed_at") or item.get("observedAt") or "time unknown"
-                detail = item.get("observation") or item.get("summary") or item.get("name") or item
+                detail = item.get("observation") or item.get("summary")
+                if not detail:
+                    detail = {
+                        "kind": item.get("kind"),
+                        "external_id": item.get("external_id") or item.get("externalId"),
+                        "name": item.get("name"),
+                        "attributes": item.get("attributes"),
+                        "relates_to_id": item.get("relates_to_id") or item.get("relatesToId"),
+                        "relation_kind": item.get("relation_kind") or item.get("relationKind"),
+                    }
                 lines.append(f"- [{observed_at}] {_compact(detail)}")
             else:
                 lines.append(f"- [time unknown] {_compact(item)}")

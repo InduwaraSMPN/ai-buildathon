@@ -126,7 +126,7 @@ const device = z.object({
 	agentVersion: z.string().nullable(),
 	connected: deviceConnection,
 	lastSeenAt: z.date(),
-	enrolledAt: z.date(),
+	enrolledAt: z.date().nullable(),
 	lastCommand,
 });
 const deviceCommand = z.object({

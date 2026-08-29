@@ -112,6 +112,64 @@ func TestBackoffResetsOnlyAfterStablePeriod(t *testing.T) {
 	}
 }
 
+func TestServeConnectionClearsEnrollmentCodeWhenClaimed(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	stream := newFakeDeviceStream()
+	defer stream.close()
+	ctx, cancel := context.WithCancel(context.Background())
+	id := Identity{DeviceID: "device", EnrolmentCode: "ABCDEF-1234"}
+	if err := SaveEnrolmentCode(id, id.EnrolmentCode); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- serveConnection(ctx, cancel, stream, "test", &id,
+			daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+			func(Identity, uint64) error { return nil }, execute)
+	}()
+	<-stream.sent // hello
+	stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{Enrollment: &pb.DeviceEnrollment{Claimed: true}}}
+	deadline := time.Now().Add(time.Second)
+	for id.EnrolmentCode != "" && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if id.EnrolmentCode != "" {
+		t.Fatal("claimed enrollment code was not cleared")
+	}
+	loaded, err := Load("test")
+	if err != nil || loaded.EnrolmentCode != "" {
+		t.Fatalf("persisted enrollment code was not cleared: %#v, %v", loaded, err)
+	}
+	cancel()
+	stream.close()
+	<-done
+}
+
+func TestServeConnectionRotatesExpiredEnrollmentCode(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	stream := newFakeDeviceStream()
+	defer stream.close()
+	ctx, cancel := context.WithCancel(context.Background())
+	id := Identity{DeviceID: "device", EnrolmentCode: "ABCDEF-1234"}
+	if err := SaveEnrolmentCode(id, id.EnrolmentCode); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- serveConnection(ctx, cancel, stream, "test", &id,
+			daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+			func(Identity, uint64) error { return nil }, execute)
+	}()
+	<-stream.sent // hello
+	stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{Enrollment: &pb.DeviceEnrollment{CodeExpired: true}}}
+	if err := <-done; err == nil || !strings.Contains(err.Error(), "generated a replacement") {
+		t.Fatalf("serveConnection returned %v", err)
+	}
+	if id.EnrolmentCode == "" || id.EnrolmentCode == "ABCDEF-1234" {
+		t.Fatalf("expired code was not rotated: %q", id.EnrolmentCode)
+	}
+}
+
 func TestServeConnectionPersistsBeforeExecuteAndAcknowledgesDuplicate(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	stream := newFakeDeviceStream()

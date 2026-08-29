@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,8 +19,11 @@ class Config(BaseSettings):
     # gRPC back-channel to the API. The agent dials out; the API listens.
     api_grpc_host: str = "localhost:50051"
 
-    # Passed straight to LiteLLM, so any supported provider works unchanged.
-    model: str = "openai/gpt-5"
+    # OpenAI-compatible Marketrix endpoint; credentials stay in the environment.
+    model: str = "openai/gpt-5.6-terra"
+    api_base: str = "https://llm.marketrix.io/v1"
+    api_key: SecretStr | None = Field(default=None, validation_alias="AXIOMA_LLM_KEY")
+    reasoning_effort: str | None = "max"
     temperature: float | None = None
 
     max_tool_calls: int = 20

@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { COMMAND_STATUSES, DEVICE_CONNECTION_STATES } from "@/shared";
+import { agentRuns, agentSteps } from "./agent";
 import { user } from "./auth";
 
 /**
@@ -41,7 +42,7 @@ export const devices = pgTable(
 			.notNull()
 			.default("offline"),
 		lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
-		enrolledAt: timestamp("enrolled_at").defaultNow().notNull(),
+		enrolledAt: timestamp("enrolled_at"),
 	},
 	(t) => [
 		index("devices_owner_idx").on(t.ownerId),
@@ -64,8 +65,12 @@ export const deviceCommands = pgTable(
 		deviceId: text("device_id")
 			.notNull()
 			.references(() => devices.id, { onDelete: "cascade" }),
-		runId: text("run_id"),
-		stepId: text("step_id"),
+		runId: text("run_id").references(() => agentRuns.id, {
+			onDelete: "set null",
+		}),
+		stepId: text("step_id").references(() => agentSteps.id, {
+			onDelete: "set null",
+		}),
 
 		sequence: integer("sequence").notNull(),
 		tool: text("tool").notNull(),
@@ -85,6 +90,8 @@ export const deviceCommands = pgTable(
 	(t) => [
 		uniqueIndex("device_commands_seq_idx").on(t.deviceId, t.sequence),
 		index("device_commands_status_idx").on(t.deviceId, t.status),
+		index("device_commands_run_idx").on(t.runId),
+		index("device_commands_step_idx").on(t.stepId),
 	],
 );
 

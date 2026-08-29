@@ -340,7 +340,11 @@ class Gateway {
 		stream.on("data", (message: Message) => {
 			messages = messages
 				.then(async () => {
-					const registered = await this.onAgentMessage(stream, message);
+					const registered = await this.onAgentMessage(
+						stream,
+						message,
+						workerId,
+					);
 					if (registered) ({ workerId, generation } = registered);
 				})
 				.catch((error) => {
@@ -361,7 +365,11 @@ class Gateway {
 		stream.on("close", cleanup);
 	}
 
-	private async onAgentMessage(stream: Duplex, message: Message) {
+	private async onAgentMessage(
+		stream: Duplex,
+		message: Message,
+		workerId: string,
+	) {
 		if (message.hello) {
 			const hello = message.hello as Record<string, unknown>;
 			const workerId = String(hello.workerId ?? "").trim();
@@ -380,6 +388,7 @@ class Gateway {
 			);
 			return { workerId, generation };
 		}
+		if (!workerId) throw new Error("agent must send hello before messages");
 		if (message.heartbeat) {
 			stream.write({ heartbeat: { unixMs: String(Date.now()) } });
 			return;
@@ -388,19 +397,26 @@ class Gateway {
 			await this.handleToolRequest(
 				stream,
 				message.toolRequest as Record<string, unknown>,
+				workerId,
 			);
 			return;
 		}
 		if (message.runUpdate)
-			await this.persistRunUpdate(message.runUpdate as Record<string, unknown>);
+			await this.persistRunUpdate(
+				message.runUpdate as Record<string, unknown>,
+				workerId,
+			);
 	}
 
 	private async handleToolRequest(
 		stream: Duplex,
 		request: Record<string, unknown>,
+		workerId: string,
 	) {
 		try {
 			const runId = String(request.runId);
+			if (this.runAgents.get(runId) !== workerId)
+				throw new Error(`run ${runId} is not assigned to worker ${workerId}`);
 			const run = (
 				await db
 					.select({ ticketId: agentRuns.ticketId, status: agentRuns.status })
@@ -548,7 +564,34 @@ class Gateway {
 			await db
 				.update(devices)
 				.set(enrolment)
-				.where(and(eq(devices.id, deviceId), sql`${devices.ownerId} is null`));
+				.where(
+					and(
+						eq(devices.id, deviceId),
+						sql`${devices.ownerId} is null`,
+						sql`${devices.enrolmentCode} is null or ${devices.enrolmentCode} <> ${enrolmentCode}`,
+					),
+				);
+		const enrollmentState = (
+			await db
+				.select({
+					ownerId: devices.ownerId,
+					code: devices.enrolmentCode,
+					expiresAt: devices.enrolmentCodeExpiresAt,
+				})
+				.from(devices)
+				.where(eq(devices.id, deviceId))
+				.limit(1)
+		)[0];
+		stream.write({
+			enrollment: {
+				claimed: Boolean(enrollmentState?.ownerId),
+				codeExpired: Boolean(
+					enrollmentState?.code === enrolmentCode &&
+						enrollmentState.expiresAt &&
+						enrollmentState.expiresAt <= new Date(),
+				),
+			},
+		});
 		if (!this.sequences.has(deviceId))
 			this.sequences.set(deviceId, await this.loadSequence(deviceId));
 		const lastSeen = Number(hello.lastSeenSequence ?? 0);
@@ -636,8 +679,13 @@ class Gateway {
 		return row?.value ?? 0;
 	}
 
-	private async persistRunUpdate(update: Record<string, unknown>) {
+	private async persistRunUpdate(
+		update: Record<string, unknown>,
+		workerId: string,
+	) {
 		const runId = String(update.runId);
+		if (this.runAgents.get(runId) !== workerId)
+			throw new Error(`run ${runId} is not assigned to worker ${workerId}`);
 		const ordinal = Number(update.ordinal);
 		const parse = (value: unknown) => {
 			if (!value) return null;
@@ -681,6 +729,9 @@ class Gateway {
 			})
 			.onConflictDoNothing({ target: [agentSteps.runId, agentSteps.ordinal] });
 		if (update.status) {
+			const status = String(update.status);
+			if (!["resolved", "escalated", "failed", "exhausted"].includes(status))
+				throw new Error(`invalid terminal run status: ${status}`);
 			this.runAgents.delete(runId);
 			const run = (
 				await db
@@ -689,7 +740,6 @@ class Gateway {
 					.where(eq(agentRuns.id, runId))
 					.limit(1)
 			)[0];
-			const status = String(update.status);
 			await db
 				.update(agentRuns)
 				.set({
@@ -697,7 +747,7 @@ class Gateway {
 					outcome: String(update.outcome || "") || null,
 					promptTokens: Number(update.promptTokens) || 0,
 					completionTokens: Number(update.completionTokens) || 0,
-					model: String(update.model || "") || null,
+					...(update.model ? { model: String(update.model) } : {}),
 					endedAt: new Date(),
 				})
 				.where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")));
@@ -791,9 +841,7 @@ class Gateway {
 			return;
 		this.agents.delete(workerId);
 		this.agentOrder = this.agentOrder.filter((id) => id !== workerId);
-		for (const [runId, assigned] of this.runAgents) {
-			if (assigned === workerId) this.runAgents.delete(runId);
-		}
+		// Keep run assignments so this stable worker ID may replay retained terminal updates.
 		console.log(`[grpc] Axel worker=${workerId} disconnected`);
 	}
 

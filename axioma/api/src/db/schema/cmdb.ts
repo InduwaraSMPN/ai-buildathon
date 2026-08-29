@@ -1,4 +1,6 @@
 import { index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { agentRuns, agentSteps } from "./agent";
+import { tickets } from "./tickets";
 
 /**
  * Observed entities and relationships.
@@ -30,14 +32,22 @@ export const cmdbItems = pgTable(
 		relationKind: text("relation_kind"),
 
 		// provenance
-		sourceTicketId: text("source_ticket_id"),
-		sourceRunId: text("source_run_id"),
-		sourceStepId: text("source_step_id"),
+		sourceTicketId: text("source_ticket_id").references(() => tickets.id, {
+			onDelete: "set null",
+		}),
+		sourceRunId: text("source_run_id").references(() => agentRuns.id, {
+			onDelete: "set null",
+		}),
+		sourceStepId: text("source_step_id").references(() => agentSteps.id, {
+			onDelete: "set null",
+		}),
 		observedAt: timestamp("observed_at").defaultNow().notNull(),
 	},
 	(t) => [
 		index("cmdb_items_lookup_idx").on(t.kind, t.externalId, t.observedAt),
 		index("cmdb_items_relation_idx").on(t.relatesToId),
 		index("cmdb_items_source_idx").on(t.sourceTicketId),
+		index("cmdb_items_run_idx").on(t.sourceRunId),
+		index("cmdb_items_step_idx").on(t.sourceStepId),
 	],
 );

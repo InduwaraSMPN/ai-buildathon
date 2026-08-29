@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, Play, RotateCcw, Square } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PageState, StatusBadge } from "@/components/support-ui";
 import {
@@ -15,6 +15,7 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { ticketKeys } from "@/features/tickets/api/queries";
 import type { TicketStatus } from "@/features/tickets/api/types";
 import { agentRunMutations } from "../api/mutations";
 import { agentRunQueries } from "../api/queries";
@@ -41,6 +42,17 @@ export function AgentTranscript({
 		enabled: Boolean(queriedId),
 	});
 	const selectedRun = runQuery.data ?? listedRun;
+	const queriedStatus = runQuery.data?.status;
+	useEffect(() => {
+		if (
+			queriedStatus &&
+			queriedStatus !== "running" &&
+			listedRun?.status === "running"
+		)
+			void queryClient.invalidateQueries({
+				queryKey: ticketKeys.detail(ticketId),
+			});
+	}, [listedRun?.status, queriedStatus, queryClient, ticketId]);
 	const selectorRuns = selectedRun
 		? runs.some((run) => run.id === selectedRun.id)
 			? runs.map((run) => (run.id === selectedRun.id ? selectedRun : run))

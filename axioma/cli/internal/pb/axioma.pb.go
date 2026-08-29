@@ -1000,6 +1000,7 @@ type GatewayMessage struct {
 	//
 	//	*GatewayMessage_Command
 	//	*GatewayMessage_Heartbeat
+	//	*GatewayMessage_Enrollment
 	Payload       isGatewayMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1060,6 +1061,15 @@ func (x *GatewayMessage) GetHeartbeat() *Heartbeat {
 	return nil
 }
 
+func (x *GatewayMessage) GetEnrollment() *DeviceEnrollment {
+	if x != nil {
+		if x, ok := x.Payload.(*GatewayMessage_Enrollment); ok {
+			return x.Enrollment
+		}
+	}
+	return nil
+}
+
 type isGatewayMessage_Payload interface {
 	isGatewayMessage_Payload()
 }
@@ -1072,9 +1082,67 @@ type GatewayMessage_Heartbeat struct {
 	Heartbeat *Heartbeat `protobuf:"bytes,2,opt,name=heartbeat,proto3,oneof"`
 }
 
+type GatewayMessage_Enrollment struct {
+	Enrollment *DeviceEnrollment `protobuf:"bytes,3,opt,name=enrollment,proto3,oneof"`
+}
+
 func (*GatewayMessage_Command) isGatewayMessage_Payload() {}
 
 func (*GatewayMessage_Heartbeat) isGatewayMessage_Payload() {}
+
+func (*GatewayMessage_Enrollment) isGatewayMessage_Payload() {}
+
+type DeviceEnrollment struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Claimed       bool                   `protobuf:"varint,1,opt,name=claimed,proto3" json:"claimed,omitempty"`
+	CodeExpired   bool                   `protobuf:"varint,2,opt,name=code_expired,json=codeExpired,proto3" json:"code_expired,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeviceEnrollment) Reset() {
+	*x = DeviceEnrollment{}
+	mi := &file_axioma_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeviceEnrollment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeviceEnrollment) ProtoMessage() {}
+
+func (x *DeviceEnrollment) ProtoReflect() protoreflect.Message {
+	mi := &file_axioma_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeviceEnrollment.ProtoReflect.Descriptor instead.
+func (*DeviceEnrollment) Descriptor() ([]byte, []int) {
+	return file_axioma_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *DeviceEnrollment) GetClaimed() bool {
+	if x != nil {
+		return x.Claimed
+	}
+	return false
+}
+
+func (x *DeviceEnrollment) GetCodeExpired() bool {
+	if x != nil {
+		return x.CodeExpired
+	}
+	return false
+}
 
 type DeviceHello struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1097,7 +1165,7 @@ type DeviceHello struct {
 
 func (x *DeviceHello) Reset() {
 	*x = DeviceHello{}
-	mi := &file_axioma_proto_msgTypes[11]
+	mi := &file_axioma_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1109,7 +1177,7 @@ func (x *DeviceHello) String() string {
 func (*DeviceHello) ProtoMessage() {}
 
 func (x *DeviceHello) ProtoReflect() protoreflect.Message {
-	mi := &file_axioma_proto_msgTypes[11]
+	mi := &file_axioma_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1122,7 +1190,7 @@ func (x *DeviceHello) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceHello.ProtoReflect.Descriptor instead.
 func (*DeviceHello) Descriptor() ([]byte, []int) {
-	return file_axioma_proto_rawDescGZIP(), []int{11}
+	return file_axioma_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *DeviceHello) GetDeviceId() string {
@@ -1200,7 +1268,7 @@ type DeviceCommand struct {
 
 func (x *DeviceCommand) Reset() {
 	*x = DeviceCommand{}
-	mi := &file_axioma_proto_msgTypes[12]
+	mi := &file_axioma_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1212,7 +1280,7 @@ func (x *DeviceCommand) String() string {
 func (*DeviceCommand) ProtoMessage() {}
 
 func (x *DeviceCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_axioma_proto_msgTypes[12]
+	mi := &file_axioma_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1225,7 +1293,7 @@ func (x *DeviceCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeviceCommand.ProtoReflect.Descriptor instead.
 func (*DeviceCommand) Descriptor() ([]byte, []int) {
-	return file_axioma_proto_rawDescGZIP(), []int{12}
+	return file_axioma_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeviceCommand) GetCommandId() string {
@@ -1290,7 +1358,7 @@ type CommandResult struct {
 
 func (x *CommandResult) Reset() {
 	*x = CommandResult{}
-	mi := &file_axioma_proto_msgTypes[13]
+	mi := &file_axioma_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1302,7 +1370,7 @@ func (x *CommandResult) String() string {
 func (*CommandResult) ProtoMessage() {}
 
 func (x *CommandResult) ProtoReflect() protoreflect.Message {
-	mi := &file_axioma_proto_msgTypes[13]
+	mi := &file_axioma_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1315,7 +1383,7 @@ func (x *CommandResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResult.ProtoReflect.Descriptor instead.
 func (*CommandResult) Descriptor() ([]byte, []int) {
-	return file_axioma_proto_rawDescGZIP(), []int{13}
+	return file_axioma_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CommandResult) GetCommandId() string {
@@ -1443,11 +1511,17 @@ const file_axioma_proto_rawDesc = "" +
 	"\x05hello\x18\x01 \x01(\v2\x16.axioma.v1.DeviceHelloH\x00R\x05hello\x122\n" +
 	"\x06result\x18\x02 \x01(\v2\x18.axioma.v1.CommandResultH\x00R\x06result\x124\n" +
 	"\theartbeat\x18\x03 \x01(\v2\x14.axioma.v1.HeartbeatH\x00R\theartbeatB\t\n" +
-	"\apayload\"\x87\x01\n" +
+	"\apayload\"\xc6\x01\n" +
 	"\x0eGatewayMessage\x124\n" +
 	"\acommand\x18\x01 \x01(\v2\x18.axioma.v1.DeviceCommandH\x00R\acommand\x124\n" +
-	"\theartbeat\x18\x02 \x01(\v2\x14.axioma.v1.HeartbeatH\x00R\theartbeatB\t\n" +
-	"\apayload\"\x92\x02\n" +
+	"\theartbeat\x18\x02 \x01(\v2\x14.axioma.v1.HeartbeatH\x00R\theartbeat\x12=\n" +
+	"\n" +
+	"enrollment\x18\x03 \x01(\v2\x1b.axioma.v1.DeviceEnrollmentH\x00R\n" +
+	"enrollmentB\t\n" +
+	"\apayload\"O\n" +
+	"\x10DeviceEnrollment\x12\x18\n" +
+	"\aclaimed\x18\x01 \x01(\bR\aclaimed\x12!\n" +
+	"\fcode_expired\x18\x02 \x01(\bR\vcodeExpired\"\x92\x02\n" +
 	"\vDeviceHello\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x1a\n" +
@@ -1497,24 +1571,25 @@ func file_axioma_proto_rawDescGZIP() []byte {
 }
 
 var file_axioma_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_axioma_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_axioma_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_axioma_proto_goTypes = []any{
-	(RunUpdate_Kind)(0),    // 0: axioma.v1.RunUpdate.Kind
-	(*AgentMessage)(nil),   // 1: axioma.v1.AgentMessage
-	(*ApiMessage)(nil),     // 2: axioma.v1.ApiMessage
-	(*AgentHello)(nil),     // 3: axioma.v1.AgentHello
-	(*StartRun)(nil),       // 4: axioma.v1.StartRun
-	(*CancelRun)(nil),      // 5: axioma.v1.CancelRun
-	(*RunUpdate)(nil),      // 6: axioma.v1.RunUpdate
-	(*ToolRequest)(nil),    // 7: axioma.v1.ToolRequest
-	(*ToolResult)(nil),     // 8: axioma.v1.ToolResult
-	(*Heartbeat)(nil),      // 9: axioma.v1.Heartbeat
-	(*DeviceMessage)(nil),  // 10: axioma.v1.DeviceMessage
-	(*GatewayMessage)(nil), // 11: axioma.v1.GatewayMessage
-	(*DeviceHello)(nil),    // 12: axioma.v1.DeviceHello
-	(*DeviceCommand)(nil),  // 13: axioma.v1.DeviceCommand
-	(*CommandResult)(nil),  // 14: axioma.v1.CommandResult
-	nil,                    // 15: axioma.v1.DeviceCommand.ParametersEntry
+	(RunUpdate_Kind)(0),      // 0: axioma.v1.RunUpdate.Kind
+	(*AgentMessage)(nil),     // 1: axioma.v1.AgentMessage
+	(*ApiMessage)(nil),       // 2: axioma.v1.ApiMessage
+	(*AgentHello)(nil),       // 3: axioma.v1.AgentHello
+	(*StartRun)(nil),         // 4: axioma.v1.StartRun
+	(*CancelRun)(nil),        // 5: axioma.v1.CancelRun
+	(*RunUpdate)(nil),        // 6: axioma.v1.RunUpdate
+	(*ToolRequest)(nil),      // 7: axioma.v1.ToolRequest
+	(*ToolResult)(nil),       // 8: axioma.v1.ToolResult
+	(*Heartbeat)(nil),        // 9: axioma.v1.Heartbeat
+	(*DeviceMessage)(nil),    // 10: axioma.v1.DeviceMessage
+	(*GatewayMessage)(nil),   // 11: axioma.v1.GatewayMessage
+	(*DeviceEnrollment)(nil), // 12: axioma.v1.DeviceEnrollment
+	(*DeviceHello)(nil),      // 13: axioma.v1.DeviceHello
+	(*DeviceCommand)(nil),    // 14: axioma.v1.DeviceCommand
+	(*CommandResult)(nil),    // 15: axioma.v1.CommandResult
+	nil,                      // 16: axioma.v1.DeviceCommand.ParametersEntry
 }
 var file_axioma_proto_depIdxs = []int32{
 	3,  // 0: axioma.v1.AgentMessage.hello:type_name -> axioma.v1.AgentHello
@@ -1526,21 +1601,22 @@ var file_axioma_proto_depIdxs = []int32{
 	5,  // 6: axioma.v1.ApiMessage.cancel_run:type_name -> axioma.v1.CancelRun
 	9,  // 7: axioma.v1.ApiMessage.heartbeat:type_name -> axioma.v1.Heartbeat
 	0,  // 8: axioma.v1.RunUpdate.kind:type_name -> axioma.v1.RunUpdate.Kind
-	12, // 9: axioma.v1.DeviceMessage.hello:type_name -> axioma.v1.DeviceHello
-	14, // 10: axioma.v1.DeviceMessage.result:type_name -> axioma.v1.CommandResult
+	13, // 9: axioma.v1.DeviceMessage.hello:type_name -> axioma.v1.DeviceHello
+	15, // 10: axioma.v1.DeviceMessage.result:type_name -> axioma.v1.CommandResult
 	9,  // 11: axioma.v1.DeviceMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	13, // 12: axioma.v1.GatewayMessage.command:type_name -> axioma.v1.DeviceCommand
+	14, // 12: axioma.v1.GatewayMessage.command:type_name -> axioma.v1.DeviceCommand
 	9,  // 13: axioma.v1.GatewayMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	15, // 14: axioma.v1.DeviceCommand.parameters:type_name -> axioma.v1.DeviceCommand.ParametersEntry
-	1,  // 15: axioma.v1.AgentChannel.Connect:input_type -> axioma.v1.AgentMessage
-	10, // 16: axioma.v1.DeviceChannel.Connect:input_type -> axioma.v1.DeviceMessage
-	2,  // 17: axioma.v1.AgentChannel.Connect:output_type -> axioma.v1.ApiMessage
-	11, // 18: axioma.v1.DeviceChannel.Connect:output_type -> axioma.v1.GatewayMessage
-	17, // [17:19] is the sub-list for method output_type
-	15, // [15:17] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	12, // 14: axioma.v1.GatewayMessage.enrollment:type_name -> axioma.v1.DeviceEnrollment
+	16, // 15: axioma.v1.DeviceCommand.parameters:type_name -> axioma.v1.DeviceCommand.ParametersEntry
+	1,  // 16: axioma.v1.AgentChannel.Connect:input_type -> axioma.v1.AgentMessage
+	10, // 17: axioma.v1.DeviceChannel.Connect:input_type -> axioma.v1.DeviceMessage
+	2,  // 18: axioma.v1.AgentChannel.Connect:output_type -> axioma.v1.ApiMessage
+	11, // 19: axioma.v1.DeviceChannel.Connect:output_type -> axioma.v1.GatewayMessage
+	18, // [18:20] is the sub-list for method output_type
+	16, // [16:18] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_axioma_proto_init() }
@@ -1568,6 +1644,7 @@ func file_axioma_proto_init() {
 	file_axioma_proto_msgTypes[10].OneofWrappers = []any{
 		(*GatewayMessage_Command)(nil),
 		(*GatewayMessage_Heartbeat)(nil),
+		(*GatewayMessage_Enrollment)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -1575,7 +1652,7 @@ func file_axioma_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_axioma_proto_rawDesc), len(file_axioma_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   15,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   2,
 		},
