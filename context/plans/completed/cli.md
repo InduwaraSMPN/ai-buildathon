@@ -1,7 +1,7 @@
 # Axiōma `cli` — implementation plan
 
 **Document role:** Implementation plan for `axioma/cli` — axel-cli
-**Related:** [api.md](api.md) (read first), [agent.md](agent.md), [architecture.md](../idea/architecture.md)
+**Related:** [api.md](api.md) (read first), [agent.md](agent.md), [architecture.md](../../idea/architecture.md)
 
 One Go binary on an employee laptop. It is Axel's reach onto a device, not a second agent: it executes
 typed actions it is told to execute and holds no reasoning of its own.

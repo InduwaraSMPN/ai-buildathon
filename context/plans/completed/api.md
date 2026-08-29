@@ -1,7 +1,7 @@
 # Axiōma `api` — implementation plan
 
 **Document role:** Implementation plan for `axioma/api`
-**Related:** [idea.md](../idea/idea.md), [architecture.md](../idea/architecture.md), [implementation.md](../idea/implementation.md)
+**Related:** [idea.md](../../idea/idea.md), [architecture.md](../../idea/architecture.md), [implementation.md](../../idea/implementation.md)
 
 **Read this one first.** This component owns the schema, the oRPC contract and the proto. Every other
 plan depends on the decisions taken here.

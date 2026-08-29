@@ -1,7 +1,7 @@
 # Axiōma `agent` — implementation plan
 
 **Document role:** Implementation plan for `axioma/agent` — Axel
-**Related:** [api.md](api.md) (read first), [architecture.md](../idea/architecture.md), [idea.md](../idea/idea.md)
+**Related:** [api.md](api.md) (read first), [architecture.md](../../idea/architecture.md), [idea.md](../../idea/idea.md)
 
 Axel is one reasoning surface, not a cast of characters. It has no database credentials, no cluster
 credentials and no path to a device: every side effect is a `ToolRequest` the API executes.
