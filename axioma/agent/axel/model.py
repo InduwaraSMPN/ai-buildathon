@@ -233,4 +233,10 @@ def _strict_rejected(exc: Exception) -> bool:
     if getattr(exc, "status_code", None) not in {400, 404, 422}:
         return False
     message = str(exc).lower()
-    return "strict" in message or "function" in message and "unsupported" in message
+    return (
+        "strict" in message
+        or "invalid_function_parameters" in message
+        or "invalid schema for function" in message
+        or "function" in message
+        and "unsupported" in message
+    )

@@ -197,7 +197,11 @@ def as_llm_tools(*, strict: bool = True) -> list[dict[str, object]]:
         parameters = {
             **schema,
             "properties": properties,
-            "required": list(properties),
+            "required": (
+                list(properties)
+                if strict
+                else ["reasoning", *schema.get("required", [])]
+            ),
             "additionalProperties": False,
         }
         function: dict[str, object] = {

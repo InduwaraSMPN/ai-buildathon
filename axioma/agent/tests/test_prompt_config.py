@@ -136,6 +136,13 @@ def test_marketrix_defaults_and_completion_options(monkeypatch) -> None:
     assert "temperature" not in captured
 
 
+def test_non_strict_fallback_does_not_require_optional_tool_fields() -> None:
+    definitions = {item["function"]["name"]: item for item in tools.as_llm_tools(strict=False)}
+    parameters = definitions["device.run_action"]["function"]["parameters"]
+    assert "parameters" not in parameters["required"]
+    assert set(parameters["required"]) == {"reasoning", "device_id", "action"}
+
+
 def test_run_limits_match_api() -> None:
     api_shared = Path(__file__).parents[2] / "api" / "src" / "shared" / "index.ts"
     source = api_shared.read_text(encoding="utf-8")
