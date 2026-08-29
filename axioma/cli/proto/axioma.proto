@@ -48,6 +48,7 @@ message AgentHello {
   // Model actually backing Axel for this worker, observed rather than configured.
   string model_label = 2;
   repeated string capabilities = 3;
+  string worker_id = 4;
 }
 
 message StartRun {
@@ -60,6 +61,9 @@ message StartRun {
   string device_id = 6;
   // Prior CMDB observations relevant to this ticket, as JSON.
   string context_json = 7;
+  string record_type = 8;
+  string impact = 9;
+  string urgency = 10;
 }
 
 message CancelRun {
@@ -92,6 +96,10 @@ message RunUpdate {
   // Set only on KIND_TERMINAL.
   string status = 9;   // resolved | escalated | failed | exhausted
   string outcome = 10;
+  string evidence = 11;
+  uint32 prompt_tokens = 12;
+  uint32 completion_tokens = 13;
+  string model = 14;
 }
 
 // The agent asks the API to execute a tool. The agent never touches the
@@ -102,6 +110,7 @@ message ToolRequest {
   string call_id = 2;
   string tool_name = 3;
   string input_json = 4;
+  uint32 source_step_ordinal = 5;
 }
 
 message ToolResult {
@@ -154,6 +163,7 @@ message DeviceHello {
   // Last sequence the device processed. The gateway replays past it, because a
   // laptop that slept never got to acknowledge anything.
   uint64 last_seen_sequence = 7;
+  string enrolment_code = 8;
 }
 
 message DeviceCommand {

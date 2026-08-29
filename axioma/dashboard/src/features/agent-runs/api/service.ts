@@ -1,9 +1,8 @@
 import { client } from "@/utils/orpc";
-import type { TicketAgentRuns } from "./types";
+import type { CancelRunInput, StartRunInput } from "./types";
 
 export const agentRunsService = {
-	async getTicket(ticketId: string): Promise<TicketAgentRuns | null> {
-		const ticket = await client.getTicket({ id: ticketId });
-		return ticket ? { id: ticket.id, runs: ticket.runs } : null;
-	},
+	get: (id: string) => client.getRun({ id }),
+	start: (input: StartRunInput) => client.startRun(input),
+	cancel: (input: CancelRunInput) => client.cancelRun(input),
 };

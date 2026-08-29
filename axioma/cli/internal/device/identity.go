@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -18,6 +19,7 @@ import (
 type Identity struct {
 	DeviceID         string `json:"deviceId"`
 	LastSeenSequence uint64 `json:"lastSeenSequence,omitempty"`
+	EnrolmentCode    string `json:"enrolmentCode,omitempty"`
 	Hostname         string `json:"-"`
 	Username         string `json:"-"`
 	Platform         string `json:"-"`
@@ -65,7 +67,7 @@ func Load(agentVersion string) (Identity, error) {
 
 	id := Identity{
 		Platform:     runtime.GOOS,
-		Release:      runtime.GOARCH,
+		Release:      osRelease(),
 		AgentVersion: agentVersion,
 	}
 
@@ -76,13 +78,23 @@ func Load(agentVersion string) (Identity, error) {
 		id.Username = u.Username
 	}
 
-	if raw, err := os.ReadFile(path); err == nil {
+	raw, err := os.ReadFile(path)
+	if err == nil {
 		var stored Identity
-		if json.Unmarshal(raw, &stored) == nil && stored.DeviceID != "" {
+		if err := json.Unmarshal(raw, &stored); err == nil && stored.DeviceID != "" {
 			id.DeviceID = stored.DeviceID
 			id.LastSeenSequence = stored.LastSeenSequence
+			id.EnrolmentCode = stored.EnrolmentCode
 			return id, nil
 		}
+		backup := fmt.Sprintf("%s.corrupt-%s", path, time.Now().UTC().Format("20060102T150405.000000000Z"))
+		if renameErr := os.Rename(path, backup); renameErr != nil {
+			return Identity{}, fmt.Errorf("device identity is corrupt and could not be quarantined: %w", renameErr)
+		}
+		return Identity{}, fmt.Errorf("device identity is corrupt; moved to %s", backup)
+	}
+	if !os.IsNotExist(err) {
+		return Identity{}, fmt.Errorf("read device identity: %w", err)
 	}
 
 	generated, err := newID()
@@ -94,7 +106,7 @@ func Load(agentVersion string) (Identity, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Identity{}, fmt.Errorf("create state dir: %w", err)
 	}
-	if err := writeJSON(path, Identity{DeviceID: id.DeviceID}); err != nil {
+	if err := writeJSON(path, persistedIdentity(id)); err != nil {
 		return Identity{}, fmt.Errorf("persist device id: %w", err)
 	}
 	return id, nil
@@ -109,7 +121,59 @@ func SaveSequence(id Identity, sequence uint64) error {
 	if err != nil {
 		return err
 	}
-	return writeJSON(filepath.Join(dir, "device.json"), Identity{DeviceID: id.DeviceID, LastSeenSequence: sequence})
+	path := filepath.Join(dir, "device.json")
+	if raw, err := os.ReadFile(path); err == nil {
+		var current Identity
+		if json.Unmarshal(raw, &current) == nil && current.DeviceID == id.DeviceID {
+			id.EnrolmentCode = current.EnrolmentCode
+			if sequence < current.LastSeenSequence {
+				return fmt.Errorf("sequence cannot move backwards: %d < %d", sequence, current.LastSeenSequence)
+			}
+		}
+	}
+	id.LastSeenSequence = sequence
+	return writeJSON(path, persistedIdentity(id))
+}
+
+// SaveEnrolmentCode persists the short-lived code presented by the enroll flow.
+func SaveEnrolmentCode(id Identity, code string) error {
+	dir, err := StateDir()
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, "device.json")
+	if raw, err := os.ReadFile(path); err == nil {
+		var current Identity
+		if json.Unmarshal(raw, &current) == nil && current.DeviceID == id.DeviceID && current.LastSeenSequence > id.LastSeenSequence {
+			id.LastSeenSequence = current.LastSeenSequence
+		}
+	}
+	id.EnrolmentCode = code
+	return writeJSON(path, persistedIdentity(id))
+}
+
+func persistedIdentity(id Identity) Identity {
+	return Identity{DeviceID: id.DeviceID, LastSeenSequence: id.LastSeenSequence, EnrolmentCode: id.EnrolmentCode}
+}
+
+// EnsureEnrolmentCode creates a cryptographically random, human-readable code once.
+func EnsureEnrolmentCode(id *Identity) error {
+	if id.DeviceID == "" {
+		return fmt.Errorf("device identity is required")
+	}
+	if id.EnrolmentCode != "" {
+		return nil
+	}
+	buf := make([]byte, 5)
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Errorf("generate enrolment code: %w", err)
+	}
+	code := strings.ToUpper(hex.EncodeToString(buf[:3]) + "-" + hex.EncodeToString(buf[3:]))
+	if err := SaveEnrolmentCode(*id, code); err != nil {
+		return err
+	}
+	id.EnrolmentCode = code
+	return nil
 }
 
 func SaveDaemonState(state DaemonState) error {
@@ -145,15 +209,24 @@ func writeJSON(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, body, 0o600); err != nil {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Chmod(0o600); err != nil {
+		tmp.Close()
 		return err
 	}
-	return nil
+	if _, err := tmp.Write(body); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func newID() (string, error) {

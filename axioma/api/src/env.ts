@@ -8,6 +8,12 @@ export const env = createEnv({
 		BETTER_AUTH_SECRET: z.string().min(32),
 		BETTER_AUTH_URL: z.url(),
 		CORS_ORIGIN: z.string().min(1),
+		KUBECONFIG: z.string().optional(),
+		AXIOMA_K8S_CONTEXT: z.string().optional(),
+		AXIOMA_AUTO_DISPATCH: z
+			.enum(["true", "false"])
+			.default("true")
+			.transform((value) => value === "true"),
 		NODE_ENV: z
 			.enum(["development", "production", "test"])
 			.default("development"),

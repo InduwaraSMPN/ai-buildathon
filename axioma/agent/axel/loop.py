@@ -1,28 +1,49 @@
-"""Axel: the agent loop.
+"""Axel's bounded read, think, act, and verify loop.
 
-Read, think, act, verify — bounded. The loop owns the sequence and the limits;
-the model owns only what to try next. No verdict is taken from the model's
-confidence, and nothing here executes a side effect: every tool call goes back
-to the API, which owns persistence and every write.
+The defaults in :mod:`axel.config` must equal ``RUN_LIMITS`` in
+``api/src/shared/index.ts`` (20 tool calls, 10 model turns, 300 seconds).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Any, Literal, TypedDict
 
 from pydantic import ValidationError
 
 from axel import tools
+from axel.config import config
 
-# Ceilings on one run. Without these a confused agent loops and the ticket
-# neither resolves nor escalates.
-MAX_TOOL_CALLS = 20
-MAX_MODEL_TURNS = 10
-RUN_DEADLINE_SECONDS = 300
+
+class SystemMessage(TypedDict):
+    role: Literal["system"]
+    content: str
+
+
+class UserMessage(TypedDict):
+    role: Literal["user"]
+    content: str
+
+
+class AssistantMessage(TypedDict):
+    role: Literal["assistant"]
+    content: str | None
+    tool_calls: list[dict[str, Any]]
+
+
+class ToolMessage(TypedDict):
+    role: Literal["tool"]
+    content: str
+    tool_call_id: str
+
+
+Message = SystemMessage | UserMessage | AssistantMessage | ToolMessage
 
 
 class RunStatus(StrEnum):
@@ -47,12 +68,33 @@ class Step:
     tool_input: dict | None = None
     tool_output: object | None = None
     error: str | None = None
+    evidence: str | None = None
 
 
 @dataclass(slots=True)
 class RunResult:
     status: RunStatus
     outcome: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    model: str = ""
+
+
+@dataclass(slots=True)
+class Decision:
+    kind: str  # tool_call | resolved | escalate | invalid
+    reasoning: str = ""
+    tool: str | None = None
+    tool_input: dict | None = None
+    resolution: str = ""
+    reason: str = ""
+    proposal: dict | None = None
+    call_id: str = ""
+    error: str = ""
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    model: str = ""
+    retry_events: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -63,61 +105,85 @@ class RunContext:
     body: str
     device_id: str | None
     context_json: str
-
-    # Ask the model what to do next. Returns a decision.
-    think: Callable[[list[dict]], Awaitable[Decision]]
-    # Send a tool request to the API and await its result.
-    call_tool: Callable[[str, dict], Awaitable[object]]
-    # Report a step upstream as it happens, so a hung run still shows progress.
-    report: Callable[[Step], Awaitable[None]]
-
+    think: Callable[..., Awaitable[Decision]]
+    call_tool: Callable[[str, dict, int], Awaitable[object]]
+    report: Callable[[Step], Awaitable[int]]
+    record_type: str = "incident"
+    impact: str = "medium"
+    urgency: str = "medium"
+    priority: str = "P3"
     clock: Callable[[], float] = time.monotonic
-    transcript: list[dict] = field(default_factory=list)
+    transcript: list[Message] = field(default_factory=list)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    model: str = ""
 
 
 @dataclass(slots=True)
-class Decision:
-    kind: str  # tool_call | resolved | escalate
-    reasoning: str = ""
-    tool: str | None = None
-    tool_input: dict | None = None
-    resolution: str = ""
-    reason: str = ""
-    proposal: dict | None = None
-
-
-SYSTEM_PROMPT = """You are Axel, an IT support agent.
-
-Given a ticket, gather evidence with read tools before acting. Act only when the
-evidence identifies a specific cause and a specific fix. After any write, verify
-with the read tool named by that write — a write returning success means the call
-was accepted, not that the problem is fixed.
-
-Prefer a typed action over driving a GUI. Computer-use is slow, non-deterministic,
-and leaves you less able to say what changed; reach for it only after establishing
-there is no API, CLI, or configuration path.
-
-Escalate rather than act when the fix is a policy decision rather than a
-correction. Changing a resource request, adding capacity, or anything whose right
-answer depends on intent you do not have is a policy decision. Escalating with a
-clear diagnosis is a good outcome, not a failure.
-
-Select tools by name and supply typed parameters. You cannot compose commands."""
+class PendingVerification:
+    write: str
+    verifier: str
+    payload: dict[str, Any]
 
 
 async def run(ctx: RunContext) -> RunResult:
     started = ctx.clock()
-    tool_calls = 0
+    model_turns = tool_calls = consecutive_failures = verification_rejections = 0
+    pending: list[PendingVerification] = []
+    last_evidence: str | None = None
 
-    for _turn in range(MAX_MODEL_TURNS):
-        if ctx.clock() - started > RUN_DEADLINE_SECONDS:
-            return await _exhausted(ctx, "run deadline exceeded")
+    while model_turns < config.max_model_turns:
+        remaining = config.run_deadline_seconds - (ctx.clock() - started)
+        if remaining <= 0:
+            return await _finish(ctx, RunStatus.EXHAUSTED, "run deadline exceeded")
 
-        decision = await ctx.think(ctx.transcript)
+        try:
+            decision = await _think(ctx, remaining)
+        except TimeoutError:
+            return await _finish(
+                ctx, RunStatus.EXHAUSTED, "run deadline exceeded during model call"
+            )
+        model_turns += 1
+        ctx.prompt_tokens += decision.prompt_tokens
+        ctx.completion_tokens += decision.completion_tokens
+        ctx.model = decision.model or ctx.model
+        for event in decision.retry_events:
+            await ctx.report(Step(kind=StepKind.OBSERVATION, error=event))
+
+        call_id = decision.call_id or uuid.uuid4().hex
+        if decision.kind == "invalid":
+            message = decision.error or "invalid model tool call"
+            _append_call(
+                ctx, call_id, decision.tool or "invalid_model_output", decision.tool_input or {}
+            )
+            await _failure(ctx, call_id, decision.tool, message)
+            consecutive_failures += 1
+            if consecutive_failures >= config.max_consecutive_failures:
+                return await _finish(
+                    ctx, RunStatus.EXHAUSTED, "consecutive failure ceiling reached"
+                )
+            continue
 
         if decision.kind == "resolved":
-            await ctx.report(Step(kind=StepKind.DECISION, reasoning=decision.reasoning))
-            return RunResult(RunStatus.RESOLVED, decision.resolution)
+            if pending:
+                names = ", ".join(f"{item.write} requires {item.verifier}" for item in pending)
+                message = f"resolution rejected: verification pending ({names})"
+                _append_call(
+                    ctx,
+                    call_id,
+                    "resolve_ticket",
+                    {"reasoning": decision.reasoning, "resolution": decision.resolution},
+                )
+                await _failure(ctx, call_id, "resolve_ticket", message)
+                consecutive_failures += 1
+                verification_rejections += 1
+                if verification_rejections >= 2:
+                    return await _finish(ctx, RunStatus.ESCALATED, message, evidence=last_evidence)
+                continue
+            await ctx.report(
+                Step(kind=StepKind.DECISION, reasoning=decision.reasoning, evidence=last_evidence)
+            )
+            return _result(ctx, RunStatus.RESOLVED, decision.resolution)
 
         if decision.kind == "escalate":
             await ctx.report(
@@ -125,40 +191,53 @@ async def run(ctx: RunContext) -> RunResult:
                     kind=StepKind.DECISION,
                     reasoning=decision.reasoning,
                     tool_output=decision.proposal,
+                    evidence=last_evidence,
                 )
             )
-            return RunResult(RunStatus.ESCALATED, decision.reason)
+            return _result(ctx, RunStatus.ESCALATED, decision.reason)
 
-        if tool_calls >= MAX_TOOL_CALLS:
-            return await _exhausted(ctx, "tool call ceiling reached")
+        if decision.kind != "tool_call":
+            _append_call(ctx, call_id, "invalid_model_output", {})
+            await _failure(ctx, call_id, None, f"invalid decision kind: {decision.kind}")
+            consecutive_failures += 1
+            if consecutive_failures >= config.max_consecutive_failures:
+                return await _finish(
+                    ctx, RunStatus.EXHAUSTED, "consecutive failure ceiling reached"
+                )
+            continue
 
+        if tool_calls >= config.max_tool_calls:
+            return await _finish(ctx, RunStatus.EXHAUSTED, "tool call ceiling reached")
+        _append_call(
+            ctx,
+            call_id,
+            decision.tool or "",
+            {"reasoning": decision.reasoning, **(decision.tool_input or {})},
+        )
+        await ctx.report(Step(kind=StepKind.THINK, reasoning=decision.reasoning))
         tool = tools.resolve(decision.tool or "")
         if tool is None:
-            # A model error, not a crash. Tell it, and let it retry inside budget.
-            message = f"unknown tool: {decision.tool}"
-            await ctx.report(
-                Step(kind=StepKind.OBSERVATION, tool_name=decision.tool, error=message)
-            )
-            ctx.transcript.append({"role": "tool", "content": message})
+            await _failure(ctx, call_id, decision.tool, f"unknown tool: {decision.tool}")
+            consecutive_failures += 1
+            if consecutive_failures >= config.max_consecutive_failures:
+                return await _finish(
+                    ctx, RunStatus.EXHAUSTED, "consecutive failure ceiling reached"
+                )
             continue
 
         try:
             parsed = tool.schema_model.model_validate(decision.tool_input or {})
         except ValidationError as exc:
-            message = f"invalid input: {exc}"
-            await ctx.report(
-                Step(
-                    kind=StepKind.OBSERVATION,
-                    tool_name=tool.name,
-                    tool_input=decision.tool_input,
-                    error=message,
+            await _failure(ctx, call_id, tool.name, f"invalid input: {exc}", decision.tool_input)
+            consecutive_failures += 1
+            if consecutive_failures >= config.max_consecutive_failures:
+                return await _finish(
+                    ctx, RunStatus.EXHAUSTED, "consecutive failure ceiling reached"
                 )
-            )
-            ctx.transcript.append({"role": "tool", "content": message})
             continue
 
         payload = parsed.model_dump(mode="json")
-        await ctx.report(
+        source_step_ordinal = await ctx.report(
             Step(
                 kind=StepKind.TOOL_CALL,
                 reasoning=decision.reasoning,
@@ -167,21 +246,157 @@ async def run(ctx: RunContext) -> RunResult:
             )
         )
         tool_calls += 1
-
+        remaining = config.run_deadline_seconds - (ctx.clock() - started)
+        if remaining <= 0:
+            return await _finish(ctx, RunStatus.EXHAUSTED, "run deadline exceeded")
         try:
-            output = await ctx.call_tool(tool.name, payload)
-        except Exception as exc:  # noqa: BLE001 — any adapter failure is an observation
-            message = f"tool failed: {exc}"
-            await ctx.report(Step(kind=StepKind.OBSERVATION, tool_name=tool.name, error=message))
-            ctx.transcript.append({"role": "tool", "content": message})
+            output = await asyncio.wait_for(
+                ctx.call_tool(tool.name, payload, source_step_ordinal), timeout=remaining
+            )
+        except TimeoutError:
+            message = f"tool timed out at run deadline: {tool.name}"
+            await _failure(ctx, call_id, tool.name, message, payload)
+            return await _finish(ctx, RunStatus.EXHAUSTED, message)
+        except Exception as exc:  # noqa: BLE001
+            await _failure(ctx, call_id, tool.name, f"tool failed: {exc}", payload)
+            consecutive_failures += 1
+            if consecutive_failures >= config.max_consecutive_failures:
+                return await _finish(
+                    ctx, RunStatus.EXHAUSTED, "consecutive failure ceiling reached"
+                )
             continue
 
-        await ctx.report(Step(kind=StepKind.OBSERVATION, tool_name=tool.name, tool_output=output))
-        ctx.transcript.append({"role": "tool", "content": json.dumps(output, default=str)})
+        consecutive_failures = verification_rejections = 0
+        evidence = _evidence(output)
+        last_evidence = evidence or last_evidence
+        await ctx.report(
+            Step(
+                kind=StepKind.OBSERVATION,
+                tool_name=tool.name,
+                tool_output=output,
+                evidence=evidence,
+            )
+        )
+        rendered = json.dumps(output, default=str, separators=(",", ":"))
+        ctx.transcript.append(
+            {"role": "tool", "tool_call_id": call_id, "content": _truncate(rendered)}
+        )
 
-    return await _exhausted(ctx, "model turn ceiling reached")
+        if tool.effect is tools.Effect.WRITE and tool.verified_by is not None:
+            pending.append(PendingVerification(tool.name, tool.verified_by, payload))
+        pending[:] = [
+            obligation
+            for obligation in pending
+            if not (
+                tool.name == obligation.verifier and _same_resource(obligation.payload, payload)
+            )
+        ]
+
+    return await _finish(ctx, RunStatus.EXHAUSTED, "model turn ceiling reached")
 
 
-async def _exhausted(ctx: RunContext, reason: str) -> RunResult:
-    await ctx.report(Step(kind=StepKind.DECISION, error=reason))
-    return RunResult(RunStatus.EXHAUSTED, reason)
+async def _think(ctx: RunContext, remaining: float) -> Decision:
+    try:
+        return await asyncio.wait_for(
+            ctx.think(ctx.transcript, deadline_seconds=remaining), timeout=remaining
+        )
+    except TypeError as exc:
+        if "deadline_seconds" not in str(exc):
+            raise
+        return await asyncio.wait_for(ctx.think(ctx.transcript), timeout=remaining)
+
+
+def _append_call(ctx: RunContext, call_id: str, name: str, arguments: dict[str, Any]) -> None:
+    ctx.transcript.append(
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": call_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(arguments, separators=(",", ":")),
+                    },
+                }
+            ],
+        }
+    )
+
+
+async def _failure(
+    ctx: RunContext,
+    call_id: str,
+    tool_name: str | None,
+    message: str,
+    tool_input: dict | None = None,
+) -> None:
+    await ctx.report(
+        Step(kind=StepKind.OBSERVATION, tool_name=tool_name, tool_input=tool_input, error=message)
+    )
+    ctx.transcript.append({"role": "tool", "tool_call_id": call_id, "content": message})
+
+
+def _same_resource(write: dict[str, Any], read: dict[str, Any]) -> bool:
+    shared = set(write) & set(read) - {
+        "reasoning",
+        "facets",
+        "parameters",
+        "timeout_seconds",
+        "objective",
+        "action",
+        "image",
+        "container_index",
+    }
+    return bool(shared) and all(write[key] == read[key] for key in shared)
+
+
+def _truncate(text: str) -> str:
+    limit = config.model_output_max_chars
+    if len(text) <= limit:
+        return text
+    dropped = len(text) - limit
+    marker = (
+        f"[truncated {dropped} characters from model context; full output retained in transcript]"
+    )
+    return f"{text[:limit]}\n{marker}"
+
+
+def _evidence(output: object) -> str | None:
+    values: list[str] = []
+
+    def collect(value: object) -> None:
+        if isinstance(value, dict):
+            for item in value.values():
+                collect(item)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif value is not None:
+            values.extend(line.strip() for line in str(value).splitlines() if line.strip())
+
+    collect(output)
+    needles = ("Insufficient cpu", "ImagePullBackOff", "Unschedulable", "error", "failed")
+    matches = [
+        value for value in values if any(needle.lower() in value.lower() for needle in needles)
+    ]
+    return max(matches, key=len)[:1000] if matches else (values[0][:1000] if values else None)
+
+
+async def _finish(
+    ctx: RunContext, status: RunStatus, outcome: str, *, evidence: str | None = None
+) -> RunResult:
+    await ctx.report(
+        Step(
+            kind=StepKind.DECISION,
+            error=outcome if status is RunStatus.EXHAUSTED else None,
+            reasoning=outcome if status is RunStatus.ESCALATED else None,
+            evidence=evidence,
+        )
+    )
+    return _result(ctx, status, outcome)
+
+
+def _result(ctx: RunContext, status: RunStatus, outcome: str) -> RunResult:
+    return RunResult(status, outcome, ctx.prompt_tokens, ctx.completion_tokens, ctx.model)

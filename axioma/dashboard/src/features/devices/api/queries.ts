@@ -6,5 +6,12 @@ export const deviceQueries = {
 		queryOptions({
 			queryKey: ["devices"],
 			queryFn: devicesService.list,
+			refetchInterval: 5_000,
+		}),
+	commands: (deviceId: string) =>
+		queryOptions({
+			queryKey: ["devices", deviceId, "commands"],
+			queryFn: () => devicesService.listCommands(deviceId),
+			refetchInterval: 5_000,
 		}),
 };

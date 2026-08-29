@@ -2,26 +2,12 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { ContractRouterClient } from "@orpc/contract";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-import { QueryCache, QueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { QueryClient } from "@tanstack/react-query";
 import { env } from "@/env";
 import type { AppContract } from "@/sdk/contracts";
 
 export function createQueryClient() {
-	return new QueryClient({
-		queryCache: new QueryCache({
-			onError: (error, query) => {
-				toast.error(`Error: ${error.message}`, {
-					action: {
-						label: "retry",
-						onClick: () => {
-							query.invalidate();
-						},
-					},
-				});
-			},
-		}),
-	});
+	return new QueryClient();
 }
 
 export const queryClient = createQueryClient();

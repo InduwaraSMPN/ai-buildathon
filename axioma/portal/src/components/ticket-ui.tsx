@@ -10,52 +10,23 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { fallbackStatusCopy, statusCopy } from "@/features/tickets/copy";
 import { cn } from "@/lib/utils";
 
-const statusCopy: Record<
-	string,
-	{ label: string; detail: string; icon: LucideIcon }
-> = {
-	open: {
-		label: "Received",
-		detail: "Your request is in the queue and ready for review.",
-		icon: Clock3,
-	},
-	routing: {
-		label: "Finding the right help",
-		detail: "We’re directing your request to the best support path.",
-		icon: Route,
-	},
-	resolving: {
-		label: "In progress",
-		detail: "Support is actively working on your request.",
-		icon: LifeBuoy,
-	},
-	resolved: {
-		label: "Resolved",
-		detail: "A solution is ready for you.",
-		icon: CircleCheck,
-	},
-	escalated: {
-		label: "With a specialist",
-		detail: "A specialist is taking a closer look.",
-		icon: LifeBuoy,
-	},
-	closed: {
-		label: "Closed",
-		detail: "This request is complete.",
-		icon: CircleCheck,
-	},
+const statusIcons: Record<string, LucideIcon> = {
+	open: Clock3,
+	routing: Route,
+	resolving: LifeBuoy,
+	resolved: CircleCheck,
+	escalated: LifeBuoy,
+	closed: CircleCheck,
 };
 
 export function getStatus(status: string) {
-	return (
-		statusCopy[status] ?? {
-			label: "In review",
-			detail: "We’re reviewing the latest update.",
-			icon: Clock3,
-		}
-	);
+	return {
+		...(statusCopy[status] ?? fallbackStatusCopy),
+		icon: statusIcons[status] ?? Clock3,
+	};
 }
 
 export function StatusBadge({ status }: { status: string }) {

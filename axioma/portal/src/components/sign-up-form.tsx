@@ -16,7 +16,7 @@ export default function SignUpForm({
 	onSwitchToSignIn: () => void;
 }) {
 	const navigate = useNavigate({
-		from: "/",
+		from: "/login",
 	});
 	const { isPending } = authClient.useSession();
 
@@ -40,8 +40,8 @@ export default function SignUpForm({
 						});
 						toast.success("Sign up successful");
 					},
-					onError: (error) => {
-						toast.error(error.error.message || error.error.statusText);
+					onError: () => {
+						toast.error("We couldn’t create your account. Please try again.");
 					},
 				},
 			);
@@ -60,8 +60,15 @@ export default function SignUpForm({
 	}
 
 	return (
-		<div className="mx-auto mt-10 w-full max-w-md p-6">
-			<h1 className="mb-6 text-center font-bold text-3xl">Create Account</h1>
+		<main className="mx-auto w-full max-w-md px-6 py-12 sm:py-16">
+			<div className="mb-8">
+				<h1 className="font-semibold text-3xl tracking-tight">
+					Create your account
+				</h1>
+				<p className="mt-2 text-muted-foreground">
+					Set up access to workplace support and your requests.
+				</p>
+			</div>
 
 			<form
 				onSubmit={(e) => {
@@ -84,7 +91,7 @@ export default function SignUpForm({
 									onChange={(e) => field.handleChange(e.target.value)}
 								/>
 								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
+									<p key={error?.message} className="text-destructive text-sm">
 										{error?.message}
 									</p>
 								))}
@@ -107,7 +114,7 @@ export default function SignUpForm({
 									onChange={(e) => field.handleChange(e.target.value)}
 								/>
 								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
+									<p key={error?.message} className="text-destructive text-sm">
 										{error?.message}
 									</p>
 								))}
@@ -130,7 +137,7 @@ export default function SignUpForm({
 									onChange={(e) => field.handleChange(e.target.value)}
 								/>
 								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
+									<p key={error?.message} className="text-destructive text-sm">
 										{error?.message}
 									</p>
 								))}
@@ -158,14 +165,10 @@ export default function SignUpForm({
 			</form>
 
 			<div className="mt-4 text-center">
-				<Button
-					variant="link"
-					onClick={onSwitchToSignIn}
-					className="text-indigo-600 hover:text-indigo-800"
-				>
+				<Button variant="link" onClick={onSwitchToSignIn}>
 					Already have an account? Sign In
 				</Button>
 			</div>
-		</div>
+		</main>
 	);
 }

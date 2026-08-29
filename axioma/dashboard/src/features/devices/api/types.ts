@@ -1,13 +1,6 @@
-export type Device = {
-	id: string;
-	ownerId: string | null;
-	ownerName: string | null;
-	hostname: string;
-	username: string | null;
-	platform: string | null;
-	release: string | null;
-	agentVersion: string | null;
-	connected: string;
-	lastSeenAt: Date;
-	enrolledAt: Date;
-};
+import type { client } from "@/utils/orpc";
+
+export type Device = Awaited<ReturnType<typeof client.listDevices>>[number];
+export type DeviceCommand = Awaited<
+	ReturnType<typeof client.listDeviceCommands>
+>[number];

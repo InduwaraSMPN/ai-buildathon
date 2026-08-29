@@ -1,19 +1,23 @@
 import { queryOptions } from "@tanstack/react-query";
 import { ticketService } from "./service";
-import type { TicketScope, TicketStatus } from "./types";
+import type { TicketListInput } from "./types";
 
 export const ticketKeys = {
 	all: ["tickets"] as const,
-	list: (scope: TicketScope, status?: TicketStatus) =>
-		[...ticketKeys.all, "list", scope, status] as const,
+	list: (input: TicketListInput) => [...ticketKeys.all, "list", input] as const,
 	detail: (id: string) => [...ticketKeys.all, "detail", id] as const,
 };
 
 export const ticketQueries = {
-	list: (scope: TicketScope = "all", status?: TicketStatus) =>
+	list: (input: TicketListInput) =>
 		queryOptions({
-			queryKey: ticketKeys.list(scope, status),
-			queryFn: () => ticketService.list({ scope, status }),
+			queryKey: ticketKeys.list(input),
+			queryFn: () => ticketService.list(input),
+			refetchInterval: () =>
+				typeof document === "undefined" ||
+				document.visibilityState === "visible"
+					? 15_000
+					: false,
 		}),
 	detail: (id: string) =>
 		queryOptions({

@@ -1,11 +1,13 @@
 """Runtime configuration.
 
-No provider is named here. Which model backs Axel is deployment configuration,
-and the run record stores which one actually answered rather than which one was
-configured.
+Run-limit defaults must match ``RUN_LIMITS`` in ``api/src/shared/index.ts``.
+The model name is passed directly to LiteLLM; provider credentials use that
+provider's standard environment variables.
 """
 
 from __future__ import annotations
+
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -16,15 +18,27 @@ class Config(BaseSettings):
     # gRPC back-channel to the API. The agent dials out; the API listens.
     api_grpc_host: str = "localhost:50051"
 
-    # Passed straight to litellm, so any supported provider works unchanged.
-    model: str = "gpt-4o-mini"
-    temperature: float = 0.1
+    # Passed straight to LiteLLM, so any supported provider works unchanged.
+    model: str = "openai/gpt-5"
+    temperature: float | None = None
+
+    max_tool_calls: int = 20
+    max_model_turns: int = 10
+    run_deadline_seconds: float = 300.0
+    model_output_max_chars: int = 4000
+    max_consecutive_failures: int = 3
+    retry_attempts: int = 3
+    retry_base_seconds: float = 1.0
+    retry_cap_seconds: float = 10.0
 
     # Health/readiness for the process supervisor.
+    health_host: str = "127.0.0.1"
     health_port: int = 8090
 
     reconnect_base_seconds: float = 1.0
     reconnect_cap_seconds: float = 30.0
+    max_pending_calls: int = 100
+    config_dir: Path = Path("~/.config/axioma").expanduser()
 
 
 config = Config()

@@ -53,7 +53,7 @@ async function stampGenerated(dir) {
 		}
 		if (!entry.name.endsWith(".ts")) continue;
 		const body = await readFile(path, "utf8");
-		await writeFile(path, BANNER + "\n" + body, "utf8");
+		await writeFile(path, `${BANNER}\n${body}`, "utf8");
 	}
 }
 

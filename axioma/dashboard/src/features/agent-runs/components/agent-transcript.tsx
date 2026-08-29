@@ -1,188 +1,277 @@
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Circle, Wrench } from "lucide-react";
-import { formatDate, PageState } from "@/components/support-ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Copy, Play, RotateCcw, Square } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
+import { PageState, StatusBadge } from "@/components/support-ui";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import type { TicketStatus } from "@/features/tickets/api/types";
+import { agentRunMutations } from "../api/mutations";
 import { agentRunQueries } from "../api/queries";
-import type { AgentRun, AgentRunSummary, AgentStep } from "../api/types";
+import type { AgentRun } from "../api/types";
+import { type EscalationDetails, extractEscalationDetails } from "./escalation";
+import { RunSelector } from "./run-selector";
+import { StepCard } from "./step-card";
 
-type TranscriptProps =
-	| { runs: AgentRun[]; ticketId?: never }
-	| { runs?: never; ticketId: string };
-
-export function AgentTranscript(props: TranscriptProps) {
-	const query = useQuery({
-		...agentRunQueries.ticket(props.ticketId ?? ""),
-		enabled: "ticketId" in props,
+export function AgentTranscript({
+	runs,
+	ticketId,
+	status,
+}: {
+	runs: AgentRun[];
+	ticketId: string;
+	status: TicketStatus;
+}) {
+	const queryClient = useQueryClient();
+	const [selectedId, setSelectedId] = useState<string>();
+	const listedRun = runs.find((run) => run.id === selectedId) ?? runs[0];
+	const queriedId = selectedId ?? listedRun?.id ?? "";
+	const runQuery = useQuery({
+		...agentRunQueries.detail(queriedId),
+		enabled: Boolean(queriedId),
 	});
+	const selectedRun = runQuery.data ?? listedRun;
+	const selectorRuns = selectedRun
+		? runs.some((run) => run.id === selectedRun.id)
+			? runs.map((run) => (run.id === selectedRun.id ? selectedRun : run))
+			: [selectedRun, ...runs]
+		: runs;
+	const startMutation = useMutation(agentRunMutations.start(queryClient));
+	const cancelMutation = useMutation(agentRunMutations.cancel(queryClient));
 
-	if ("ticketId" in props && query.isPending)
-		return (
-			<PageState
-				kind="loading"
-				title="Loading transcript"
-				description="Retrieving agent activity…"
-			/>
-		);
-	if ("ticketId" in props && query.isError)
+	const startRun = async () => {
+		try {
+			const run = await startMutation.mutateAsync({ ticketId });
+			setSelectedId(run.id);
+			toast.success("Agent run started");
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Could not start run",
+			);
+		}
+	};
+	const cancel = async () => {
+		if (!selectedRun) return;
+		try {
+			await cancelMutation.mutateAsync({
+				id: selectedRun.id,
+				reason: "Cancelled by dashboard operator",
+			});
+			toast.success("Agent run cancelled");
+		} catch (error) {
+			toast.error(
+				error instanceof Error ? error.message : "Could not cancel run",
+			);
+		}
+	};
+
+	if (runQuery.isError)
 		return (
 			<PageState
 				kind="error"
-				title="Transcript unavailable"
-				description={query.error.message}
-				onRetry={() => query.refetch()}
+				title="Could not load agent run"
+				description="The selected run may have changed. Retry to load its latest transcript and metrics."
+				onRetry={() => runQuery.refetch()}
 			/>
 		);
-
-	const runs = props.runs ?? query.data?.runs ?? [];
-	const steps = runs
-		.flatMap((run) => run.steps)
-		.toSorted(
-			(a, b) =>
-				a.createdAt.getTime() - b.createdAt.getTime() || a.ordinal - b.ordinal,
-		);
-
-	if (steps.length === 0)
+	if (!selectedRun)
 		return (
-			<PageState
-				kind="empty"
-				title="No agent activity"
-				description="No transcript steps are available."
-			/>
+			<div className="relative">
+				<PageState
+					kind="empty"
+					title="No agent activity"
+					description="No run attempts are available."
+				/>
+				{status === "open" && (
+					<Button
+						className="absolute bottom-12 left-1/2 -translate-x-1/2"
+						disabled={startMutation.isPending}
+						onClick={startRun}
+					>
+						<Play aria-hidden="true" />
+						{startMutation.isPending ? "Starting…" : "Start agent run"}
+					</Button>
+				)}
+			</div>
 		);
+
+	const steps = selectedRun.steps.toSorted((a, b) => a.ordinal - b.ordinal);
+	const escalation = extractEscalationDetails(selectedRun);
+	const latestRun = selectorRuns[0];
+	const canRerun =
+		status === "escalated" &&
+		selectedRun.id === latestRun?.id &&
+		(selectedRun.status === "failed" || selectedRun.status === "exhausted");
 
 	return (
 		<section aria-labelledby="agent-transcript-heading">
-			<h2 id="agent-transcript-heading" className="font-semibold text-sm">
-				Ordered agent transcript
-			</h2>
-			<p className="mb-3 text-muted-foreground text-xs">
-				{runs.length} runs · {steps.length} steps
-			</p>
-			<div className="mb-3 grid gap-2 sm:grid-cols-2">
-				{runs.map((run) => (
-					<RunSummary key={run.id} summary={run} />
-				))}
+			<div className="mb-3 flex items-end justify-between gap-3">
+				<div>
+					<h2 id="agent-transcript-heading" className="font-semibold text-sm">
+						Agent transcript
+					</h2>
+					<p className="text-muted-foreground text-xs">
+						{runs.length} {runs.length === 1 ? "attempt" : "attempts"}; select
+						one to inspect
+					</p>
+				</div>
+				<div className="flex items-center gap-2">
+					{canRerun && (
+						<Button
+							size="sm"
+							variant="outline"
+							disabled={startMutation.isPending}
+							onClick={startRun}
+						>
+							<RotateCcw aria-hidden="true" />{" "}
+							{startMutation.isPending ? "Starting…" : "Rerun"}
+						</Button>
+					)}
+					{selectedRun.status === "running" && (
+						<CancelRunButton
+							pending={cancelMutation.isPending}
+							onConfirm={cancel}
+						/>
+					)}
+					<StatusBadge status={selectedRun.status} />
+				</div>
 			</div>
-			<ol className="overflow-hidden border bg-card">
-				{steps.map((step, index) => (
-					<li
-						key={step.id}
-						className="grid grid-cols-[42px_1fr] border-b last:border-b-0"
-					>
-						<div className="flex justify-center border-r bg-muted/30 py-4">
-							<span className="grid size-5 place-items-center bg-foreground font-mono text-[9px] text-background">
-								{index + 1}
-							</span>
-						</div>
-						<article className="min-w-0 p-4">
-							<div className="flex flex-wrap items-center gap-2">
-								<StepIcon step={step} />
-								<strong className="text-xs uppercase tracking-wider">
-									{step.kind}
-								</strong>
-								{step.toolName && (
-									<span className="border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-										{step.toolName}
-									</span>
-								)}
-								<time className="ml-auto text-[10px] text-muted-foreground">
-									{formatDate(step.createdAt)}
-								</time>
-							</div>
-							{step.reasoning && (
-								<ValueBlock title="Reasoning" value={step.reasoning} />
-							)}
-							{step.evidence != null && (
-								<ValueBlock title="Evidence" value={step.evidence} />
-							)}
-							{step.toolInput != null && (
-								<ValueBlock title="Tool input" value={step.toolInput} code />
-							)}
-							{step.toolOutput != null && (
-								<ValueBlock title="Tool output" value={step.toolOutput} code />
-							)}
-							{step.error && (
-								<ValueBlock title="Error" value={step.error} error />
-							)}
-						</article>
-					</li>
-				))}
-			</ol>
+			<RunSelector
+				runs={selectorRuns}
+				selectedId={selectedRun.id}
+				onSelect={setSelectedId}
+			/>
+			<p className="sr-only" aria-live="polite" aria-atomic="true">
+				Selected run {selectedRun.id}, {selectedRun.status}, {steps.length}{" "}
+				steps.
+			</p>
+			{escalation && <EscalationProposal details={escalation} />}
+			{steps.length ? (
+				<ol className="mt-3 overflow-hidden border bg-card">
+					{steps.map((step, index) => (
+						<StepCard key={step.id} step={step} number={index + 1} />
+					))}
+				</ol>
+			) : (
+				<p className="mt-3 border border-dashed p-6 text-center text-muted-foreground text-xs">
+					This run has no transcript steps yet.
+				</p>
+			)}
 		</section>
 	);
 }
 
-function RunSummary({ summary }: { summary: AgentRunSummary }) {
-	return (
-		<dl className="grid grid-cols-2 gap-x-3 gap-y-1 border bg-card p-3 text-xs">
-			<dt className="text-muted-foreground">Status</dt>
-			<dd>{summary.status}</dd>
-			<dt className="text-muted-foreground">Outcome</dt>
-			<dd>{summary.outcome ?? "Pending"}</dd>
-			<dt className="text-muted-foreground">Model</dt>
-			<dd>{summary.model ?? "Unknown"}</dd>
-			<dt className="text-muted-foreground">Tokens</dt>
-			<dd>{(summary.promptTokens ?? 0) + (summary.completionTokens ?? 0)}</dd>
-			<dt className="text-muted-foreground">Started</dt>
-			<dd>{formatDate(summary.startedAt)}</dd>
-			<dt className="text-muted-foreground">Ended</dt>
-			<dd>{summary.endedAt ? formatDate(summary.endedAt) : "Running"}</dd>
-		</dl>
-	);
-}
-
-function ValueBlock({
-	title,
-	value,
-	code,
-	error,
+function CancelRunButton({
+	pending,
+	onConfirm,
 }: {
-	title: string;
-	value: unknown;
-	code?: boolean;
-	error?: boolean;
+	pending: boolean;
+	onConfirm: () => void;
 }) {
-	const text =
-		typeof value === "string" ? value : JSON.stringify(value, null, 2);
+	const [open, setOpen] = useState(false);
 	return (
-		<div
-			className={
-				error
-					? "mt-3 border border-destructive/30 bg-destructive/5 p-3"
-					: "mt-3 border bg-muted/30 p-3"
-			}
-		>
-			<p
-				className={
-					error
-						? "mb-1.5 font-medium text-[10px] text-destructive uppercase tracking-wider"
-						: "mb-1.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider"
-				}
+		<AlertDialog open={open} onOpenChange={setOpen}>
+			<AlertDialogTrigger
+				render={<Button size="sm" variant="destructive" disabled={pending} />}
 			>
-				{title}
-			</p>
-			<pre
-				className={
-					code
-						? "overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5"
-						: "whitespace-pre-wrap font-sans text-xs leading-5"
-				}
-			>
-				{text}
-			</pre>
-		</div>
+				<Square aria-hidden="true" /> {pending ? "Cancelling…" : "Cancel run"}
+			</AlertDialogTrigger>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Cancel this agent run?</AlertDialogTitle>
+					<AlertDialogDescription>
+						The agent will stop after its current operation. This cannot be
+						undone.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Keep running</AlertDialogCancel>
+					<AlertDialogAction
+						variant="destructive"
+						onClick={() => {
+							setOpen(false);
+							onConfirm();
+						}}
+					>
+						Cancel run
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 }
 
-function StepIcon({ step }: { step: AgentStep }) {
-	if (step.error)
-		return (
-			<AlertTriangle className="size-4 text-destructive" aria-hidden="true" />
-		);
-	if (step.toolName || step.kind.toLowerCase().includes("tool"))
-		return <Wrench className="size-4 text-violet-500" aria-hidden="true" />;
-	if (step.kind.toLowerCase().includes("complete"))
-		return (
-			<CheckCircle2 className="size-4 text-emerald-500" aria-hidden="true" />
-		);
-	return <Circle className="size-4 text-sky-500" aria-hidden="true" />;
+function EscalationProposal({ details }: { details: EscalationDetails }) {
+	const patch = details.patchLines.join("\n");
+	const copy = async () => {
+		try {
+			await navigator.clipboard.writeText(patch);
+			toast.success("Proposed patch copied");
+		} catch {
+			toast.error("Could not copy proposed patch");
+		}
+	};
+
+	return (
+		<section
+			className="mt-3 border-2 border-orange-500/40 bg-orange-500/5 p-4"
+			aria-labelledby="escalation-proposal-heading"
+		>
+			<div className="flex items-center justify-between gap-3">
+				<div>
+					<p className="text-[10px] text-orange-700 uppercase tracking-wider dark:text-orange-300">
+						Escalated run
+					</p>
+					<h3
+						id="escalation-proposal-heading"
+						className="font-semibold text-sm"
+					>
+						Scheduler capacity escalation
+					</h3>
+				</div>
+				{patch && (
+					<Button variant="outline" size="sm" onClick={copy}>
+						<Copy aria-hidden="true" /> Copy patch
+					</Button>
+				)}
+			</div>
+			{details.schedulerMessage && (
+				<div className="mt-3">
+					<p className="mb-1.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
+						Scheduler message — quoted verbatim
+					</p>
+					<blockquote className="border-orange-500 border-l-2 pl-3 text-xs leading-5">
+						“{details.schedulerMessage}”
+					</blockquote>
+				</div>
+			)}
+			{patch && (
+				<div className="mt-3">
+					<p className="mb-1.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
+						Proposed patch
+					</p>
+					<pre className="overflow-x-auto whitespace-pre-wrap break-words border bg-background/70 p-3 font-mono text-xs leading-5">
+						{details.patchLines.map((line) => (
+							<span
+								key={line}
+								className={`block ${line.startsWith("+") ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}
+							>
+								{line}
+							</span>
+						))}
+					</pre>
+				</div>
+			)}
+		</section>
+	);
 }

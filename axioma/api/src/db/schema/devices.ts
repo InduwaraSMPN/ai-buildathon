@@ -9,6 +9,7 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+import { COMMAND_STATUSES, DEVICE_CONNECTION_STATES } from "@/shared";
 import { user } from "./auth";
 
 /**
@@ -33,14 +34,19 @@ export const devices = pgTable(
 		platform: text("platform"),
 		release: text("release"),
 		agentVersion: text("agent_version"),
+		enrolmentCode: text("enrolment_code"),
+		enrolmentCodeExpiresAt: timestamp("enrolment_code_expires_at"),
 
-		connected: text("connected").notNull().default("offline"),
+		connected: text("connected", { enum: DEVICE_CONNECTION_STATES })
+			.notNull()
+			.default("offline"),
 		lastSeenAt: timestamp("last_seen_at").defaultNow().notNull(),
 		enrolledAt: timestamp("enrolled_at").defaultNow().notNull(),
 	},
 	(t) => [
 		index("devices_owner_idx").on(t.ownerId),
 		index("devices_connected_idx").on(t.connected),
+		uniqueIndex("devices_enrolment_code_uidx").on(t.enrolmentCode),
 	],
 );
 
@@ -66,7 +72,9 @@ export const deviceCommands = pgTable(
 		input: jsonb("input"),
 
 		// pending -> dispatched -> succeeded | failed | timed_out
-		status: text("status").notNull().default("pending"),
+		status: text("status", { enum: COMMAND_STATUSES })
+			.notNull()
+			.default("pending"),
 		output: jsonb("output"),
 		error: text("error"),
 

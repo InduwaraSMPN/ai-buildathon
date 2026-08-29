@@ -1,0 +1,8 @@
+{
+  "resolver": {"servers":{"Ethernet":["10.0.0.53"],"Conexión de área local":["2001:db8::53"]},"suffix_search_list":["corp.example"],"cached_entries":12},
+  "adapters": {"adapters":[{"name":"Conexión de área local","status":"up","ipv4":"10.0.0.42","gateway":"10.0.0.1","dhcp_enabled":true,"lease_expiry":"2026-08-29T12:00:00Z"}]},
+  "reachability": {"target":"intranet.example","resolved_address":"10.0.0.8","packet_loss_percent":0,"mean_latency_ms":4.5},
+  "proxy": {"enabled":true,"server":"proxy.example:8080","override":"*.corp.example"},
+  "identity": {"name":"DOMINIO\\josé","sid":"S-1-5-21-1","kerberos_tickets":3},
+  "processes": {"processes":[{"name":"OneDrive","pid":1234,"running":true},{"name":"notepad","pid":0,"running":false}]}
+}

@@ -1,6 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, RouteIcon, Wrench } from "lucide-react";
-import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import {
 	formatDate,
@@ -8,13 +7,22 @@ import {
 	PageState,
 	StatusBadge,
 } from "@/components/support-ui";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AgentTranscript } from "@/features/agent-runs/components/agent-transcript";
 import { ticketMutations } from "../api/mutations";
 import { ticketQueries } from "../api/queries";
-import type { TicketDetail as TicketDetailData } from "../api/types";
+import type {
+	TicketDetail as TicketDetailData,
+	TicketOperatorActionInput,
+	UpdateTicketInput,
+} from "../api/types";
+import { TicketActions } from "./ticket-actions";
 
 export function TicketDetailPage({ ticketId }: { ticketId: string }) {
 	const query = useQuery(ticketQueries.detail(ticketId));
@@ -48,19 +56,14 @@ export function TicketDetailPage({ ticketId }: { ticketId: string }) {
 
 function TicketDetail({ ticket }: { ticket: TicketDetailData }) {
 	const queryClient = useQueryClient();
-	const [route, setRoute] = useState("");
-	const [resolution, setResolution] = useState("");
-	const mutation = useMutation({
-		...ticketMutations.update(queryClient),
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["tickets"] });
-			toast.success("Ticket updated");
-		},
-		onError: (error) => toast.error(error.message),
-	});
-	const closed = ticket.status === "closed";
-	const update = (input: Omit<Parameters<typeof mutation.mutate>[0], "id">) =>
-		mutation.mutate({ id: ticket.id, ...input });
+	const mutation = useMutation(
+		ticketMutations.update(queryClient, {
+			onSuccess: () => toast.success("Ticket updated"),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const update = (input: TicketOperatorActionInput) =>
+		mutation.mutateAsync({ id: ticket.id, ...input } as UpdateTicketInput);
 
 	return (
 		<div className="space-y-5">
@@ -71,110 +74,156 @@ function TicketDetail({ ticket }: { ticket: TicketDetailData }) {
 				actions={<StatusBadge status={ticket.status} />}
 			/>
 			<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-				<div className="min-w-0 space-y-5">
-					<section className="rounded-xl border bg-card p-4 shadow-sm">
-						<h2 className="font-semibold text-xs uppercase tracking-wider">
-							Request
-						</h2>
-						<p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+				<Tabs
+					defaultValue="transcript"
+					className="min-w-0 rounded-xl border bg-card p-4 shadow-sm"
+				>
+					<TabsList variant="line" aria-label="Ticket details">
+						<TabsTrigger value="transcript">Transcript</TabsTrigger>
+						<TabsTrigger value="request">Request</TabsTrigger>
+						<TabsTrigger value="activity">Activity</TabsTrigger>
+					</TabsList>
+					<TabsContent value="transcript" className="pt-4">
+						<AgentTranscript
+							runs={ticket.runs}
+							ticketId={ticket.id}
+							status={ticket.status}
+						/>
+					</TabsContent>
+					<TabsContent value="request" className="pt-4">
+						<p className="whitespace-pre-wrap text-sm leading-6">
 							{ticket.body}
 						</p>
-					</section>
-					<AgentTranscript runs={ticket.runs} />
-				</div>
+					</TabsContent>
+					<TabsContent value="activity" className="pt-4">
+						<Activity ticket={ticket} />
+					</TabsContent>
+				</Tabs>
 				<aside className="space-y-4">
-					<section className="rounded-xl border bg-card p-4 shadow-sm">
-						<h2 className="font-semibold text-xs uppercase tracking-wider">
-							Metadata
-						</h2>
-						<dl className="mt-3 divide-y text-xs">
-							<Meta label="Status">
-								<StatusBadge status={ticket.status} />
-							</Meta>
-							<Meta label="Route">{ticket.route ?? "Unassigned"}</Meta>
-							<Meta label="Device">{ticket.deviceId ?? "None linked"}</Meta>
-							<Meta label="Updated">{formatDate(ticket.updatedAt)}</Meta>
-							<Meta label="Resolution">{ticket.resolution ?? "Pending"}</Meta>
-						</dl>
-					</section>
-					<section className="rounded-xl border bg-card p-4 shadow-sm">
-						<h2 className="font-semibold text-xs uppercase tracking-wider">
-							Operator actions
-						</h2>
-						<label htmlFor="ticket-route" className="mt-4 block text-xs">
-							<span className="mb-1.5 block font-medium">Assignment route</span>
-							<Input
-								id="ticket-route"
-								value={route}
-								onChange={(event) => setRoute(event.target.value)}
-								placeholder="endpoint-ops / @alex"
-								disabled={mutation.isPending || closed}
-							/>
-						</label>
-						<div className="mt-2 grid grid-cols-2 gap-2">
-							<Button
-								variant="outline"
-								disabled={!route.trim() || mutation.isPending || closed}
-								onClick={() =>
-									update({ action: "escalate", route: route.trim() })
-								}
-							>
-								<RouteIcon /> Reassign
-							</Button>
-							<Button
-								variant="outline"
-								disabled={mutation.isPending || closed}
-								onClick={() =>
-									update({
-										action: "escalate",
-										route: route.trim() || "IT takeover",
-									})
-								}
-							>
-								<Wrench /> Take over
-							</Button>
-						</div>
-						<Button
-							className="mt-2 w-full"
-							variant="destructive"
-							disabled={mutation.isPending || closed}
-							onClick={() =>
-								update({ action: "escalate", route: route.trim() || undefined })
-							}
-						>
-							<AlertTriangle /> Escalate
-						</Button>
-						<label htmlFor="ticket-resolution" className="mt-5 block text-xs">
-							<span className="mb-1.5 block font-medium">Resolution</span>
-							<Textarea
-								id="ticket-resolution"
-								value={resolution}
-								onChange={(event) => setResolution(event.target.value)}
-								placeholder="Summarize outcome and evidence…"
-								disabled={mutation.isPending || closed}
-							/>
-						</label>
-						<Button
-							className="mt-2 w-full"
-							disabled={mutation.isPending || closed}
-							onClick={() =>
-								update({
-									action: "close",
-									resolution: resolution.trim() || undefined,
-								})
-							}
-						>
-							<CheckCircle2 /> {closed ? "Closed" : "Close ticket"}
-						</Button>
-					</section>
+					<Metadata ticket={ticket} />
+					<TicketActions
+						ticket={ticket}
+						pending={mutation.isPending}
+						onAction={update}
+					/>
 				</aside>
 			</div>
 		</div>
 	);
 }
 
+function Metadata({ ticket }: { ticket: TicketDetailData }) {
+	return (
+		<section className="rounded-xl border bg-card p-4 shadow-sm">
+			<h2 className="font-semibold text-xs uppercase tracking-wider">
+				Metadata
+			</h2>
+			<dl className="mt-3 divide-y text-xs">
+				<Meta label="Status">
+					<StatusBadge status={ticket.status} />
+				</Meta>
+				<Meta label="Type">{label(ticket.recordType)}</Meta>
+				<Meta label="Priority">
+					<Tooltip>
+						<TooltipTrigger
+							render={<Badge variant="outline" className="cursor-help" />}
+						>
+							{ticket.priority}
+						</TooltipTrigger>
+						<TooltipContent>
+							Calculated from impact and urgency; change classification to
+							update it.
+						</TooltipContent>
+					</Tooltip>
+				</Meta>
+				<Meta label="Impact">{label(ticket.impact)}</Meta>
+				<Meta label="Urgency">{label(ticket.urgency)}</Meta>
+				<Meta label="Category">
+					{ticket.category ? label(ticket.category) : "Unclassified"}
+				</Meta>
+				<Meta label="Subcategory">{ticket.subcategory ?? "None"}</Meta>
+				<Meta label="Route">
+					{ticket.route ? label(ticket.route) : "Unassigned"}
+				</Meta>
+				<Meta label="Progress">
+					{ticket.progressMarker ? label(ticket.progressMarker) : "None"}
+				</Meta>
+				<Meta label="Reporter">{ticket.reporterName}</Meta>
+				<Meta label="Reporter ID">{ticket.reporterId}</Meta>
+				<Meta label="Device">
+					{ticket.deviceId ? (
+						<Link
+							to="/devices"
+							search={{ deviceId: ticket.deviceId }}
+							className="underline underline-offset-2"
+						>
+							{ticket.deviceId}
+						</Link>
+					) : (
+						"None linked"
+					)}
+				</Meta>
+				<Meta label="Created">
+					<time className="tabular-nums">{formatDate(ticket.createdAt)}</time>
+				</Meta>
+				<Meta label="Updated">
+					<time className="tabular-nums">{formatDate(ticket.updatedAt)}</time>
+				</Meta>
+				<Meta label="Resolved">
+					<span className="tabular-nums">
+						{ticket.resolvedAt ? formatDate(ticket.resolvedAt) : "—"}
+					</span>
+				</Meta>
+				<Meta label="Closed">
+					<span className="tabular-nums">
+						{ticket.closedAt ? formatDate(ticket.closedAt) : "—"}
+					</span>
+				</Meta>
+				<Meta label="Resolution">{ticket.resolution ?? "Pending"}</Meta>
+				<Meta label="Escalation">{ticket.escalationNote ?? "None"}</Meta>
+				<Meta label="Reporter note">{ticket.reporterNote ?? "None"}</Meta>
+				<Meta label="Reopened">
+					<span className="tabular-nums">
+						{ticket.reopenedAt ? formatDate(ticket.reopenedAt) : "—"}
+					</span>
+				</Meta>
+			</dl>
+		</section>
+	);
+}
+
+function Activity({ ticket }: { ticket: TicketDetailData }) {
+	const events = [
+		{ label: "Created", at: ticket.createdAt },
+		...(ticket.resolvedAt
+			? [{ label: "Resolved", at: ticket.resolvedAt }]
+			: []),
+		...(ticket.closedAt ? [{ label: "Closed", at: ticket.closedAt }] : []),
+		...(ticket.reopenedAt
+			? [{ label: "Reopened", at: ticket.reopenedAt }]
+			: []),
+		{ label: "Last updated", at: ticket.updatedAt },
+	];
+	return (
+		<ol className="divide-y">
+			{events.map(({ label: event, at }) => (
+				<li key={event} className="flex justify-between gap-4 py-3">
+					<span className="font-medium">{event}</span>
+					<time className="text-muted-foreground tabular-nums">
+						{formatDate(at)}
+					</time>
+				</li>
+			))}
+		</ol>
+	);
+}
+
+function label(value: string) {
+	return value.replaceAll("_", " ");
+}
+
 function Meta({
-	label,
+	label: title,
 	children,
 }: {
 	label: string;
@@ -182,8 +231,8 @@ function Meta({
 }) {
 	return (
 		<div className="grid grid-cols-[90px_1fr] gap-3 py-2.5 first:pt-0 last:pb-0">
-			<dt className="text-muted-foreground">{label}</dt>
-			<dd className="min-w-0 break-words text-right">{children}</dd>
+			<dt className="text-muted-foreground">{title}</dt>
+			<dd className="min-w-0 break-words text-right capitalize">{children}</dd>
 		</div>
 	);
 }

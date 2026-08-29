@@ -78,47 +78,6 @@ app.get("/", (c) => {
 	return c.text("OK");
 });
 
-// Minimal operator hook for exercising the device boundary without giving Axel
-// database or device access. Production dispatch will be driven by ticket runs.
-app.post("/grpc/device-read", async (c) => {
-	const input = await c.req.json<{
-		device_id: string;
-		facets: string[];
-	}>();
-	try {
-		return c.json(
-			await grpcGateway.dispatchDeviceTool("", "device.read_state", input),
-		);
-	} catch (error) {
-		return c.json(
-			{ error: error instanceof Error ? error.message : String(error) },
-			503,
-		);
-	}
-});
-
-app.post("/grpc/start-run", async (c) => {
-	try {
-		await grpcGateway.startRun(
-			await c.req.json<{
-				runId: string;
-				ticketId: string;
-				title: string;
-				body: string;
-				reporterId: string;
-				deviceId?: string;
-				contextJson?: string;
-			}>(),
-		);
-		return c.json({ accepted: true }, 202);
-	} catch (error) {
-		return c.json(
-			{ error: error instanceof Error ? error.message : String(error) },
-			503,
-		);
-	}
-});
-
 import { serve } from "@hono/node-server";
 
 serve(

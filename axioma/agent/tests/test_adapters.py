@@ -1,51 +1,45 @@
-import asyncio
+from __future__ import annotations
 
-from axel.config import config
-from axel.loop import Decision
-from axel.model import _decision, think
-from axel.pb import axioma_pb2 as pb
-from axel.server import Connection
+from types import SimpleNamespace
 
+import pytest
 
-async def test_demo_model_reads_then_resolves() -> None:
-    previous = config.model
-    config.model = "demo"
-    try:
-        ticket = '{"device_id":"device-1"}'
-        first = await think([{"role": "user", "content": ticket}])
-        second = await think(
-            [{"role": "user", "content": ticket}, {"role": "tool", "content": "{}"}]
-        )
-        assert first.tool == "device.read_state"
-        assert first.tool_input == {"device_id": "device-1", "facets": ["reachability"]}
-        assert second.kind == "resolved"
-    finally:
-        config.model = previous
+from axel import model
 
 
-def test_model_tool_call_maps_to_decision() -> None:
-    assert _decision(
-        "cluster.read_pods", '{"namespace":"default","reasoning":"inspect"}'
-    ) == Decision(
-        kind="tool_call",
-        reasoning="inspect",
-        tool="cluster.read_pods",
-        tool_input={"namespace": "default"},
-    )
-
-
-async def test_tool_result_correlates_by_call_id() -> None:
-    connection = Connection()
-    future = asyncio.get_running_loop().create_future()
-    connection.pending["call-1"] = future
-
-    await connection.handle(
-        pb.ApiMessage(
-            tool_result=pb.ToolResult(
-                call_id="call-1", ok=True, output_json='{"pods":[]}'
+async def test_malformed_model_arguments_become_recoverable_invalid_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = SimpleNamespace(
+        model="provider/model",
+        usage=SimpleNamespace(prompt_tokens=7, completion_tokens=2),
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    tool_calls=[
+                        SimpleNamespace(
+                            id="call-bad",
+                            function=SimpleNamespace(
+                                name="cluster.read_pods", arguments="{not-json"
+                            ),
+                        )
+                    ]
+                )
             )
-        )
+        ],
     )
 
-    assert await future == {"pods": []}
-    assert "call-1" not in connection.pending
+    async def completion(**_kwargs: object) -> object:
+        return response
+
+    monkeypatch.setattr(model.litellm, "acompletion", completion)
+    decision = await model.think([{"role": "user", "content": "ticket"}])
+
+    assert decision.kind == "invalid"
+    assert decision.call_id == "call-bad"
+    assert "invalid model tool call" in decision.error
+    assert (decision.prompt_tokens, decision.completion_tokens, decision.model) == (
+        7,
+        2,
+        "provider/model",
+    )

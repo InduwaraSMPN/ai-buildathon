@@ -1,5 +1,4 @@
 import { useForm } from "@tanstack/react-form";
-import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
 import { Button } from "@/components/ui/button";
@@ -11,13 +10,12 @@ import { authClient } from "@/lib/auth-client";
 import Loader from "./loader";
 
 export default function SignUpForm({
+	redirect,
 	onSwitchToSignIn,
 }: {
+	redirect: string;
 	onSwitchToSignIn: () => void;
 }) {
-	const navigate = useNavigate({
-		from: "/",
-	});
 	const { isPending } = authClient.useSession();
 
 	const form = useForm({
@@ -35,9 +33,7 @@ export default function SignUpForm({
 				},
 				{
 					onSuccess: () => {
-						navigate({
-							to: "/home",
-						});
+						window.location.assign(redirect);
 						toast.success("Sign up successful");
 					},
 					onError: (error) => {

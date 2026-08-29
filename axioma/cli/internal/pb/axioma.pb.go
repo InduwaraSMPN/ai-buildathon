@@ -313,6 +313,7 @@ type AgentHello struct {
 	// Model actually backing Axel for this worker, observed rather than configured.
 	ModelLabel    string   `protobuf:"bytes,2,opt,name=model_label,json=modelLabel,proto3" json:"model_label,omitempty"`
 	Capabilities  []string `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	WorkerId      string   `protobuf:"bytes,4,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -368,6 +369,13 @@ func (x *AgentHello) GetCapabilities() []string {
 	return nil
 }
 
+func (x *AgentHello) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
 type StartRun struct {
 	state      protoimpl.MessageState `protogen:"open.v1"`
 	RunId      string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -379,6 +387,9 @@ type StartRun struct {
 	DeviceId string `protobuf:"bytes,6,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
 	// Prior CMDB observations relevant to this ticket, as JSON.
 	ContextJson   string `protobuf:"bytes,7,opt,name=context_json,json=contextJson,proto3" json:"context_json,omitempty"`
+	RecordType    string `protobuf:"bytes,8,opt,name=record_type,json=recordType,proto3" json:"record_type,omitempty"`
+	Impact        string `protobuf:"bytes,9,opt,name=impact,proto3" json:"impact,omitempty"`
+	Urgency       string `protobuf:"bytes,10,opt,name=urgency,proto3" json:"urgency,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -462,6 +473,27 @@ func (x *StartRun) GetContextJson() string {
 	return ""
 }
 
+func (x *StartRun) GetRecordType() string {
+	if x != nil {
+		return x.RecordType
+	}
+	return ""
+}
+
+func (x *StartRun) GetImpact() string {
+	if x != nil {
+		return x.Impact
+	}
+	return ""
+}
+
+func (x *StartRun) GetUrgency() string {
+	if x != nil {
+		return x.Urgency
+	}
+	return ""
+}
+
 type CancelRun struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -527,10 +559,14 @@ type RunUpdate struct {
 	ToolOutputJson string                 `protobuf:"bytes,7,opt,name=tool_output_json,json=toolOutputJson,proto3" json:"tool_output_json,omitempty"`
 	Error          string                 `protobuf:"bytes,8,opt,name=error,proto3" json:"error,omitempty"`
 	// Set only on KIND_TERMINAL.
-	Status        string `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"` // resolved | escalated | failed | exhausted
-	Outcome       string `protobuf:"bytes,10,opt,name=outcome,proto3" json:"outcome,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Status           string `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"` // resolved | escalated | failed | exhausted
+	Outcome          string `protobuf:"bytes,10,opt,name=outcome,proto3" json:"outcome,omitempty"`
+	Evidence         string `protobuf:"bytes,11,opt,name=evidence,proto3" json:"evidence,omitempty"`
+	PromptTokens     uint32 `protobuf:"varint,12,opt,name=prompt_tokens,json=promptTokens,proto3" json:"prompt_tokens,omitempty"`
+	CompletionTokens uint32 `protobuf:"varint,13,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
+	Model            string `protobuf:"bytes,14,opt,name=model,proto3" json:"model,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *RunUpdate) Reset() {
@@ -633,17 +669,46 @@ func (x *RunUpdate) GetOutcome() string {
 	return ""
 }
 
+func (x *RunUpdate) GetEvidence() string {
+	if x != nil {
+		return x.Evidence
+	}
+	return ""
+}
+
+func (x *RunUpdate) GetPromptTokens() uint32 {
+	if x != nil {
+		return x.PromptTokens
+	}
+	return 0
+}
+
+func (x *RunUpdate) GetCompletionTokens() uint32 {
+	if x != nil {
+		return x.CompletionTokens
+	}
+	return 0
+}
+
+func (x *RunUpdate) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
 // The agent asks the API to execute a tool. The agent never touches the
 // database, the cluster, or a device directly — the API owns every side effect
 // and every persistence path.
 type ToolRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
-	CallId        string                 `protobuf:"bytes,2,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
-	ToolName      string                 `protobuf:"bytes,3,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
-	InputJson     string                 `protobuf:"bytes,4,opt,name=input_json,json=inputJson,proto3" json:"input_json,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	RunId             string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
+	CallId            string                 `protobuf:"bytes,2,opt,name=call_id,json=callId,proto3" json:"call_id,omitempty"`
+	ToolName          string                 `protobuf:"bytes,3,opt,name=tool_name,json=toolName,proto3" json:"tool_name,omitempty"`
+	InputJson         string                 `protobuf:"bytes,4,opt,name=input_json,json=inputJson,proto3" json:"input_json,omitempty"`
+	SourceStepOrdinal uint32                 `protobuf:"varint,5,opt,name=source_step_ordinal,json=sourceStepOrdinal,proto3" json:"source_step_ordinal,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *ToolRequest) Reset() {
@@ -702,6 +767,13 @@ func (x *ToolRequest) GetInputJson() string {
 		return x.InputJson
 	}
 	return ""
+}
+
+func (x *ToolRequest) GetSourceStepOrdinal() uint32 {
+	if x != nil {
+		return x.SourceStepOrdinal
+	}
+	return 0
 }
 
 type ToolResult struct {
@@ -1018,6 +1090,7 @@ type DeviceHello struct {
 	// Last sequence the device processed. The gateway replays past it, because a
 	// laptop that slept never got to acknowledge anything.
 	LastSeenSequence uint64 `protobuf:"varint,7,opt,name=last_seen_sequence,json=lastSeenSequence,proto3" json:"last_seen_sequence,omitempty"`
+	EnrolmentCode    string `protobuf:"bytes,8,opt,name=enrolment_code,json=enrolmentCode,proto3" json:"enrolment_code,omitempty"`
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -1099,6 +1172,13 @@ func (x *DeviceHello) GetLastSeenSequence() uint64 {
 		return x.LastSeenSequence
 	}
 	return 0
+}
+
+func (x *DeviceHello) GetEnrolmentCode() string {
+	if x != nil {
+		return x.EnrolmentCode
+	}
+	return ""
 }
 
 type DeviceCommand struct {
@@ -1293,13 +1373,14 @@ const file_axioma_proto_rawDesc = "" +
 	"\n" +
 	"cancel_run\x18\x03 \x01(\v2\x14.axioma.v1.CancelRunH\x00R\tcancelRun\x124\n" +
 	"\theartbeat\x18\x04 \x01(\v2\x14.axioma.v1.HeartbeatH\x00R\theartbeatB\t\n" +
-	"\apayload\"v\n" +
+	"\apayload\"\x93\x01\n" +
 	"\n" +
 	"AgentHello\x12#\n" +
 	"\ragent_version\x18\x01 \x01(\tR\fagentVersion\x12\x1f\n" +
 	"\vmodel_label\x18\x02 \x01(\tR\n" +
 	"modelLabel\x12\"\n" +
-	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\"\xc9\x01\n" +
+	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\x12\x1b\n" +
+	"\tworker_id\x18\x04 \x01(\tR\bworkerId\"\x9c\x02\n" +
 	"\bStartRun\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1b\n" +
 	"\tticket_id\x18\x02 \x01(\tR\bticketId\x12\x14\n" +
@@ -1308,10 +1389,15 @@ const file_axioma_proto_rawDesc = "" +
 	"\vreporter_id\x18\x05 \x01(\tR\n" +
 	"reporterId\x12\x1b\n" +
 	"\tdevice_id\x18\x06 \x01(\tR\bdeviceId\x12!\n" +
-	"\fcontext_json\x18\a \x01(\tR\vcontextJson\":\n" +
+	"\fcontext_json\x18\a \x01(\tR\vcontextJson\x12\x1f\n" +
+	"\vrecord_type\x18\b \x01(\tR\n" +
+	"recordType\x12\x16\n" +
+	"\x06impact\x18\t \x01(\tR\x06impact\x12\x18\n" +
+	"\aurgency\x18\n" +
+	" \x01(\tR\aurgency\":\n" +
 	"\tCancelRun\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xbe\x03\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xc2\x04\n" +
 	"\tRunUpdate\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x18\n" +
 	"\aordinal\x18\x02 \x01(\rR\aordinal\x12-\n" +
@@ -1323,7 +1409,11 @@ const file_axioma_proto_rawDesc = "" +
 	"\x05error\x18\b \x01(\tR\x05error\x12\x16\n" +
 	"\x06status\x18\t \x01(\tR\x06status\x12\x18\n" +
 	"\aoutcome\x18\n" +
-	" \x01(\tR\aoutcome\"|\n" +
+	" \x01(\tR\aoutcome\x12\x1a\n" +
+	"\bevidence\x18\v \x01(\tR\bevidence\x12#\n" +
+	"\rprompt_tokens\x18\f \x01(\rR\fpromptTokens\x12+\n" +
+	"\x11completion_tokens\x18\r \x01(\rR\x10completionTokens\x12\x14\n" +
+	"\x05model\x18\x0e \x01(\tR\x05model\"|\n" +
 	"\x04Kind\x12\x14\n" +
 	"\x10KIND_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -1331,13 +1421,14 @@ const file_axioma_proto_rawDesc = "" +
 	"\x0eKIND_TOOL_CALL\x10\x02\x12\x14\n" +
 	"\x10KIND_OBSERVATION\x10\x03\x12\x11\n" +
 	"\rKIND_DECISION\x10\x04\x12\x11\n" +
-	"\rKIND_TERMINAL\x10\x05\"y\n" +
+	"\rKIND_TERMINAL\x10\x05\"\xa9\x01\n" +
 	"\vToolRequest\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x17\n" +
 	"\acall_id\x18\x02 \x01(\tR\x06callId\x12\x1b\n" +
 	"\ttool_name\x18\x03 \x01(\tR\btoolName\x12\x1d\n" +
 	"\n" +
-	"input_json\x18\x04 \x01(\tR\tinputJson\"\x83\x01\n" +
+	"input_json\x18\x04 \x01(\tR\tinputJson\x12.\n" +
+	"\x13source_step_ordinal\x18\x05 \x01(\rR\x11sourceStepOrdinal\"\x83\x01\n" +
 	"\n" +
 	"ToolResult\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x17\n" +
@@ -1356,7 +1447,7 @@ const file_axioma_proto_rawDesc = "" +
 	"\x0eGatewayMessage\x124\n" +
 	"\acommand\x18\x01 \x01(\v2\x18.axioma.v1.DeviceCommandH\x00R\acommand\x124\n" +
 	"\theartbeat\x18\x02 \x01(\v2\x14.axioma.v1.HeartbeatH\x00R\theartbeatB\t\n" +
-	"\apayload\"\xeb\x01\n" +
+	"\apayload\"\x92\x02\n" +
 	"\vDeviceHello\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x1a\n" +
@@ -1364,7 +1455,8 @@ const file_axioma_proto_rawDesc = "" +
 	"\bplatform\x18\x04 \x01(\tR\bplatform\x12\x18\n" +
 	"\arelease\x18\x05 \x01(\tR\arelease\x12#\n" +
 	"\ragent_version\x18\x06 \x01(\tR\fagentVersion\x12,\n" +
-	"\x12last_seen_sequence\x18\a \x01(\x04R\x10lastSeenSequence\"\xd5\x02\n" +
+	"\x12last_seen_sequence\x18\a \x01(\x04R\x10lastSeenSequence\x12%\n" +
+	"\x0eenrolment_code\x18\b \x01(\tR\renrolmentCode\"\xd5\x02\n" +
 	"\rDeviceCommand\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1a\n" +

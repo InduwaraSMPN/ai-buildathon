@@ -1,30 +1,24 @@
 import { AlertCircle, Inbox, LoaderCircle } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { ticketStatusTone } from "@/features/tickets/components/allowed-actions";
 import { cn } from "@/lib/utils";
 
-const statusTone: Record<string, string> = {
-	open: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-	routing:
-		"border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
-	resolving:
-		"border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-	resolved:
-		"border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-	escalated:
-		"border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
-	closed: "border-border bg-muted text-muted-foreground",
-	connected:
+const connectionTone = {
+	online:
 		"border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
 	offline: "border-border bg-muted text-muted-foreground",
-};
+} as const;
 
 export function StatusBadge({ status }: { status: string }) {
+	const normalized = status.toLowerCase();
 	return (
 		<span
 			className={cn(
 				"inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wider",
-				statusTone[status.toLowerCase()] ?? statusTone.closed,
+				ticketStatusTone(normalized) ??
+					connectionTone[normalized as keyof typeof connectionTone] ??
+					connectionTone.offline,
 			)}
 		>
 			{status}

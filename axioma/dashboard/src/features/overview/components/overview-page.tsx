@@ -1,11 +1,18 @@
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheckBig, Clock3, ShieldAlert, TicketCheck } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import {
+	CircleCheckBig,
+	Clock3,
+	ShieldAlert,
+	Sparkles,
+	TriangleAlert,
+} from "lucide-react";
+import {
+	Area,
+	AreaChart,
 	Bar,
 	BarChart,
 	CartesianGrid,
-	ResponsiveContainer,
-	Tooltip,
 	XAxis,
 	YAxis,
 } from "recharts";
@@ -19,17 +26,33 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
-import { ticketQueries } from "@/features/tickets/api/queries";
+import {
+	type ChartConfig,
+	ChartContainer,
+	ChartTooltip,
+	ChartTooltipContent,
+} from "@/components/ui/chart";
+import { overviewQueries } from "../api/queries";
+
+const DAYS = 30;
+const volumeConfig = {
+	incidents: { label: "Incidents", color: "var(--chart-2)" },
+	serviceRequests: { label: "Service requests", color: "var(--chart-4)" },
+} satisfies ChartConfig;
+const outcomeConfig = {
+	resolved: { label: "Resolved", color: "var(--chart-2)" },
+	escalated: { label: "Escalated", color: "var(--destructive)" },
+} satisfies ChartConfig;
 
 export function OverviewPage() {
-	const query = useQuery(ticketQueries.list("all"));
+	const query = useQuery(overviewQueries.stats(DAYS));
 	if (query.isPending)
 		return (
 			<PageContainer title="Overview">
 				<PageState
 					kind="loading"
 					title="Loading overview"
-					description="Calculating service desk activity…"
+					description="Fetching service desk aggregates…"
 				/>
 			</PageContainer>
 		);
@@ -44,153 +67,263 @@ export function OverviewPage() {
 				/>
 			</PageContainer>
 		);
-	const tickets = query.data;
-	const active = tickets.filter(
-		(ticket) => !["closed", "resolved"].includes(ticket.status),
-	).length;
-	const escalated = tickets.filter(
-		(ticket) => ticket.status === "escalated",
-	).length;
-	const resolved = tickets.filter((ticket) =>
-		["closed", "resolved"].includes(ticket.status),
-	).length;
-	const days = Array.from({ length: 7 }, (_, index) => {
-		const date = new Date();
-		date.setHours(0, 0, 0, 0);
-		date.setDate(date.getDate() - 6 + index);
-		return {
-			day: date.toLocaleDateString(undefined, { weekday: "short" }),
-			tickets: tickets.filter(
-				(ticket) =>
-					ticket.createdAt >= date &&
-					ticket.createdAt < new Date(date.getTime() + 86_400_000),
-			).length,
-		};
-	});
-	const outcomes = [
-		"open",
-		"routing",
-		"resolving",
-		"resolved",
-		"escalated",
-		"closed",
-	].map((status) => ({
-		status,
-		tickets: tickets.filter((ticket) => ticket.status === status).length,
-	}));
+
+	const stats = query.data;
+	const empty = Object.values(stats.byStatus).every((count) => count === 0);
+	if (empty)
+		return (
+			<PageContainer title="Overview">
+				<PageState
+					kind="empty"
+					title="No ticket activity"
+					description="Service desk metrics will appear after the first ticket is created."
+				/>
+			</PageContainer>
+		);
+
 	return (
 		<PageContainer
 			title="Overview"
-			description="Axel activity and service desk outcomes at a glance."
+			description="Service desk demand and outcomes from one aggregate view."
 		>
-			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-				<Stat label="Total tickets" value={tickets.length} icon={TicketCheck} />
-				<Stat label="Active" value={active} icon={Clock3} />
+			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+				<PriorityStat values={stats.openByPriority} />
 				<Stat
-					label="Escalated"
-					value={escalated}
-					icon={ShieldAlert}
-					alert={escalated > 0}
+					label="Awaiting confirmation"
+					value={stats.awaitingConfirmation}
+					detail="Resolved tickets"
+					icon={CircleCheckBig}
+					search={{ status: ["resolved"] }}
 				/>
-				<Stat label="Resolved" value={resolved} icon={CircleCheckBig} />
+				<Stat
+					label="Escalated 24h"
+					value={stats.escalatedLast24h}
+					detail="Escalated in the last 24 hours"
+					icon={ShieldAlert}
+					search={{ escalatedSince: stats.escalatedSince }}
+					alert={stats.escalatedLast24h > 0}
+				/>
+				<Stat
+					label="Autonomous resolution rate"
+					value={formatPercent(stats.autonomousResolutionRate)}
+					detail={`${stats.autonomousResolutionNumerator} of ${stats.autonomousResolutionDenominator} closed`}
+					icon={Sparkles}
+					search={{ status: ["closed"], autonomous: true }}
+				/>
+				<Stat
+					label="Median TTR"
+					value={formatDuration(stats.medianTimeToResolutionMs)}
+					detail="All resolved tickets"
+					icon={Clock3}
+					search={{ resolvedAt: true }}
+				/>
 			</div>
-			<div className="mt-4 grid gap-4 lg:grid-cols-7">
+
+			<div className="mt-4 grid gap-4 lg:grid-cols-2">
 				<ChartCard
-					className="lg:col-span-4"
 					title="Ticket volume"
-					description="New requests over the last seven days"
+					description={`Daily intake · last ${DAYS} days`}
 				>
-					<ResponsiveContainer width="100%" height={280}>
-						<BarChart data={days}>
-							<CartesianGrid vertical={false} stroke="var(--border)" />
-							<XAxis dataKey="day" tickLine={false} axisLine={false} />
+					<ChartContainer
+						config={volumeConfig}
+						className="aspect-auto h-[280px] w-full"
+					>
+						<AreaChart
+							data={stats.daily}
+							accessibilityLayer
+							margin={{ left: 4, right: 4 }}
+						>
+							<CartesianGrid vertical={false} />
+							<XAxis
+								dataKey="date"
+								tickLine={false}
+								axisLine={false}
+								tickMargin={8}
+								minTickGap={28}
+								tickFormatter={formatDate}
+							/>
 							<YAxis
 								allowDecimals={false}
 								tickLine={false}
 								axisLine={false}
 								width={28}
 							/>
-							<Tooltip />
-							<Bar
-								dataKey="tickets"
-								fill="var(--chart-2)"
-								radius={[4, 4, 0, 0]}
+							<ChartTooltip
+								content={
+									<ChartTooltipContent
+										labelFormatter={(value) => formatDate(String(value))}
+									/>
+								}
 							/>
-						</BarChart>
-					</ResponsiveContainer>
+							<Area
+								dataKey="incidents"
+								type="monotone"
+								fill="var(--color-incidents)"
+								fillOpacity={0.16}
+								stroke="var(--color-incidents)"
+								stackId="volume"
+							/>
+							<Area
+								dataKey="serviceRequests"
+								type="monotone"
+								fill="var(--color-serviceRequests)"
+								fillOpacity={0.16}
+								stroke="var(--color-serviceRequests)"
+								stackId="volume"
+							/>
+						</AreaChart>
+					</ChartContainer>
 				</ChartCard>
+
 				<ChartCard
-					className="lg:col-span-3"
 					title="Resolution outcomes"
-					description="Current queue by status"
+					description={`Daily outcomes · last ${DAYS} days`}
 				>
-					<ResponsiveContainer width="100%" height={280}>
-						<BarChart data={outcomes} layout="vertical">
-							<CartesianGrid horizontal={false} stroke="var(--border)" />
-							<XAxis type="number" allowDecimals={false} hide />
-							<YAxis
-								dataKey="status"
-								type="category"
+					<ChartContainer
+						config={outcomeConfig}
+						className="aspect-auto h-[280px] w-full"
+					>
+						<BarChart
+							data={stats.daily}
+							accessibilityLayer
+							margin={{ left: 4, right: 4 }}
+						>
+							<CartesianGrid vertical={false} />
+							<XAxis
+								dataKey="date"
 								tickLine={false}
 								axisLine={false}
-								width={72}
+								tickMargin={8}
+								minTickGap={28}
+								tickFormatter={formatDate}
 							/>
-							<Tooltip />
+							<YAxis
+								allowDecimals={false}
+								tickLine={false}
+								axisLine={false}
+								width={28}
+							/>
+							<ChartTooltip
+								content={
+									<ChartTooltipContent
+										labelFormatter={(value) => formatDate(String(value))}
+									/>
+								}
+							/>
 							<Bar
-								dataKey="tickets"
-								fill="var(--chart-4)"
-								radius={[0, 4, 4, 0]}
+								dataKey="resolved"
+								fill="var(--color-resolved)"
+								radius={[3, 3, 0, 0]}
+							/>
+							<Bar
+								dataKey="escalated"
+								fill="var(--color-escalated)"
+								radius={[3, 3, 0, 0]}
 							/>
 						</BarChart>
-					</ResponsiveContainer>
+					</ChartContainer>
 				</ChartCard>
 			</div>
 		</PageContainer>
 	);
 }
 
-function Stat({
-	label,
-	value,
-	icon: Icon,
-	alert = false,
+function PriorityStat({
+	values,
 }: {
-	label: string;
-	value: number;
-	icon: typeof TicketCheck;
-	alert?: boolean;
+	values: Record<"P1" | "P2" | "P3" | "P4", number>;
 }) {
 	return (
-		<Card className="rounded-xl bg-gradient-to-t from-primary/5 to-card shadow-xs">
+		<Card className="h-full rounded-xl shadow-xs xl:col-span-2">
 			<CardHeader>
-				<CardDescription>{label}</CardDescription>
-				<CardTitle
-					className={`text-3xl tabular-nums ${alert ? "text-destructive" : ""}`}
-				>
-					{value}
+				<CardDescription>Open by priority</CardDescription>
+				<CardTitle className="flex flex-wrap gap-x-4 gap-y-1 text-2xl tabular-nums">
+					{(["P1", "P2", "P3", "P4"] as const).map((priority) => (
+						<Link
+							key={priority}
+							to="/tickets"
+							search={{
+								status: ["open", "routing", "resolving", "escalated"],
+								priority: [priority],
+							}}
+							className={
+								priority === "P1"
+									? "text-destructive hover:underline"
+									: "hover:underline"
+							}
+						>
+							{priority} {values[priority]}
+						</Link>
+					))}
 				</CardTitle>
+				<CardDescription>
+					Open, routing, resolving, and escalated tickets
+				</CardDescription>
 				<CardAction>
 					<span className="grid size-8 place-items-center rounded-md border bg-background">
-						<Icon className="size-4" />
+						<TriangleAlert className="size-4 text-destructive" />
 					</span>
 				</CardAction>
 			</CardHeader>
 		</Card>
 	);
 }
+
+function Stat({
+	label,
+	value,
+	detail,
+	icon: Icon,
+	search,
+	alert = false,
+}: {
+	label: string;
+	value: number | string;
+	detail: string;
+	icon: typeof Clock3;
+	search:
+		| { status: ("resolved" | "closed")[]; autonomous?: boolean }
+		| { escalatedSince: Date }
+		| { resolvedAt: boolean };
+	alert?: boolean;
+}) {
+	return (
+		<Link
+			to="/tickets"
+			search={search}
+			className="rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2"
+		>
+			<Card className="h-full rounded-xl shadow-xs transition-colors hover:border-foreground/30">
+				<CardHeader>
+					<CardDescription>{label}</CardDescription>
+					<CardTitle
+						className={`text-3xl tabular-nums ${alert ? "text-destructive" : ""}`}
+					>
+						{value}
+					</CardTitle>
+					<CardDescription>{detail}</CardDescription>
+					<CardAction>
+						<span className="grid size-8 place-items-center rounded-md border bg-background">
+							<Icon className="size-4" />
+						</span>
+					</CardAction>
+				</CardHeader>
+			</Card>
+		</Link>
+	);
+}
+
 function ChartCard({
 	title,
 	description,
 	children,
-	className,
 }: {
 	title: string;
 	description: string;
 	children: React.ReactNode;
-	className?: string;
 }) {
 	return (
-		<Card className={`rounded-xl shadow-xs ${className ?? ""}`}>
+		<Card className="rounded-xl shadow-xs">
 			<CardHeader>
 				<CardTitle>{title}</CardTitle>
 				<CardDescription>{description}</CardDescription>
@@ -198,4 +331,29 @@ function ChartCard({
 			<CardContent>{children}</CardContent>
 		</Card>
 	);
+}
+
+function formatDate(value: string) {
+	return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, {
+		month: "short",
+		day: "numeric",
+		timeZone: "UTC",
+	});
+}
+
+function formatPercent(rate: number | null) {
+	return rate === null
+		? "0%"
+		: rate.toLocaleString(undefined, {
+				style: "percent",
+				maximumFractionDigits: 1,
+			});
+}
+
+function formatDuration(milliseconds: number | null) {
+	if (milliseconds === null) return "No resolved tickets";
+	const hours = milliseconds / 3_600_000;
+	return hours < 24
+		? `${hours.toFixed(hours < 10 ? 1 : 0)}h`
+		: `${(hours / 24).toFixed(1)}d`;
 }

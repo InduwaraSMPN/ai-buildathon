@@ -11,6 +11,7 @@
 		"start": "node dist/index.mjs",
 		"check": "biome check --write .",
 		"check-types": "tsc --noEmit",
+		"test": "tsx --test src/**/*.test.ts",
 		"db:push": "drizzle-kit push",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
@@ -18,12 +19,16 @@
 		"db:start": "docker compose up -d --wait",
 		"db:stop": "docker compose stop",
 		"db:down": "docker compose down",
-		"contracts:publish": "node scripts/publish-contracts.mjs"
+		"contracts:publish": "node scripts/publish-contracts.mjs",
+		"seed": "node scripts/seed-scenarios.mjs",
+		"seed:reset": "node scripts/seed-scenarios.mjs --reset",
+		"seed:device": "pwsh -File scripts/seed-device-fault.ps1"
 	},
 	"dependencies": {
 		"@grpc/grpc-js": "^1.14.4",
 		"@grpc/proto-loader": "^0.8.1",
 		"@hono/node-server": "^2.0.12",
+		"@kubernetes/client-node": "^2.0.0",
 		"@orpc/contract": "^1.15.0",
 		"@orpc/openapi": "^1.14.12",
 		"@orpc/server": "^1.14.12",

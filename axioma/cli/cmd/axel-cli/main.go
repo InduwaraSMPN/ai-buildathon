@@ -15,11 +15,16 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/axioma/cli/internal/cua"
 	"github.com/axioma/cli/internal/device"
 	"github.com/axioma/cli/internal/tui"
 )
 
-const agentVersion = "0.1.0"
+var (
+	agentVersion = "dev"
+	commit       = "unknown"
+	buildDate    = "unknown"
+)
 
 func main() {
 	if len(os.Args) < 2 {
@@ -41,7 +46,7 @@ func main() {
 	case "doctor":
 		err = runDoctor(ctx)
 	case "version":
-		fmt.Println(agentVersion)
+		fmt.Printf("%s (commit %s, built %s)\n", agentVersion, commit, buildDate)
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -72,11 +77,25 @@ The daemon is installed as a logon Scheduled Task and is not run by hand.
 // runDaemon is the headless mode. No Bubble Tea here: when this runs there is
 // no terminal, and anything written to stdout goes nowhere.
 func runDaemon(ctx context.Context) error {
-	host := os.Getenv("AXIOMA_GRPC_HOST")
-	if host == "" {
-		host = "localhost:50051"
+	host, err := gatewayHost()
+	if err != nil {
+		return err
 	}
 	return device.RunDaemon(ctx, host, agentVersion)
+}
+
+func gatewayHost() (string, error) {
+	if host := os.Getenv("AXIOMA_GRPC_HOST"); host != "" {
+		return host, nil
+	}
+	config, err := device.LoadConfig()
+	if err != nil {
+		return "", err
+	}
+	if config.GRPCHost != "" {
+		return config.GRPCHost, nil
+	}
+	return "localhost:50051", nil
 }
 
 // The operator-facing commands below are where the terminal UI belongs. They
@@ -96,9 +115,17 @@ func runStatus(ctx context.Context) error {
 	return err
 }
 
-func runEnroll(_ context.Context) error {
-	// TODO(M8): Bubble Tea form for gateway URL, then a connectivity check.
-	return fmt.Errorf("not implemented")
+func runEnroll(ctx context.Context) error {
+	id, err := device.Load(agentVersion)
+	if err != nil {
+		return err
+	}
+	host, err := gatewayHost()
+	if err != nil {
+		return err
+	}
+	_, err = tea.NewProgram(tui.NewEnroll(id, host), tea.WithContext(ctx)).Run()
+	return err
 }
 
 func runDoctor(ctx context.Context) error {
@@ -114,7 +141,7 @@ func runDoctor(ctx context.Context) error {
 			},
 		},
 		{
-			Name: "state directory writable",
+			Name: "state directory",
 			Run: func(context.Context) (string, error) {
 				return device.StateDir()
 			},
@@ -122,8 +149,10 @@ func runDoctor(ctx context.Context) error {
 		// Every tier-one action depends on a binary. Finding one missing during
 		// a real ticket is the worst possible moment.
 		{Name: "ipconfig present", Run: tui.BinaryPresent("ipconfig")},
-		{Name: "netsh present", Run: tui.BinaryPresent("netsh")},
-		{Name: "sc present", Run: tui.BinaryPresent("sc")},
+		{Name: "PowerShell present", Run: tui.BinaryPresent("powershell")},
+		{Name: "klist present", Run: tui.BinaryPresent("klist")},
+		{Name: "taskkill present", Run: tui.BinaryPresent("taskkill")},
+		{Name: "computer-use available", Run: cua.Check},
 	}
 
 	_, err := tea.NewProgram(tui.NewDoctor(checks), tea.WithContext(ctx)).Run()

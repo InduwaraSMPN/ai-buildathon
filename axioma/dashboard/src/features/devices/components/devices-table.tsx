@@ -12,34 +12,47 @@ import {
 import { ArrowUpDown } from "lucide-react";
 import { useState } from "react";
 import { PageState, timeAgo } from "@/components/support-ui";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
 import { deviceQueries } from "../api/queries";
 import type { Device } from "../api/types";
+import { DeviceDetailSheet } from "./device-detail-sheet";
 
 const column = createColumnHelper<Device>();
 const columns = [
-	column.accessor("connected", {
-		header: "Connection",
-		cell: ({ getValue }) => {
-			const status = getValue();
-			const online = status.toLowerCase() === "online";
+	column.accessor("hostname", {
+		header: "Device",
+		cell: ({ row }) => {
+			const online = Date.now() - row.original.lastSeenAt.getTime() <= 30_000;
 			return (
-				<span
-					className={
-						online
-							? "inline-flex rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 font-medium text-[10px] text-emerald-700 uppercase tracking-wider dark:text-emerald-300"
-							: "inline-flex rounded-md border border-border bg-muted px-1.5 py-0.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider"
-					}
-				>
-					{status}
-				</span>
+				<div>
+					<p className="flex items-center gap-2 font-medium">
+						<span
+							className={`size-2 rounded-full ${online ? "bg-emerald-500" : "bg-muted-foreground/50"}`}
+							aria-hidden="true"
+						/>
+						{row.original.hostname}
+						<span className="sr-only">{online ? "Online" : "Offline"}</span>
+					</p>
+					<p className="font-mono text-[10px] text-muted-foreground">
+						{row.original.id}
+					</p>
+				</div>
 			);
 		},
 	}),
-	column.accessor("hostname", { header: "Hostname" }),
 	column.accessor(
-		(device) => device.ownerName ?? device.username ?? "Unassigned",
+		(device) =>
+			device.ownerName ?? device.ownerEmail ?? device.username ?? "Unassigned",
 		{
 			id: "user",
 			header: "User",
@@ -47,24 +60,68 @@ const columns = [
 				<div>
 					<p>{row.original.ownerName ?? "Unassigned"}</p>
 					<p className="text-[10px] text-muted-foreground">
-						{row.original.username ?? "No local user"}
+						{row.original.ownerEmail ??
+							row.original.username ??
+							"No user details"}
 					</p>
 				</div>
 			),
 		},
 	),
+	column.accessor(
+		(device) => `${device.platform ?? "Unknown"} ${device.release ?? ""}`,
+		{
+			id: "platform",
+			header: "Platform",
+			cell: ({ row }) => (
+				<div>
+					<p>
+						{row.original.platform ?? "Unknown"} {row.original.release ?? ""}
+					</p>
+					<p className="text-[10px] text-muted-foreground">
+						Agent {row.original.agentVersion ?? "unknown"}
+					</p>
+				</div>
+			),
+		},
+	),
+	column.accessor("lastCommand", {
+		header: "Last command",
+		cell: ({ getValue }) => {
+			const command = getValue();
+			return command ? (
+				<div>
+					<p className="font-mono">{command.tool}</p>
+					<Badge variant="outline">{command.status}</Badge>
+				</div>
+			) : (
+				"—"
+			);
+		},
+	}),
 	column.accessor("lastSeenAt", {
 		header: "Last seen",
 		cell: ({ getValue }) => {
 			const value = getValue();
-			return <span title={value.toLocaleString()}>{timeAgo(value)}</span>;
+			return (
+				<span className="tabular-nums" title={value.toLocaleString()}>
+					{timeAgo(value)}
+				</span>
+			);
 		},
 		sortingFn: "datetime",
 	}),
 ];
 
-export function DevicesTable() {
+export function DevicesTable({
+	deviceId,
+	onSelectDevice,
+}: {
+	deviceId?: string;
+	onSelectDevice: (deviceId?: string) => void;
+}) {
 	const query = useQuery(deviceQueries.all());
+	const selected = query.data?.find((device) => device.id === deviceId) ?? null;
 	const [filter, setFilter] = useState("");
 	const [sorting, setSorting] = useState<SortingState>([]);
 	const table = useReactTable({
@@ -84,7 +141,7 @@ export function DevicesTable() {
 			<PageState
 				kind="loading"
 				title="Loading devices"
-				description="Reading endpoint connection state…"
+				description="Reading endpoint activity…"
 			/>
 		);
 	if (query.isError)
@@ -105,7 +162,7 @@ export function DevicesTable() {
 					id="devices-filter"
 					value={filter}
 					onChange={(event) => setFilter(event.target.value)}
-					placeholder="Filter connection, hostname, or user…"
+					placeholder="Filter hostname, user, or platform…"
 				/>
 			</label>
 			{table.getRowModel().rows.length === 0 ? (
@@ -119,13 +176,13 @@ export function DevicesTable() {
 					}
 				/>
 			) : (
-				<div className="overflow-x-auto border bg-card">
-					<table className="w-full min-w-[680px] text-left text-xs">
-						<thead className="bg-muted/60 text-[10px] text-muted-foreground uppercase tracking-wider">
+				<div className="border bg-card">
+					<Table>
+						<TableHeader>
 							{table.getHeaderGroups().map((group) => (
-								<tr key={group.id}>
+								<TableRow key={group.id}>
 									{group.headers.map((header) => (
-										<th key={header.id} className="px-3 py-2 font-medium">
+										<TableHead key={header.id}>
 											{header.isPlaceholder ? null : (
 												<Button
 													variant="ghost"
@@ -139,30 +196,42 @@ export function DevicesTable() {
 													<ArrowUpDown aria-hidden="true" />
 												</Button>
 											)}
-										</th>
+										</TableHead>
 									))}
-								</tr>
+								</TableRow>
 							))}
-						</thead>
-						<tbody>
+						</TableHeader>
+						<TableBody>
 							{table.getRowModel().rows.map((row) => (
-								<tr key={row.id} className="border-t hover:bg-muted/40">
+								<TableRow
+									key={row.id}
+									tabIndex={0}
+									className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									onClick={() => onSelectDevice(row.original.id)}
+									onKeyDown={(event) => {
+										if (event.key === "Enter" || event.key === " ") {
+											event.preventDefault();
+											onSelectDevice(row.original.id);
+										}
+									}}
+									aria-label={`View ${row.original.hostname} device details`}
+								>
 									{row.getVisibleCells().map((cell) => (
-										<td key={cell.id} className="px-3 py-3">
+										<TableCell key={cell.id}>
 											{flexRender(
 												cell.column.columnDef.cell,
 												cell.getContext(),
 											)}
-										</td>
+										</TableCell>
 									))}
-								</tr>
+								</TableRow>
 							))}
-						</tbody>
-					</table>
+						</TableBody>
+					</Table>
 				</div>
 			)}
 			<div className="flex items-center justify-between text-muted-foreground text-xs">
-				<span>
+				<span className="tabular-nums">
 					Page {table.getState().pagination.pageIndex + 1} of{" "}
 					{table.getPageCount() || 1}
 				</span>
@@ -185,6 +254,10 @@ export function DevicesTable() {
 					</Button>
 				</div>
 			</div>
+			<DeviceDetailSheet
+				device={selected}
+				onOpenChange={(open) => !open && onSelectDevice()}
+			/>
 		</div>
 	);
 }

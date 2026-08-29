@@ -16,7 +16,7 @@ export default function SignInForm({
 	onSwitchToSignUp: () => void;
 }) {
 	const navigate = useNavigate({
-		from: "/",
+		from: "/login",
 	});
 	const { isPending } = authClient.useSession();
 
@@ -38,8 +38,10 @@ export default function SignInForm({
 						});
 						toast.success("Sign in successful");
 					},
-					onError: (error) => {
-						toast.error(error.error.message || error.error.statusText);
+					onError: () => {
+						toast.error(
+							"We couldn’t sign you in. Check your details and try again.",
+						);
 					},
 				},
 			);
@@ -57,8 +59,13 @@ export default function SignInForm({
 	}
 
 	return (
-		<div className="mx-auto mt-10 w-full max-w-md p-6">
-			<h1 className="mb-6 text-center font-bold text-3xl">Welcome Back</h1>
+		<main className="mx-auto w-full max-w-md px-6 py-12 sm:py-16">
+			<div className="mb-8">
+				<h1 className="font-semibold text-3xl tracking-tight">Sign in</h1>
+				<p className="mt-2 text-muted-foreground">
+					Access your support requests and see what’s happening.
+				</p>
+			</div>
 
 			<form
 				onSubmit={(e) => {
@@ -82,7 +89,7 @@ export default function SignInForm({
 									onChange={(e) => field.handleChange(e.target.value)}
 								/>
 								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
+									<p key={error?.message} className="text-destructive text-sm">
 										{error?.message}
 									</p>
 								))}
@@ -105,7 +112,7 @@ export default function SignInForm({
 									onChange={(e) => field.handleChange(e.target.value)}
 								/>
 								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
+									<p key={error?.message} className="text-destructive text-sm">
 										{error?.message}
 									</p>
 								))}
@@ -133,14 +140,10 @@ export default function SignInForm({
 			</form>
 
 			<div className="mt-4 text-center">
-				<Button
-					variant="link"
-					onClick={onSwitchToSignUp}
-					className="text-indigo-600 hover:text-indigo-800"
-				>
+				<Button variant="link" onClick={onSwitchToSignUp}>
 					Need an account? Sign Up
 				</Button>
 			</div>
-		</div>
+		</main>
 	);
 }

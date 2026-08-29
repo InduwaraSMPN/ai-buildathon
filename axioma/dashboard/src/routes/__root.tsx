@@ -6,6 +6,7 @@ import {
 	Outlet,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import { RouteError, RoutePending } from "@/components/route-state";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import type { orpc } from "@/utils/orpc";
@@ -19,6 +20,8 @@ export interface RouterAppContext {
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
 	component: RootComponent,
+	pendingComponent: RoutePending,
+	errorComponent: RouteError,
 	head: () => ({
 		meta: [
 			{

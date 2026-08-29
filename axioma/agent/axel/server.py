@@ -8,16 +8,19 @@ import logging
 import random
 import time
 import uuid
+from collections.abc import AsyncIterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import ClassVar
 
 import grpc
 
-from axel import __version__, model
+from axel import __version__, model, tools
 from axel.config import config
 from axel.loop import RunContext, Step, StepKind, run
 from axel.pb import axioma_pb2 as pb
 from axel.pb import axioma_pb2_grpc as pb_grpc
+from axel.prompt import SYSTEM_PROMPT, build_user_prompt
 
 LOG = logging.getLogger(__name__)
 _KIND = {
@@ -26,6 +29,21 @@ _KIND = {
     StepKind.OBSERVATION: pb.RunUpdate.KIND_OBSERVATION,
     StepKind.DECISION: pb.RunUpdate.KIND_DECISION,
 }
+_RETAINED_TERMINALS: dict[str, pb.AgentMessage] = {}
+
+
+def _worker_id(path: Path | None = None) -> str:
+    path = path or config.config_dir / "worker-id"
+    try:
+        return str(uuid.UUID(path.read_text(encoding="utf-8").strip()))
+    except (OSError, ValueError):
+        worker_id = str(uuid.uuid4())
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"{worker_id}\n", encoding="utf-8")
+        except OSError as exc:
+            raise RuntimeError(f"cannot persist worker ID at {path}: {exc}") from exc
+        return worker_id
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -48,19 +66,24 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 class Connection:
-    def __init__(self) -> None:
+    def __init__(self, worker_id: str = "") -> None:
+        self.worker_id = worker_id
         self.outbound: asyncio.Queue[pb.AgentMessage | None] = asyncio.Queue()
         self.pending: dict[str, asyncio.Future[object]] = {}
         self.runs: dict[str, asyncio.Task[None]] = {}
+        self.closing = False
 
-    async def requests(self):
-        yield pb.AgentMessage(
-            hello=pb.AgentHello(
-                agent_version=__version__,
-                model_label=config.model,
-                capabilities=["tools", "run_updates", "cancel"],
-            )
+    async def requests(self) -> AsyncIterator[pb.AgentMessage]:
+        hello = pb.AgentHello(
+            agent_version=__version__,
+            model_label=config.model,
+            capabilities=sorted(tools.REGISTRY),
         )
+        _set_if_present(hello, worker_id=self.worker_id)
+        yield pb.AgentMessage(hello=hello)
+        for run_id, message in list(_RETAINED_TERMINALS.items()):
+            _RETAINED_TERMINALS.pop(run_id, None)
+            yield message
         while (message := await self.outbound.get()) is not None:
             yield message
 
@@ -77,7 +100,9 @@ class Connection:
         elif payload == "tool_result":
             result = message.tool_result
             future = self.pending.pop(result.call_id, None)
-            if future and not future.done():
+            if future is None:
+                LOG.warning("ignoring tool result for unknown call_id %s", result.call_id)
+            elif not future.done():
                 if result.ok:
                     try:
                         future.set_result(json.loads(result.output_json or "null"))
@@ -90,30 +115,33 @@ class Connection:
             if task:
                 task.cancel(message.cancel_run.reason)
         elif payload == "heartbeat":
-            await self.send_heartbeat()
+            return
 
     async def execute(self, start: pb.StartRun) -> None:
         ordinal = 0
+        terminal_evidence = ""
 
-        async def report(step: Step) -> None:
-            nonlocal ordinal
+        async def report(step: Step) -> int:
+            nonlocal ordinal, terminal_evidence
             ordinal += 1
-            await self.outbound.put(
-                pb.AgentMessage(
-                    run_update=pb.RunUpdate(
-                        run_id=start.run_id,
-                        ordinal=ordinal,
-                        kind=_KIND[step.kind],
-                        reasoning=step.reasoning or "",
-                        tool_name=step.tool_name or "",
-                        tool_input_json=_json(step.tool_input),
-                        tool_output_json=_json(step.tool_output),
-                        error=step.error or "",
-                    )
-                )
+            terminal_evidence = step.evidence or terminal_evidence
+            update = pb.RunUpdate(
+                run_id=start.run_id,
+                ordinal=ordinal,
+                kind=_KIND[step.kind],
+                reasoning=step.reasoning or "",
+                tool_name=step.tool_name or "",
+                tool_input_json=_json(step.tool_input),
+                tool_output_json=_json(step.tool_output),
+                error=step.error or "",
             )
+            _set_if_present(update, evidence=getattr(step, "evidence", None))
+            await self.outbound.put(pb.AgentMessage(run_update=update))
+            return ordinal
 
-        async def call_tool(name: str, payload: dict) -> object:
+        async def call_tool(name: str, payload: dict, source_step_ordinal: int) -> object:
+            if len(self.pending) >= config.max_pending_calls:
+                raise RuntimeError("pending tool call limit reached")
             call_id = uuid.uuid4().hex
             future = asyncio.get_running_loop().create_future()
             self.pending[call_id] = future
@@ -124,6 +152,7 @@ class Connection:
                         call_id=call_id,
                         tool_name=name,
                         input_json=json.dumps(payload, separators=(",", ":")),
+                        source_step_ordinal=source_step_ordinal,
                     )
                 )
             )
@@ -132,15 +161,18 @@ class Connection:
             finally:
                 self.pending.pop(call_id, None)
 
-        ticket = {
-            "run_id": start.run_id,
-            "ticket_id": start.ticket_id,
-            "title": start.title,
-            "body": start.body,
-            "reporter_id": start.reporter_id,
-            "device_id": start.device_id or None,
-            "context": _loads(start.context_json),
-        }
+        context = _loads(start.context_json)
+        metadata = context if isinstance(context, dict) else {}
+        record_type = _proto_value(start, "record_type") or _metadata(
+            metadata, "record_type", "recordType", default="incident"
+        )
+        impact = _proto_value(start, "impact") or _metadata(metadata, "impact", default="medium")
+        urgency = _proto_value(start, "urgency") or _metadata(metadata, "urgency", default="medium")
+        priority = (
+            _proto_value(start, "priority")
+            or _metadata(metadata, "priority")
+            or _priority(impact, urgency)
+        )
         ctx = RunContext(
             run_id=start.run_id,
             ticket_id=start.ticket_id,
@@ -151,29 +183,62 @@ class Connection:
             think=model.think,
             call_tool=call_tool,
             report=report,
-            transcript=[{"role": "user", "content": json.dumps(ticket)}],
+            record_type=record_type,
+            impact=impact,
+            urgency=urgency,
+            priority=priority,
+            transcript=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": build_user_prompt(
+                        title=start.title,
+                        body=start.body,
+                        device_id=start.device_id or None,
+                        context_json=start.context_json,
+                        record_type=record_type,
+                        impact=impact,
+                        urgency=urgency,
+                        priority=priority,
+                    ),
+                }
+            ],
         )
+        cancelled: asyncio.CancelledError | None = None
+        result = None
         try:
             result = await run(ctx)
             status, outcome, error = result.status.value, result.outcome, ""
         except asyncio.CancelledError as exc:
+            cancelled = exc
             status, outcome, error = "failed", "run cancelled", str(exc) or "cancelled"
         except Exception as exc:  # noqa: BLE001
             LOG.exception("run %s failed", start.run_id)
             status, outcome, error = "failed", "agent run failed", str(exc)
         ordinal += 1
-        await self.outbound.put(
-            pb.AgentMessage(
-                run_update=pb.RunUpdate(
-                    run_id=start.run_id,
-                    ordinal=ordinal,
-                    kind=pb.RunUpdate.KIND_TERMINAL,
-                    status=status,
-                    outcome=outcome,
-                    error=error,
-                )
-            )
+        update = pb.RunUpdate(
+            run_id=start.run_id,
+            ordinal=ordinal,
+            kind=pb.RunUpdate.KIND_TERMINAL,
+            status=status,
+            outcome=outcome,
+            error=error,
         )
+        if result is not None:
+            _set_if_present(
+                update,
+                prompt_tokens=getattr(result, "prompt_tokens", None),
+                completion_tokens=getattr(result, "completion_tokens", None),
+                model=getattr(result, "model", None),
+                evidence=terminal_evidence,
+            )
+        message = pb.AgentMessage(run_update=update)
+        if self.closing:
+            _RETAINED_TERMINALS[start.run_id] = message
+        else:
+            self.outbound.put_nowait(message)
+        if cancelled is not None:
+            raise cancelled
 
     async def send_heartbeat(self) -> None:
         await self.outbound.put(
@@ -186,6 +251,7 @@ class Connection:
             await self.send_heartbeat()
 
     async def close(self) -> None:
+        self.closing = True
         for task in self.runs.values():
             task.cancel("connection lost")
         for future in self.pending.values():
@@ -198,8 +264,10 @@ class Connection:
 
 async def connect_forever(connected: asyncio.Event) -> None:
     delay = config.reconnect_base_seconds
+    worker_id = _worker_id()
     while True:
-        connection = Connection()
+        connection = Connection(worker_id)
+        heartbeat: asyncio.Task[None] | None = None
         try:
             async with grpc.aio.insecure_channel(config.api_grpc_host) as channel:
                 await asyncio.wait_for(channel.channel_ready(), timeout=10)
@@ -217,14 +285,35 @@ async def connect_forever(connected: asyncio.Event) -> None:
             LOG.exception("API stream failed")
         finally:
             connected.clear()
-            if "heartbeat" in locals():
+            if heartbeat is not None:
                 heartbeat.cancel()
                 await asyncio.gather(heartbeat, return_exceptions=True)
-                del heartbeat
             await connection.close()
         wait = min(delay, config.reconnect_cap_seconds)
         await asyncio.sleep(random.uniform(wait / 2, wait))
         delay = min(delay * 2, config.reconnect_cap_seconds)
+
+
+def _proto_value(message: object, name: str) -> str:
+    return str(getattr(message, name, "") or "")
+
+
+def _metadata(data: dict, *names: str, default: str = "") -> str:
+    for source in (data, data.get("classification", {}), data.get("ticket", {})):
+        if isinstance(source, dict):
+            for name in names:
+                value = source.get(name)
+                if value is not None and str(value):
+                    return str(value)
+    return default
+
+
+def _priority(impact: str, urgency: str) -> str:
+    return {
+        "high": {"high": "P1", "medium": "P2", "low": "P3"},
+        "medium": {"high": "P2", "medium": "P3", "low": "P4"},
+        "low": {"high": "P3", "medium": "P4", "low": "P4"},
+    }.get(impact, {}).get(urgency, "P3")
 
 
 def _json(value: object | None) -> str:
@@ -240,11 +329,19 @@ def _loads(value: str) -> object:
         return value
 
 
+def _set_if_present(message: object, **values: object) -> None:
+    """Set additive proto fields when bindings have caught up with the contract."""
+    fields = message.DESCRIPTOR.fields_by_name  # type: ignore[attr-defined]
+    for name, value in values.items():
+        if name in fields and value is not None:
+            setattr(message, name, value)
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     connected = asyncio.Event()
     HealthHandler.connected = connected
-    health = ThreadingHTTPServer(("", config.health_port), HealthHandler)
+    health = ThreadingHTTPServer((config.health_host, config.health_port), HealthHandler)
     health_task = asyncio.create_task(asyncio.to_thread(health.serve_forever))
     try:
         await connect_forever(connected)

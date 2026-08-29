@@ -6,8 +6,10 @@ import {
 	pgTable,
 	text,
 	timestamp,
+	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
+import { RUN_STATUSES, STEP_KINDS } from "@/shared";
 import { tickets } from "./tickets";
 
 /**
@@ -25,7 +27,7 @@ export const agentRuns = pgTable(
 			.references(() => tickets.id, { onDelete: "cascade" }),
 
 		// running -> resolved | escalated | failed | exhausted
-		status: text("status").notNull().default("running"),
+		status: text("status", { enum: RUN_STATUSES }).notNull().default("running"),
 		model: text("model"),
 		outcome: text("outcome"),
 
@@ -51,18 +53,19 @@ export const agentSteps = pgTable(
 			.references(() => agentRuns.id, { onDelete: "cascade" }),
 
 		ordinal: integer("ordinal").notNull(),
-		// think | tool_call | observation | decision
-		kind: text("kind").notNull(),
+		// think | tool_call | observation | decision | terminal
+		kind: text("kind", { enum: STEP_KINDS }).notNull(),
 
 		reasoning: text("reasoning"),
 		toolName: text("tool_name"),
 		toolInput: jsonb("tool_input"),
 		toolOutput: jsonb("tool_output"),
 		error: text("error"),
+		evidence: text("evidence"),
 
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
-	(t) => [index("agent_steps_run_idx").on(t.runId, t.ordinal)],
+	(t) => [uniqueIndex("agent_steps_run_ordinal_uidx").on(t.runId, t.ordinal)],
 );
 
 export const agentRunsRelations = relations(agentRuns, ({ one, many }) => ({

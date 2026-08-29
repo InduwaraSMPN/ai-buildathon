@@ -1,6 +1,6 @@
 import { client } from "@/utils/orpc";
-import type { Device } from "./types";
-
 export const devicesService = {
-	list: (): Promise<Device[]> => client.listDevices(),
+	list: () => client.listDevices(),
+	listCommands: (deviceId: string) =>
+		client.listDeviceCommands({ deviceId, limit: 20 }),
 };

@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Check, CircleDot, Monitor, RefreshCw } from "lucide-react";
+import { ArrowLeft, CircleDot, Monitor, Plus } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
 	ErrorState,
@@ -12,13 +13,25 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
 	Empty,
 	EmptyDescription,
 	EmptyHeader,
 	EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
-import { orpc, queryClient } from "@/utils/orpc";
+import { Textarea } from "@/components/ui/textarea";
+import { updateMyTicketMutationOptions } from "@/features/tickets/api/mutations";
+import { myTicketQueryOptions } from "@/features/tickets/api/queries";
+import { ProgressTimeline } from "@/features/tickets/components/progress-timeline";
+import { ResolutionCard } from "@/features/tickets/components/resolution-card";
 
 export const Route = createFileRoute("/_auth/tickets/$ticketId")({
 	component: RouteComponent,
@@ -27,28 +40,24 @@ export const Route = createFileRoute("/_auth/tickets/$ticketId")({
 
 function RouteComponent() {
 	const { ticketId } = Route.useParams();
-	const ticket = useQuery(
-		orpc.getTicket.queryOptions({ input: { id: ticketId } }),
-	);
-	const updateTicket = useMutation(
-		orpc.updateTicket.mutationOptions({
-			onSuccess: async () => {
-				await Promise.all([
-					queryClient.invalidateQueries({ queryKey: orpc.getTicket.key() }),
-					queryClient.invalidateQueries({ queryKey: orpc.listTickets.key() }),
-				]);
-				toast.success("Request updated");
-			},
-			onError: () =>
-				toast.error("We couldn’t update this request. Please try again."),
-		}),
-	);
+	const [detailHelpOpen, setDetailHelpOpen] = useState(false);
+	const [detailNote, setDetailNote] = useState("");
+	const ticket = useQuery(myTicketQueryOptions(ticketId));
+	const updateTicket = useMutation({
+		...updateMyTicketMutationOptions(),
+		onSuccess: async (...args) => {
+			await updateMyTicketMutationOptions().onSuccess?.(...args);
+			toast.success("Request updated");
+		},
+		onError: () =>
+			toast.error("We couldn’t update this request. Please try again."),
+	});
 
 	if (ticket.isPending) {
 		return (
 			<PageShell>
 				<Skeleton className="mb-8 h-8 w-36 rounded-md" />
-				<div className="space-y-4">
+				<div className="space-y-4" role="status" aria-label="Loading request">
 					<Skeleton className="h-32 w-full rounded-xl" />
 					<Skeleton className="h-64 w-full rounded-xl" />
 				</div>
@@ -87,8 +96,10 @@ function RouteComponent() {
 
 	const data = ticket.data;
 	const progress = getStatus(data.status);
-	const ProgressIcon = progress.icon;
-	const complete = data.status === "resolved" || data.status === "closed";
+	const active =
+		data.status === "open" ||
+		data.status === "routing" ||
+		data.status === "resolving";
 
 	return (
 		<PageShell>
@@ -102,56 +113,47 @@ function RouteComponent() {
 			>
 				<ArrowLeft aria-hidden="true" /> Back to requests
 			</Link>
-			<div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
-				<div className="max-w-3xl">
+
+			<header className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
+				<div className="min-w-0 max-w-3xl">
 					<div className="mb-3 flex flex-wrap items-center gap-3">
 						<StatusBadge status={data.status} />
 						<span className="text-muted-foreground text-xs">
 							Opened {formatDate(data.createdAt)}
 						</span>
 					</div>
-					<h1 className="font-semibold text-3xl tracking-tight sm:text-4xl">
+					<h1 className="wrap-break-word font-semibold text-2xl tracking-tight sm:text-4xl">
 						{data.title}
 					</h1>
 					<p className="mt-3 text-muted-foreground text-sm">
 						Request #{data.id.slice(0, 8)}
 					</p>
 				</div>
-				{!complete ? (
+				{active ? (
 					<Button
 						variant="outline"
-						disabled={updateTicket.isPending}
-						onClick={() =>
-							updateTicket.mutate({ id: data.id, action: "escalate" })
-						}
+						className="w-full sm:w-auto"
+						onClick={() => setDetailHelpOpen(true)}
 					>
-						<RefreshCw aria-hidden="true" /> I still need help
+						<Plus aria-hidden="true" /> Add more detail
 					</Button>
 				) : null}
-			</div>
+			</header>
 
 			<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-				<div className="space-y-6">
-					<Card className="rounded-xl border-blue-500/20 bg-blue-500/5">
-						<CardContent className="flex gap-4 py-2">
-							<div className="flex size-11 shrink-0 items-center justify-center rounded-full bg-blue-500/10 text-blue-700 dark:text-blue-300">
-								<ProgressIcon className="size-5" aria-hidden="true" />
-							</div>
-							<div>
-								<p className="font-semibold text-base">{progress.label}</p>
-								<p className="mt-1 text-muted-foreground text-sm leading-relaxed">
-									{progress.detail}
-								</p>
-								<p className="mt-3 text-muted-foreground text-xs">
-									Last updated {formatDate(data.updatedAt)}
-								</p>
-							</div>
+				<div className="min-w-0 space-y-6">
+					<Card className="rounded-xl">
+						<CardContent>
+							<ProgressTimeline
+								status={data.status}
+								progressMarker={data.progressMarker}
+							/>
 						</CardContent>
 					</Card>
 
-					<Card className="rounded-xl">
+					<Card id="shared-details" className="rounded-xl">
 						<CardHeader className="border-b">
-							<CardTitle className="text-base">What you shared</CardTitle>
+							<CardTitle>What you shared</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<p className="whitespace-pre-wrap text-sm leading-7">
@@ -160,45 +162,11 @@ function RouteComponent() {
 						</CardContent>
 					</Card>
 
-					{data.resolution ? (
-						<Card className="rounded-xl border-emerald-500/20 bg-emerald-500/5">
-							<CardHeader>
-								<CardTitle className="flex items-center gap-2 text-base">
-									<Check
-										className="size-5 text-emerald-600"
-										aria-hidden="true"
-									/>{" "}
-									Your solution
-								</CardTitle>
-							</CardHeader>
-							<CardContent>
-								<p className="whitespace-pre-wrap text-sm leading-7">
-									{data.resolution}
-								</p>
-								{data.status !== "closed" ? (
-									<div className="mt-6 flex flex-wrap gap-3 border-t pt-5">
-										<Button
-											disabled={updateTicket.isPending}
-											onClick={() =>
-												updateTicket.mutate({ id: data.id, action: "close" })
-											}
-										>
-											<Check aria-hidden="true" /> This solved it
-										</Button>
-										<Button
-											variant="outline"
-											disabled={updateTicket.isPending}
-											onClick={() =>
-												updateTicket.mutate({ id: data.id, action: "escalate" })
-											}
-										>
-											I still need help
-										</Button>
-									</div>
-								) : null}
-							</CardContent>
-						</Card>
-					) : null}
+					<ResolutionCard
+						ticket={data}
+						pending={updateTicket.isPending}
+						onAction={(input) => updateTicket.mutate(input)}
+					/>
 				</div>
 
 				<aside className="space-y-4" aria-label="Request information">
@@ -241,6 +209,51 @@ function RouteComponent() {
 					</Card>
 				</aside>
 			</div>
+
+			<Dialog open={detailHelpOpen} onOpenChange={setDetailHelpOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>Add more detail</DialogTitle>
+						<DialogDescription>
+							Share anything else that could help with this request.
+						</DialogDescription>
+					</DialogHeader>
+					<label htmlFor="detail-note" className="font-medium text-sm">
+						Additional detail
+					</label>
+					<Textarea
+						id="detail-note"
+						required
+						maxLength={2_000}
+						value={detailNote}
+						onChange={(event) => setDetailNote(event.target.value)}
+						placeholder="Add a short note"
+						className="min-h-24 rounded-md text-sm"
+					/>
+					<DialogFooter>
+						<Button
+							disabled={updateTicket.isPending || !detailNote.trim()}
+							onClick={() =>
+								updateTicket.mutate(
+									{
+										id: data.id,
+										action: "add_detail",
+										note: detailNote.trim(),
+									},
+									{
+										onSuccess: () => {
+											setDetailNote("");
+											setDetailHelpOpen(false);
+										},
+									},
+								)
+							}
+						>
+							Add detail
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 		</PageShell>
 	);
 }

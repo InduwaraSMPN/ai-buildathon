@@ -3,27 +3,14 @@ package device
 import (
 	"context"
 	"fmt"
-	"os/exec"
+	"net"
 	"strings"
-	"time"
 )
 
-// Tier one of device remediation: a fixed set of named actions.
-//
-// The gateway sends an action name and typed parameters. It never sends a
-// command string, and nothing here builds one from caller input — the argument
-// list for each action is written out below. That is what makes a ticket unable
-// to talk the agent into running something arbitrary.
-
-const defaultTimeout = 30 * time.Second
-
-// servicesAllowed bounds restart_service. A service outside this set is refused
-// rather than attempted.
-var servicesAllowed = map[string]bool{
-	"Dnscache": true,
-	"Dhcp":     true,
-	"WlanSvc":  true,
-}
+const (
+	maxFacetRaw      = 4096
+	maxCommandOutput = 64 * 1024
+)
 
 // Result is what the agent reports back for one command.
 type Result struct {
@@ -31,80 +18,115 @@ type Result struct {
 	Detail string `json:"detail,omitempty"`
 }
 
-// RunAction performs a named action. Unknown actions are refused, not guessed.
-func RunAction(ctx context.Context, action string, params map[string]string) (Result, error) {
-	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
-	defer cancel()
+type commandSpec struct {
+	name string
+	args []string
+}
 
+var userProcesses = map[string]commandSpec{
+	"notepad": {name: "notepad.exe"},
+}
+
+// actionCommands returns only argument vectors written into this binary. Caller
+// input can select an allowlisted process, but can never become a command.
+func actionCommands(action string, params map[string]string) ([]commandSpec, error) {
 	switch action {
 	case "flush_dns":
-		return runCommand(ctx, "ipconfig", "/flushdns")
-
-	case "reset_resolver":
-		return runCommand(ctx, "netsh", "winsock", "reset")
-
-	case "restart_service":
-		name := params["serviceName"]
-		if name == "" {
-			return Result{OK: false, Detail: "serviceName is required"}, nil
+		return []commandSpec{{name: "ipconfig", args: []string{"/flushdns"}}}, nil
+	case "renew_dhcp_lease":
+		return []commandSpec{{name: "ipconfig", args: []string{"/renew"}}}, nil
+	case "clear_proxy_override":
+		return []commandSpec{{name: "powershell.exe", args: []string{"-NoProfile", "-NonInteractive", "-Command", `Remove-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' -Name ProxyOverride -ErrorAction SilentlyContinue`}}}, nil
+	case "reset_credential_cache":
+		return []commandSpec{{name: "klist", args: []string{"purge"}}}, nil
+	case "restart_user_process":
+		process := params["process_name"]
+		if process == "" { // compatibility with the existing flattened parameter convention
+			process = params["processName"]
 		}
-		if !servicesAllowed[name] {
-			return Result{OK: false, Detail: fmt.Sprintf("service not allowlisted: %s", name)}, nil
+		process = strings.ToLower(process)
+		start, ok := userProcesses[process]
+		if !ok {
+			if process == "" {
+				return nil, fmt.Errorf("processName is required")
+			}
+			return nil, fmt.Errorf("process not allowlisted: %s", process)
 		}
-		// A stop that fails because the service was already stopped is fine; the
-		// start is the operation that matters.
-		_, _ = runCommand(ctx, "sc", "stop", name)
-		return runCommand(ctx, "sc", "start", name)
-
+		return []commandSpec{
+			{name: "taskkill", args: []string{"/IM", start.name, "/F"}},
+			start,
+		}, nil
 	default:
-		return Result{OK: false, Detail: fmt.Sprintf("unknown action: %s", action)}, nil
+		return nil, fmt.Errorf("unknown action: %s", action)
 	}
 }
 
-// Facets are the read side: fixed commands behind fixed names.
-var facetCommands = map[string][]string{
-	"resolver":     {"ipconfig", "/all"},
-	"adapters":     {"netsh", "interface", "show", "interface"},
-	"services":     {"sc", "query", "type=", "service", "state=", "all"},
-	"reachability": {"ping", "-n", "2", "127.0.0.1"},
+// RunAction performs a shipped, non-admin typed action.
+func RunAction(ctx context.Context, action string, params map[string]string) (Result, error) {
+	commands, err := actionCommands(action, params)
+	if err != nil {
+		return Result{Detail: err.Error()}, nil
+	}
+	return runAction(ctx, action, commands)
 }
 
-// ReadState collects the named facets. An unknown facet is reported per-facet
-// rather than failing the whole read.
-func ReadState(ctx context.Context, facets []string) (map[string]any, error) {
-	ctx, cancel := context.WithTimeout(ctx, defaultTimeout)
-	defer cancel()
+type FacetResult struct {
+	OK    bool   `json:"ok"`
+	Data  any    `json:"data,omitempty"`
+	Raw   string `json:"raw,omitempty"`
+	Error string `json:"error,omitempty"`
+}
 
+var knownFacets = map[string]bool{
+	"resolver": true, "adapters": true, "reachability": true,
+	"proxy": true, "identity": true, "processes": true,
+}
+
+// ReadState preserves the daemon-facing API. Parameterized callers should use
+// ReadStateWithParams so reachability can receive its required target.
+func ReadState(ctx context.Context, facets []string) (map[string]any, error) {
+	return ReadStateWithParams(ctx, facets, nil)
+}
+
+func ReadStateWithParams(ctx context.Context, facets []string, params map[string]string) (map[string]any, error) {
 	out := make(map[string]any, len(facets))
 	for _, facet := range facets {
-		argv, ok := facetCommands[facet]
-		if !ok {
-			out[facet] = map[string]string{"error": "unknown facet: " + facet}
+		if !knownFacets[facet] {
+			out[facet] = FacetResult{Error: "unknown facet: " + facet}
 			continue
 		}
-		res, err := runCommand(ctx, argv[0], argv[1:]...)
-		if err != nil || !res.OK {
-			out[facet] = map[string]string{"error": res.Detail}
-			continue
+		target := ""
+		if facet == "reachability" {
+			target = params["target"]
+			if err := validateTarget(target); err != nil {
+				out[facet] = FacetResult{Error: err.Error()}
+				continue
+			}
 		}
-		out[facet] = map[string]string{"raw": res.Detail}
+		out[facet] = readFacet(ctx, facet, target)
 	}
 	return out, nil
 }
 
-func runCommand(ctx context.Context, name string, args ...string) (Result, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
-	output, err := cmd.CombinedOutput()
-	detail := strings.TrimSpace(string(output))
-
-	if ctx.Err() == context.DeadlineExceeded {
-		return Result{OK: false, Detail: "timed out"}, nil
+func validateTarget(target string) error {
+	if target == "" {
+		return fmt.Errorf("target is required")
 	}
-	if err != nil {
-		if detail == "" {
-			detail = err.Error()
+	if len(target) > 253 {
+		return fmt.Errorf("target is too long")
+	}
+	if net.ParseIP(target) != nil {
+		return nil
+	}
+	for _, label := range strings.Split(target, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return fmt.Errorf("invalid target")
 		}
-		return Result{OK: false, Detail: detail}, nil
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
+				return fmt.Errorf("invalid target")
+			}
+		}
 	}
-	return Result{OK: true, Detail: detail}, nil
+	return nil
 }

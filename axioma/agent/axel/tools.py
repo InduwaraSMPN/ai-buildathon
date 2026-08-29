@@ -15,7 +15,13 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class StrictToolInput(BaseModel):
+    """Base for inputs exposed through strict function calling."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class Effect(StrEnum):
@@ -32,17 +38,17 @@ class Surface(StrEnum):
 # --- cluster -----------------------------------------------------------------
 
 
-class ClusterReadPods(BaseModel):
+class ClusterReadPods(StrictToolInput):
     namespace: str = Field(min_length=1)
     label_selector: str | None = None
 
 
-class ClusterReadDeployment(BaseModel):
+class ClusterReadDeployment(StrictToolInput):
     namespace: str = Field(min_length=1)
     name: str = Field(min_length=1)
 
 
-class ClusterPatchImage(BaseModel):
+class ClusterPatchImage(StrictToolInput):
     namespace: str = Field(min_length=1)
     name: str = Field(min_length=1)
     container_index: int = Field(ge=0)
@@ -52,20 +58,29 @@ class ClusterPatchImage(BaseModel):
 # --- device ------------------------------------------------------------------
 
 
-class DeviceReadState(BaseModel):
+class DeviceReadState(StrictToolInput):
     device_id: str = Field(min_length=1)
-    facets: list[Literal["resolver", "adapters", "services", "reachability"]] = Field(min_length=1)
+    facets: list[
+        Literal["resolver", "adapters", "reachability", "proxy", "identity", "processes"]
+    ] = Field(min_length=1)
+    target: str | None = Field(default=None, min_length=1, max_length=253)
 
 
-class DeviceRunAction(BaseModel):
+class DeviceRunAction(StrictToolInput):
     """Tier one: a named action the device implements. No command string."""
 
     device_id: str = Field(min_length=1)
-    action: Literal["flush_dns", "reset_resolver", "restart_service"]
+    action: Literal[
+        "flush_dns",
+        "renew_dhcp_lease",
+        "clear_proxy_override",
+        "reset_credential_cache",
+        "restart_user_process",
+    ]
     parameters: dict[str, str] = Field(default_factory=dict)
 
 
-class DeviceComputerUse(BaseModel):
+class DeviceComputerUse(StrictToolInput):
     """Tier two: only when no programmatic path exists.
 
     Slow, non-deterministic, costs vision tokens per step, and leaves you less
@@ -81,7 +96,7 @@ class DeviceComputerUse(BaseModel):
 # --- cmdb --------------------------------------------------------------------
 
 
-class CmdbRecordObservation(BaseModel):
+class CmdbRecordObservation(StrictToolInput):
     kind: Literal["service", "deployment", "pod", "device", "dependency"]
     external_id: str = Field(min_length=1)
     name: str = Field(min_length=1)
@@ -173,16 +188,23 @@ def resolve(name: str) -> Tool | None:
     return REGISTRY.get(name)
 
 
-def as_llm_tools() -> list[dict[str, object]]:
-    """Registry rendered as OpenAI-style function definitions for litellm."""
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.schema_model.model_json_schema(),
-            },
+def as_llm_tools(*, strict: bool = True) -> list[dict[str, object]]:
+    """Render tools with the reasoning envelope required by the agent loop."""
+    definitions = []
+    for tool in REGISTRY.values():
+        schema = tool.schema_model.model_json_schema()
+        properties = {"reasoning": {"type": "string", "minLength": 1}, **schema["properties"]}
+        parameters = {
+            **schema,
+            "properties": properties,
+            "required": list(properties),
+            "additionalProperties": False,
         }
-        for tool in REGISTRY.values()
-    ]
+        function: dict[str, object] = {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": parameters,
+        }
+        function["strict"] = strict
+        definitions.append({"type": "function", "function": function})
+    return definitions

@@ -1,42 +1,66 @@
-import { useRouterState } from "@tanstack/react-router";
-import { PanelLeft } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { Search } from "lucide-react";
+import { Fragment } from "react";
 import { ModeToggle } from "@/components/mode-toggle";
+import {
+	Breadcrumb,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
+import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { UserNav } from "./user-nav";
 
-const labels: Record<string, string> = {
-	"/home": "Overview",
-	"/tickets": "Ticket queue",
-	"/devices": "Devices",
-};
-
-export function Header({ onMenu }: { onMenu: () => void }) {
-	const pathname = useRouterState({
-		select: (state) => state.location.pathname,
-	});
-	const title = pathname.startsWith("/tickets/")
-		? "Ticket detail"
-		: (labels[pathname] ?? "Operations");
+export function Header({ onSearch }: { onSearch: () => void }) {
+	const crumbs = useBreadcrumbs();
 	return (
-		<header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 rounded-t-xl border-b bg-background/80 px-4 backdrop-blur-md">
+		<header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-md">
 			<div className="flex min-w-0 items-center gap-2">
-				<Button
-					variant="ghost"
-					size="icon-sm"
-					className="md:hidden"
-					onClick={onMenu}
-					aria-label="Open navigation"
-				>
-					<PanelLeft />
-				</Button>
-				<div className="hidden h-4 w-px bg-border md:block" />
-				<nav aria-label="Breadcrumb" className="truncate text-sm">
-					<span className="text-muted-foreground">Axiōma</span>
-					<span className="px-2 text-muted-foreground">/</span>
-					<span>{title}</span>
-				</nav>
+				<SidebarTrigger />
+				<div className="h-4 w-px bg-border" />
+				<Breadcrumb className="min-w-0">
+					<BreadcrumbList className="flex-nowrap">
+						<BreadcrumbItem>
+							<BreadcrumbLink render={<Link to="/home" />}>
+								Axiōma
+							</BreadcrumbLink>
+						</BreadcrumbItem>
+						{crumbs.map((crumb, index) => (
+							<Fragment key={`${crumb.to}-${crumb.label}`}>
+								<BreadcrumbSeparator />
+								{index === crumbs.length - 1 ? (
+									<BreadcrumbItem>
+										<BreadcrumbPage className="truncate">
+											{crumb.label}
+										</BreadcrumbPage>
+									</BreadcrumbItem>
+								) : (
+									<BreadcrumbItem>
+										<BreadcrumbLink render={<Link to={crumb.to ?? "/home"} />}>
+											{crumb.label}
+										</BreadcrumbLink>
+									</BreadcrumbItem>
+								)}
+							</Fragment>
+						))}
+					</BreadcrumbList>
+				</Breadcrumb>
 			</div>
 			<div className="flex items-center gap-2">
+				<Button
+					variant="outline"
+					size="sm"
+					onClick={onSearch}
+					aria-label="Search views, tickets, and devices"
+				>
+					<Search />
+					<span className="hidden sm:inline">Search</span>
+					<kbd className="hidden text-muted-foreground md:inline">⌘K</kbd>
+				</Button>
 				<ModeToggle />
 				<UserNav />
 			</div>
