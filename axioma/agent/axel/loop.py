@@ -316,7 +316,7 @@ def _append_call(ctx: RunContext, call_id: str, name: str, arguments: dict[str, 
                     "id": call_id,
                     "type": "function",
                     "function": {
-                        "name": name,
+                        "name": tools.wire_name(name),
                         "arguments": json.dumps(arguments, separators=(",", ":")),
                     },
                 }

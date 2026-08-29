@@ -24,6 +24,7 @@ class Config(BaseSettings):
     api_base: str = "https://llm.marketrix.io/v1"
     api_key: SecretStr | None = Field(default=None, validation_alias="AXIOMA_LLM_KEY")
     reasoning_effort: str | None = "max"
+    strict_function_calling: bool = False
     temperature: float | None = None
 
     max_tool_calls: int = 20

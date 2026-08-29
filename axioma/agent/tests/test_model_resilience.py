@@ -84,6 +84,7 @@ async def test_strict_rejection_falls_back_once(monkeypatch: pytest.MonkeyPatch)
         return response()
 
     monkeypatch.setattr(model.litellm, "acompletion", completion)
+    monkeypatch.setattr(model.config, "strict_function_calling", True)
     decision = await model.think([{"role": "user", "content": "ticket"}])
     next_decision = await model.think([{"role": "user", "content": "another ticket"}])
 

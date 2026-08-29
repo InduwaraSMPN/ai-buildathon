@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from axel import model
+from axel.loop import RunContext, _append_call
 
 
 async def test_malformed_model_arguments_become_recoverable_invalid_decision(
@@ -43,6 +44,30 @@ async def test_malformed_model_arguments_become_recoverable_invalid_decision(
         2,
         "provider/model",
     )
+
+
+def test_wire_tool_name_maps_back_to_registry_name() -> None:
+    decision = model._decision(
+        "cluster_read_pods",
+        {"reasoning": "Inspect pods.", "namespace": "demo", "label_selector": None},
+    )
+    assert decision.tool == "cluster.read_pods"
+
+
+def test_transcript_uses_wire_safe_tool_name() -> None:
+    context = RunContext(
+        run_id="r",
+        ticket_id="t",
+        title="title",
+        body="body",
+        device_id=None,
+        context_json="",
+        think=None,  # type: ignore[arg-type]
+        call_tool=None,  # type: ignore[arg-type]
+        report=None,  # type: ignore[arg-type]
+    )
+    _append_call(context, "call", "cluster.read_pods", {"namespace": "demo"})
+    assert context.transcript[0]["tool_calls"][0]["function"]["name"] == "cluster_read_pods"  # type: ignore[index]
 
 
 def test_escalation_adapter_preserves_structured_proposal() -> None:

@@ -184,8 +184,15 @@ REGISTRY: dict[str, Tool] = {
 }
 
 
+def wire_name(name: str) -> str:
+    """Return an OpenAI-compatible function name."""
+    return name.replace(".", "_")
+
+
 def resolve(name: str) -> Tool | None:
-    return REGISTRY.get(name)
+    return REGISTRY.get(name) or next(
+        (tool for tool in REGISTRY.values() if wire_name(tool.name) == name), None
+    )
 
 
 def as_llm_tools(*, strict: bool = True) -> list[dict[str, object]]:
@@ -205,7 +212,7 @@ def as_llm_tools(*, strict: bool = True) -> list[dict[str, object]]:
             "additionalProperties": False,
         }
         function: dict[str, object] = {
-            "name": tool.name,
+            "name": wire_name(tool.name),
             "description": tool.description,
             "parameters": parameters,
         }

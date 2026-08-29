@@ -66,6 +66,7 @@ def test_prompt_states_missing_device_and_system_rules() -> None:
 
 def test_every_llm_tool_schema_is_strict_and_requires_reasoning() -> None:
     for definition in tools.as_llm_tools():
+        assert "." not in definition["function"]["name"]
         parameters = definition["function"]["parameters"]
         assert parameters["additionalProperties"] is False
         assert "reasoning" in parameters["properties"]
@@ -138,7 +139,7 @@ def test_marketrix_defaults_and_completion_options(monkeypatch) -> None:
 
 def test_non_strict_fallback_does_not_require_optional_tool_fields() -> None:
     definitions = {item["function"]["name"]: item for item in tools.as_llm_tools(strict=False)}
-    parameters = definitions["device.run_action"]["function"]["parameters"]
+    parameters = definitions["device_run_action"]["function"]["parameters"]
     assert "parameters" not in parameters["required"]
     assert set(parameters["required"]) == {"reasoning", "device_id", "action"}
 

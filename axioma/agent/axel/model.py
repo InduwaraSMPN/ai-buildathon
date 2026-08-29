@@ -123,7 +123,7 @@ async def _completion(
     messages: list[dict[str, Any]], deadline: float | None
 ) -> tuple[Any, list[str]]:
     warnings: list[str] = []
-    strict = True
+    strict = config.strict_function_calling
     attempt = 0
     while True:
         remaining = None if deadline is None else deadline - time.monotonic()
@@ -183,18 +183,18 @@ def _llm_tools(*, strict: bool) -> list[dict[str, object]]:
 
 def _decision(name: str, raw_arguments: str | dict[str, Any]) -> Decision:
     arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else dict(raw_arguments)
-    reasoning = arguments.pop("reasoning")
+    reasoning = arguments.pop("reasoning", "")
     if not isinstance(reasoning, str) or not reasoning.strip():
-        raise ValueError("reasoning must be a non-empty string")
+        reasoning = "Model selected this action without separate reasoning."
     if name == "resolve_ticket":
-        resolution = arguments["resolution"]
+        resolution = arguments.get("resolution")
         if not isinstance(resolution, str) or not resolution.strip():
             raise ValueError("resolution must be a non-empty string")
         return Decision(kind="resolved", reasoning=reasoning, resolution=resolution)
     if name == "escalate_ticket":
-        reason = arguments["reason"]
+        reason = arguments.get("reason")
         if not isinstance(reason, str) or not reason.strip():
-            raise ValueError("reason must be a non-empty string")
+            reason = reasoning
         return Decision(
             kind="escalate",
             reasoning=reasoning,
@@ -209,7 +209,13 @@ def _decision(name: str, raw_arguments: str | dict[str, Any]) -> Decision:
                 else None
             ),
         )
-    return Decision(kind="tool_call", reasoning=reasoning, tool=name, tool_input=arguments)
+    tool = tools.resolve(name)
+    return Decision(
+        kind="tool_call",
+        reasoning=reasoning,
+        tool=tool.name if tool else name,
+        tool_input=arguments,
+    )
 
 
 def _transient(exc: Exception) -> bool:

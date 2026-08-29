@@ -35,9 +35,10 @@ external supervisor must reach it.
 Configure the API and model with `AXIOMA_API_GRPC_HOST` and `AXIOMA_MODEL`
 (default `openai/gpt-5.6-terra`). The default OpenAI-compatible endpoint is
 `AXIOMA_API_BASE=https://llm.marketrix.io/v1`; provide its credential through
-`AXIOMA_LLM_KEY` (never commit it). `AXIOMA_REASONING_EFFORT=max` is the
-default. `AXIOMA_TEMPERATURE` is optional and omitted by default for reasoning
-models. Run bounds use `AXIOMA_MAX_TOOL_CALLS=20`,
+`AXIOMA_LLM_KEY` (never commit it). `AXIOMA_REASONING_EFFORT=max` is the default. Marketrix currently requires
+`AXIOMA_STRICT_FUNCTION_CALLING=false` (the default); set it to `true` only for
+providers that accept OpenAI strict schemas. `AXIOMA_TEMPERATURE` is optional
+and omitted by default for reasoning models. Run bounds use `AXIOMA_MAX_TOOL_CALLS=20`,
 `AXIOMA_MAX_MODEL_TURNS=10`, `AXIOMA_RUN_DEADLINE_SECONDS=300`, and
 `AXIOMA_MODEL_OUTPUT_MAX_CHARS=4000`. Provider retries use
 `AXIOMA_RETRY_ATTEMPTS=3`, `AXIOMA_RETRY_BASE_SECONDS=1`, and
