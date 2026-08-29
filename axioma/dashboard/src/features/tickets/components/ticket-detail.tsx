@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/tooltip";
 import { AgentTranscript } from "@/features/agent-runs/components/agent-transcript";
 import { TicketImpact } from "@/features/cmdb/components/ticket-impact";
-import { TicketAttachments } from "@/features/tier4/components";
+import { TicketAttachments } from "@/features/documents/components";
 import { Route } from "@/routes/_auth/tickets.$ticketId";
 import { orpc } from "@/utils/orpc";
 import { ticketMutations } from "../api/mutations";
@@ -73,7 +73,9 @@ function TicketDetail({
 		orpc.listFieldDefinitions.queryOptions({ input: { objectType: "ticket" } }),
 	);
 	const serviceRecords = useQuery(
-		orpc.getTicketServiceRecords.queryOptions({ input: { ticketId: ticket.id } }),
+		orpc.getTicketServiceRecords.queryOptions({
+			input: { ticketId: ticket.id },
+		}),
 	);
 	const mutation = useMutation(
 		ticketMutations.update(queryClient, {
@@ -143,16 +145,31 @@ function TicketDetail({
 						</h2>
 						<div className="space-y-2 text-sm">
 							{serviceRecords.data?.problems.map((problem) => (
-								<Link key={problem.id} to="/problems/$problemId" params={{ problemId: problem.id }} className="block underline underline-offset-2">
-									{problem.problemNumber}: {problem.title}{problem.workaround ? ` — ${problem.workaround}` : ""}
+								<Link
+									key={problem.id}
+									to="/problems/$problemId"
+									params={{ problemId: problem.id }}
+									className="block underline underline-offset-2"
+								>
+									{problem.problemNumber}: {problem.title}
+									{problem.workaround ? ` — ${problem.workaround}` : ""}
 								</Link>
 							))}
 							{serviceRecords.data?.changes.map((change) => (
-								<Link key={change.id} to="/changes/$changeId" params={{ changeId: change.id }} className="block underline underline-offset-2">
+								<Link
+									key={change.id}
+									to="/changes/$changeId"
+									params={{ changeId: change.id }}
+									className="block underline underline-offset-2"
+								>
 									{change.changeNumber}: {change.title}
 								</Link>
 							))}
-							{serviceRecords.data && !serviceRecords.data.problems.length && !serviceRecords.data.changes.length ? "None linked" : null}
+							{serviceRecords.data &&
+							!serviceRecords.data.problems.length &&
+							!serviceRecords.data.changes.length
+								? "None linked"
+								: null}
 						</div>
 					</section>
 					<section className="rounded-xl border bg-card p-4 shadow-sm">

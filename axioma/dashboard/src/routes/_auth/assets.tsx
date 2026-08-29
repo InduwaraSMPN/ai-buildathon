@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageState } from "@/components/support-ui";
-import { AssetsPage } from "@/features/tier4/components";
+import { AssetsPage } from "@/features/assets/components";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/assets")({

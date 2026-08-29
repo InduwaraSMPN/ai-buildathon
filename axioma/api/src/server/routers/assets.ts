@@ -1,0 +1,338 @@
+import { ORPCError } from "@orpc/server";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { db } from "@/db";
+import {
+	assetCheckoutLog,
+	assetDevices,
+	assetHistory,
+	assetImportRejections,
+	assetImportRuns,
+	assetStatuses,
+	assets,
+	softwareInventoryApps,
+	softwareLicenceAllocations,
+	softwareLicenceEntitlements,
+	softwareProducts,
+	user,
+} from "@/db/schema";
+import { importAssetsCsv, previewAssetImport } from "../assets/import";
+import {
+	readDynamicFieldValues,
+	writeDynamicFieldValues,
+} from "../dynamic-fields";
+import { capabilityProcedure } from "../orpc";
+import { assessSoftwareCompliance } from "../software-compliance";
+
+export const assetsRouter = {
+	listAssets: capabilityProcedure("admin.settings").listAssets.handler(
+		async () =>
+			Promise.all(
+				(
+					await db
+						.select({
+							id: assets.id,
+							name: assets.name,
+							assetTag: assets.assetTag,
+							status: assetStatuses.name,
+							owner: user.name,
+						})
+						.from(assets)
+						.leftJoin(assetStatuses, eq(assets.statusId, assetStatuses.id))
+						.leftJoin(user, eq(assets.custodianId, user.id))
+						.orderBy(asc(assets.name))
+				).map(async (asset) => ({
+					...asset,
+					customFields: await readDynamicFieldValues(db, "asset", asset.id),
+				})),
+			),
+	),
+	previewAssetImport: capabilityProcedure(
+		"admin.settings",
+	).previewAssetImport.handler(({ input }) => previewAssetImport(input)),
+	importAssets: capabilityProcedure("admin.settings").importAssets.handler(
+		({ input }) => importAssetsCsv(input),
+	),
+	listAssetImportRuns: capabilityProcedure(
+		"admin.settings",
+	).listAssetImportRuns.handler(() =>
+		db
+			.select()
+			.from(assetImportRuns)
+			.orderBy(desc(assetImportRuns.createdAt))
+			.limit(50),
+	),
+	listAssetImportRejections: capabilityProcedure(
+		"admin.settings",
+	).listAssetImportRejections.handler(({ input }) =>
+		db
+			.select()
+			.from(assetImportRejections)
+			.where(eq(assetImportRejections.runId, input.runId))
+			.orderBy(asc(assetImportRejections.rowNumber)),
+	),
+	listAssetHistory: capabilityProcedure(
+		"admin.settings",
+	).listAssetHistory.handler(({ input }) =>
+		db
+			.select()
+			.from(assetHistory)
+			.where(eq(assetHistory.assetId, input.assetId))
+			.orderBy(desc(assetHistory.createdAt)),
+	),
+	setAssetDynamicFields: capabilityProcedure(
+		"admin.settings",
+	).setAssetDynamicFields.handler(async ({ input }) => {
+		if (
+			!(
+				await db
+					.select({ id: assets.id })
+					.from(assets)
+					.where(eq(assets.id, input.assetId))
+					.limit(1)
+			)[0]
+		)
+			throw new ORPCError("NOT_FOUND");
+		return writeDynamicFieldValues(db, "asset", input.assetId, input.values);
+	}),
+	checkoutAsset: capabilityProcedure("admin.settings").checkoutAsset.handler(
+		async ({ context, input }) => {
+			const now = new Date();
+			return db.transaction(async (tx) => {
+				const [asset] = await tx
+					.update(assets)
+					.set({ custodianId: input.custodianId, updatedAt: now })
+					.where(eq(assets.id, input.assetId))
+					.returning({ id: assets.id });
+				if (!asset) throw new ORPCError("NOT_FOUND");
+				await tx
+					.update(assetCheckoutLog)
+					.set({ checkedInAt: now })
+					.where(
+						and(
+							eq(assetCheckoutLog.assetId, input.assetId),
+							sql`${assetCheckoutLog.checkedInAt} is null`,
+						),
+					);
+				await tx.insert(assetCheckoutLog).values({
+					id: crypto.randomUUID(),
+					assetId: input.assetId,
+					custodianId: input.custodianId,
+					checkedOutAt: now,
+					note: input.note,
+				});
+				const [history] = await tx
+					.insert(assetHistory)
+					.values({
+						id: crypto.randomUUID(),
+						assetId: input.assetId,
+						action: "checkout",
+						actorId: context.userId,
+						changes: {
+							custodianId: input.custodianId,
+							note: input.note ?? null,
+						},
+					})
+					.returning();
+				return history!;
+			});
+		},
+	),
+	checkinAsset: capabilityProcedure("admin.settings").checkinAsset.handler(
+		async ({ context, input }) => {
+			const now = new Date();
+			return db.transaction(async (tx) => {
+				const [asset] = await tx
+					.update(assets)
+					.set({ custodianId: null, updatedAt: now })
+					.where(eq(assets.id, input.assetId))
+					.returning({ id: assets.id });
+				if (!asset) throw new ORPCError("NOT_FOUND");
+				await tx
+					.update(assetCheckoutLog)
+					.set({ checkedInAt: now })
+					.where(
+						and(
+							eq(assetCheckoutLog.assetId, input.assetId),
+							sql`${assetCheckoutLog.checkedInAt} is null`,
+						),
+					);
+				const [history] = await tx
+					.insert(assetHistory)
+					.values({
+						id: crypto.randomUUID(),
+						assetId: input.assetId,
+						action: "checkin",
+						actorId: context.userId,
+						changes: { note: input.note ?? null },
+					})
+					.returning();
+				return history!;
+			});
+		},
+	),
+	listSoftwareEntitlements: capabilityProcedure(
+		"admin.settings",
+	).listSoftwareEntitlements.handler(async () => {
+		const rows = await db
+			.select({
+				id: softwareLicenceEntitlements.id,
+				productId: softwareLicenceEntitlements.productId,
+				productName: softwareProducts.name,
+				publisher: softwareProducts.publisher,
+				licenceKey: softwareLicenceEntitlements.licenceKey,
+				seatCount: softwareLicenceEntitlements.seatCount,
+				validFrom: softwareLicenceEntitlements.validFrom,
+				expiresAt: softwareLicenceEntitlements.expiresAt,
+			})
+			.from(softwareLicenceEntitlements)
+			.innerJoin(
+				softwareProducts,
+				eq(softwareLicenceEntitlements.productId, softwareProducts.id),
+			)
+			.orderBy(asc(softwareProducts.name));
+		const allocations = await db
+			.select()
+			.from(softwareLicenceAllocations)
+			.where(sql`${softwareLicenceAllocations.revokedAt} is null`);
+		return rows.map((row) => ({
+			...row,
+			allocatedSeats: allocations.filter(
+				(item) => item.entitlementId === row.id,
+			).length,
+		}));
+	}),
+	createSoftwareEntitlement: capabilityProcedure(
+		"admin.settings",
+	).createSoftwareEntitlement.handler(async ({ input }) => {
+		if (input.validFrom && input.expiresAt && input.expiresAt < input.validFrom)
+			throw new ORPCError("BAD_REQUEST", {
+				message: "Expiry must follow validity start",
+			});
+		const productId = crypto.randomUUID();
+		const entitlementId = crypto.randomUUID();
+		await db.transaction(async (tx) => {
+			await tx
+				.insert(softwareProducts)
+				.values({
+					id: productId,
+					name: input.productName,
+					publisher: input.publisher,
+					identityKey: input.identityKey,
+				})
+				.onConflictDoUpdate({
+					target: softwareProducts.identityKey,
+					set: { name: input.productName, publisher: input.publisher },
+				});
+			const [product] = await tx
+				.select({ id: softwareProducts.id })
+				.from(softwareProducts)
+				.where(eq(softwareProducts.identityKey, input.identityKey))
+				.limit(1);
+			await tx.insert(softwareLicenceEntitlements).values({
+				id: entitlementId,
+				productId: product!.id,
+				licenceKey: input.licenceKey,
+				seatCount: input.seatCount,
+				validFrom: input.validFrom,
+				expiresAt: input.expiresAt,
+			});
+		});
+		const [row] = await db
+			.select({
+				id: softwareLicenceEntitlements.id,
+				productId: softwareLicenceEntitlements.productId,
+				productName: softwareProducts.name,
+				publisher: softwareProducts.publisher,
+				licenceKey: softwareLicenceEntitlements.licenceKey,
+				seatCount: softwareLicenceEntitlements.seatCount,
+				validFrom: softwareLicenceEntitlements.validFrom,
+				expiresAt: softwareLicenceEntitlements.expiresAt,
+			})
+			.from(softwareLicenceEntitlements)
+			.innerJoin(
+				softwareProducts,
+				eq(softwareLicenceEntitlements.productId, softwareProducts.id),
+			)
+			.where(eq(softwareLicenceEntitlements.id, entitlementId));
+		return { ...row!, allocatedSeats: 0 };
+	}),
+	allocateSoftwareLicence: capabilityProcedure(
+		"admin.settings",
+	).allocateSoftwareLicence.handler(async ({ input }) => {
+		const id = crypto.randomUUID();
+		await db.insert(softwareLicenceAllocations).values({ id, ...input });
+		return { id };
+	}),
+	revokeSoftwareAllocation: capabilityProcedure(
+		"admin.settings",
+	).revokeSoftwareAllocation.handler(async ({ input }) => ({
+		revoked: Boolean(
+			(
+				await db
+					.update(softwareLicenceAllocations)
+					.set({ revokedAt: new Date() })
+					.where(
+						and(
+							eq(softwareLicenceAllocations.id, input.id),
+							sql`${softwareLicenceAllocations.revokedAt} is null`,
+						),
+					)
+					.returning({ id: softwareLicenceAllocations.id })
+			)[0],
+		),
+	})),
+	readSoftwareCompliance: capabilityProcedure(
+		"admin.settings",
+	).readSoftwareCompliance.handler(async () => {
+		const [products, entitlements, allocations, inventory] = await Promise.all([
+			db.select().from(softwareProducts),
+			db.select().from(softwareLicenceEntitlements),
+			db.select().from(softwareLicenceAllocations),
+			db
+				.select({
+					app: softwareInventoryApps,
+					assetId: assetDevices.assetId,
+					assetName: assets.name,
+				})
+				.from(softwareInventoryApps)
+				.innerJoin(
+					assetDevices,
+					eq(softwareInventoryApps.assetDeviceId, assetDevices.id),
+				)
+				.innerJoin(assets, eq(assetDevices.assetId, assets.id)),
+		]);
+		const productsByIdentity = new Map(
+			products.map((item) => [item.identityKey, item]),
+		);
+		const installs = inventory.flatMap(({ app, assetId }) => {
+			const product = productsByIdentity.get(app.identityKey);
+			return product ? [{ productId: product.id, assetId }] : [];
+		});
+		const assessed = assessSoftwareCompliance(
+			installs,
+			entitlements,
+			allocations,
+		);
+		const names = new Map(products.map((item) => [item.id, item.name]));
+		const assetsById = new Map(
+			inventory.map((item) => [item.assetId, item.assetName]),
+		);
+		const results = assessed.installResults.map((item) => ({
+			...item,
+			productName: names.get(item.productId)!,
+			assetName: assetsById.get(item.assetId)!,
+		}));
+		return {
+			summary: {
+				compliant: results.filter((item) => item.status === "compliant").length,
+				unlicensed: results.filter((item) => item.status === "unlicensed")
+					.length,
+				expired: results.filter((item) => item.status === "expired").length,
+				overAllocated: results.filter(
+					(item) => item.status === "over-allocated",
+				).length,
+			},
+			installs: results,
+		};
+	}),
+};

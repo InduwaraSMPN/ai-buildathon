@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { TicketAttachments } from "@/features/tier4/components";
+import { TicketAttachments } from "@/features/documents/components";
 import { client, orpc, queryClient } from "@/utils/orpc";
 import type { TicketDetail } from "../api/types";
 

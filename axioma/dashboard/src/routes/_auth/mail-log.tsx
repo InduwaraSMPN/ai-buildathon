@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
-import { MailLogPage } from "@/features/tier4/components";
+import { MailLogPage } from "@/features/mail/components";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/mail-log")({

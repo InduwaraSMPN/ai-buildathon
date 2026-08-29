@@ -6,7 +6,7 @@ import { PageState } from "@/components/support-ui";
 import {
 	type OverviewWidget,
 	WidgetArrangement,
-} from "@/features/tier4/components";
+} from "@/features/automation/components";
 import { orpc } from "@/utils/orpc";
 
 const available = [

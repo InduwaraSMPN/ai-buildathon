@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
-import { SuppliersPage } from "@/features/tier4/components";
+import { SuppliersPage } from "@/features/suppliers/components";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/suppliers")({

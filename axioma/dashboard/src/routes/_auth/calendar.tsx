@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
-import { CalendarPage } from "@/features/tier4/components";
+import { CalendarPage } from "@/features/scheduling/components";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/calendar")({
