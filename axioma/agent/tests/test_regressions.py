@@ -12,14 +12,14 @@ async def test_multiple_writes_each_require_matching_verification() -> None:
     model = ScriptedModel(
         [
             call(
-                "cluster.patch_image",
+                "cluster_patch_image",
                 {"namespace": "shop", "name": "a", "container_index": 0, "image": "a:v2"},
             ),
             call(
-                "cluster.patch_image",
+                "cluster_patch_image",
                 {"namespace": "shop", "name": "b", "container_index": 0, "image": "b:v2"},
             ),
-            call("cluster.read_deployment", {"namespace": "shop", "name": "b"}),
+            call("cluster_read_deployment", {"namespace": "shop", "name": "b"}),
             Decision(kind="resolved", reasoning="Only B checked.", resolution="Too early."),
             Decision(kind="resolved", reasoning="Still refusing.", resolution="Too early."),
         ]
@@ -28,8 +28,8 @@ async def test_multiple_writes_each_require_matching_verification() -> None:
         model,
         FakeToolBus(
             {
-                "cluster.patch_image": [{"accepted": True}, {"accepted": True}],
-                "cluster.read_deployment": {"name": "b"},
+                "cluster_patch_image": [{"accepted": True}, {"accepted": True}],
+                "cluster_read_deployment": {"name": "b"},
             }
         ),
     )
@@ -43,11 +43,11 @@ async def test_tool_ceiling_does_not_leave_dangling_assistant_call(
     monkeypatch.setattr(config, "max_tool_calls", 1)
     model = ScriptedModel(
         [
-            call("cluster.read_pods", {"namespace": "default"}),
-            call("cluster.read_pods", {"namespace": "default"}),
+            call("cluster_read_pods", {"namespace": "default"}),
+            call("cluster_read_pods", {"namespace": "default"}),
         ]
     )
-    ctx, _, _ = context(model, FakeToolBus({"cluster.read_pods": {"pods": []}}))
+    ctx, _, _ = context(model, FakeToolBus({"cluster_read_pods": {"pods": []}}))
     result = await run(ctx)
     assert result.outcome == "tool call ceiling reached"
     assert ctx.transcript[-1]["role"] == "tool"

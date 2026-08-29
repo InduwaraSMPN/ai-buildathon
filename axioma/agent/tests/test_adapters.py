@@ -21,7 +21,7 @@ async def test_malformed_model_arguments_become_recoverable_invalid_decision(
                         SimpleNamespace(
                             id="call-bad",
                             function=SimpleNamespace(
-                                name="cluster.read_pods", arguments="{not-json"
+                                name="cluster_read_pods", arguments="{not-json"
                             ),
                         )
                     ]
@@ -51,7 +51,7 @@ def test_wire_tool_name_maps_back_to_registry_name() -> None:
         "cluster_read_pods",
         {"reasoning": "Inspect pods.", "namespace": "demo", "label_selector": None},
     )
-    assert decision.tool == "cluster.read_pods"
+    assert decision.tool == "cluster_read_pods"
 
 
 def test_transcript_uses_wire_safe_tool_name() -> None:
@@ -66,7 +66,7 @@ def test_transcript_uses_wire_safe_tool_name() -> None:
         call_tool=None,  # type: ignore[arg-type]
         report=None,  # type: ignore[arg-type]
     )
-    _append_call(context, "call", "cluster.read_pods", {"namespace": "demo"})
+    _append_call(context, "call", "cluster_read_pods", {"namespace": "demo"})
     assert context.transcript[0]["tool_calls"][0]["function"]["name"] == "cluster_read_pods"  # type: ignore[index]
 
 

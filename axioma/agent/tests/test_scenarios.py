@@ -8,9 +8,9 @@ from tests.fixtures import FakeToolBus, ScriptedModel, call, context
 async def test_scenario_1_repairs_image_then_verifies() -> None:
     model = ScriptedModel(
         [
-            call("cluster.read_pods", {"namespace": "shop"}),
+            call("cluster_read_pods", {"namespace": "shop"}),
             call(
-                "cluster.patch_image",
+                "cluster_patch_image",
                 {
                     "namespace": "shop",
                     "name": "checkout",
@@ -19,7 +19,7 @@ async def test_scenario_1_repairs_image_then_verifies() -> None:
                 },
                 "ImagePullBackOff identifies the bad image.",
             ),
-            call("cluster.read_deployment", {"namespace": "shop", "name": "checkout"}),
+            call("cluster_read_deployment", {"namespace": "shop", "name": "checkout"}),
             Decision(
                 kind="resolved", reasoning="The rollout now uses v2.", resolution="Image corrected."
             ),
@@ -27,9 +27,9 @@ async def test_scenario_1_repairs_image_then_verifies() -> None:
     )
     bus = FakeToolBus(
         {
-            "cluster.read_pods": {"pods": [{"name": "checkout-1", "reason": "ImagePullBackOff"}]},
-            "cluster.patch_image": {"accepted": True},
-            "cluster.read_deployment": {"name": "checkout", "image": "checkout:v2", "available": 1},
+            "cluster_read_pods": {"pods": [{"name": "checkout-1", "reason": "ImagePullBackOff"}]},
+            "cluster_patch_image": {"accepted": True},
+            "cluster_read_deployment": {"name": "checkout", "image": "checkout:v2", "available": 1},
         }
     )
     ctx, bus, recorder = context(model, bus)
@@ -38,9 +38,9 @@ async def test_scenario_1_repairs_image_then_verifies() -> None:
 
     assert result.status is RunStatus.RESOLVED
     assert [name for name, _ in bus.calls] == [
-        "cluster.read_pods",
-        "cluster.patch_image",
-        "cluster.read_deployment",
+        "cluster_read_pods",
+        "cluster_patch_image",
+        "cluster_read_deployment",
     ]
     assert [step.kind for step in recorder.steps] == [
         StepKind.THINK,
@@ -59,13 +59,13 @@ async def test_scenario_1_repairs_image_then_verifies() -> None:
 async def test_scenario_2_uses_typed_device_action_and_verifies() -> None:
     model = ScriptedModel(
         [
-            call("device.read_state", {"device_id": "laptop-7", "facets": ["resolver"]}),
+            call("device_read_state", {"device_id": "laptop-7", "facets": ["resolver"]}),
             call(
-                "device.run_action",
+                "device_run_action",
                 {"device_id": "laptop-7", "action": "flush_dns", "parameters": {}},
                 "The resolver cache is stale, so use the typed action.",
             ),
-            call("device.read_state", {"device_id": "laptop-7", "facets": ["resolver"]}),
+            call("device_read_state", {"device_id": "laptop-7", "facets": ["resolver"]}),
             Decision(
                 kind="resolved", reasoning="Resolver state is healthy.", resolution="DNS restored."
             ),
@@ -73,11 +73,11 @@ async def test_scenario_2_uses_typed_device_action_and_verifies() -> None:
     )
     bus = FakeToolBus(
         {
-            "device.read_state": [
+            "device_read_state": [
                 {"resolver": {"healthy": False, "message": "stale cache"}},
                 {"resolver": {"healthy": True}},
             ],
-            "device.run_action": {"accepted": True},
+            "device_run_action": {"accepted": True},
         }
     )
     ctx, bus, _ = context(model, bus, device_id="laptop-7")
@@ -86,18 +86,18 @@ async def test_scenario_2_uses_typed_device_action_and_verifies() -> None:
 
     assert result.status is RunStatus.RESOLVED
     assert [name for name, _ in bus.calls] == [
-        "device.read_state",
-        "device.run_action",
-        "device.read_state",
+        "device_read_state",
+        "device_run_action",
+        "device_read_state",
     ]
-    assert all(name != "device.computer_use" for name, _ in bus.calls)
+    assert all(name != "device_computer_use" for name, _ in bus.calls)
 
 
 async def test_scenario_3_escalates_capacity_policy_without_writes() -> None:
     scheduler_message = "0/3 nodes are available: 3 Insufficient cpu"
     model = ScriptedModel(
         [
-            call("cluster.read_pods", {"namespace": "analytics"}),
+            call("cluster_read_pods", {"namespace": "analytics"}),
             Decision(
                 kind="escalate",
                 reasoning="Unschedulable capacity requires owner intent.",
@@ -113,7 +113,7 @@ async def test_scenario_3_escalates_capacity_policy_without_writes() -> None:
         model,
         FakeToolBus(
             {
-                "cluster.read_pods": {
+                "cluster_read_pods": {
                     "pods": [
                         {
                             "phase": "Pending",

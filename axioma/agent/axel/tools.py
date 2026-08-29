@@ -7,7 +7,7 @@ transcript: tool name plus validated input is the whole story.
 
 Nothing here executes. Every tool is a *request* the agent sends to the API over
 the back-channel, and the API owns the side effect. The agent has no database
-connection, no cluster credentials, and no path to a device.
+connection, no cluster credentials, and no path to a device_
 """
 
 from __future__ import annotations
@@ -120,7 +120,7 @@ REGISTRY: dict[str, Tool] = {
     t.name: t
     for t in [
         Tool(
-            name="cluster.read_pods",
+            name="cluster_read_pods",
             surface=Surface.CLUSTER,
             effect=Effect.READ,
             description=(
@@ -130,14 +130,14 @@ REGISTRY: dict[str, Tool] = {
             schema_model=ClusterReadPods,
         ),
         Tool(
-            name="cluster.read_deployment",
+            name="cluster_read_deployment",
             surface=Surface.CLUSTER,
             effect=Effect.READ,
             description="Read a deployment's spec and rollout status.",
             schema_model=ClusterReadDeployment,
         ),
         Tool(
-            name="cluster.patch_image",
+            name="cluster_patch_image",
             surface=Surface.CLUSTER,
             effect=Effect.WRITE,
             description=(
@@ -145,36 +145,36 @@ REGISTRY: dict[str, Tool] = {
                 "so it fails loudly if the object is not the shape expected."
             ),
             schema_model=ClusterPatchImage,
-            verified_by="cluster.read_deployment",
+            verified_by="cluster_read_deployment",
         ),
         Tool(
-            name="device.read_state",
+            name="device_read_state",
             surface=Surface.DEVICE,
             effect=Effect.READ,
             description="Read device state: resolver, adapters, services, reachability.",
             schema_model=DeviceReadState,
         ),
         Tool(
-            name="device.run_action",
+            name="device_run_action",
             surface=Surface.DEVICE,
             effect=Effect.WRITE,
             description="Run a named action from the device's fixed set.",
             schema_model=DeviceRunAction,
-            verified_by="device.read_state",
+            verified_by="device_read_state",
         ),
         Tool(
-            name="device.computer_use",
+            name="device_computer_use",
             surface=Surface.DEVICE,
             effect=Effect.WRITE,
             description=(
                 "Drive the device GUI toward an objective. Use only when no typed action "
-                "exists. Not available on every device."
+                "exists. Not available on every device_"
             ),
             schema_model=DeviceComputerUse,
-            verified_by="device.read_state",
+            verified_by="device_read_state",
         ),
         Tool(
-            name="cmdb.record_observation",
+            name="cmdb_record_observation",
             surface=Surface.CMDB,
             effect=Effect.WRITE,
             description="Record what was observed, with the run and step that observed it.",
@@ -184,15 +184,8 @@ REGISTRY: dict[str, Tool] = {
 }
 
 
-def wire_name(name: str) -> str:
-    """Return an OpenAI-compatible function name."""
-    return name.replace(".", "_")
-
-
 def resolve(name: str) -> Tool | None:
-    return REGISTRY.get(name) or next(
-        (tool for tool in REGISTRY.values() if wire_name(tool.name) == name), None
-    )
+    return REGISTRY.get(name)
 
 
 def as_llm_tools(*, strict: bool = True) -> list[dict[str, object]]:
@@ -212,7 +205,7 @@ def as_llm_tools(*, strict: bool = True) -> list[dict[str, object]]:
             "additionalProperties": False,
         }
         function: dict[str, object] = {
-            "name": wire_name(tool.name),
+            "name": tool.name,
             "description": tool.description,
             "parameters": parameters,
         }

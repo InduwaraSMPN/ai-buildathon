@@ -8,7 +8,7 @@ async def test_verifier_must_read_same_resource() -> None:
     model = ScriptedModel(
         [
             call(
-                "cluster.patch_image",
+                "cluster_patch_image",
                 {
                     "namespace": "shop",
                     "name": "checkout",
@@ -16,11 +16,11 @@ async def test_verifier_must_read_same_resource() -> None:
                     "image": "checkout:v2",
                 },
             ),
-            call("cluster.read_deployment", {"namespace": "shop", "name": "catalog"}),
+            call("cluster_read_deployment", {"namespace": "shop", "name": "catalog"}),
             Decision(
                 kind="resolved", reasoning="Wrong deployment checked.", resolution="Premature."
             ),
-            call("cluster.read_deployment", {"namespace": "shop", "name": "checkout"}),
+            call("cluster_read_deployment", {"namespace": "shop", "name": "checkout"}),
             Decision(
                 kind="resolved", reasoning="Correct deployment checked.", resolution="Verified."
             ),
@@ -28,8 +28,8 @@ async def test_verifier_must_read_same_resource() -> None:
     )
     bus = FakeToolBus(
         {
-            "cluster.patch_image": {"accepted": True},
-            "cluster.read_deployment": [
+            "cluster_patch_image": {"accepted": True},
+            "cluster_read_deployment": [
                 {"name": "catalog", "image": "catalog:v1"},
                 {"name": "checkout", "image": "checkout:v2"},
             ],
@@ -43,7 +43,7 @@ async def test_verifier_must_read_same_resource() -> None:
     assert result.outcome == "Verified."
     assert any("verification pending" in (step.error or "") for step in recorder.steps)
     assert [
-        payload["name"] for name, payload in bus.calls if name == "cluster.read_deployment"
+        payload["name"] for name, payload in bus.calls if name == "cluster_read_deployment"
     ] == ["catalog", "checkout"]
 
 
@@ -51,7 +51,7 @@ async def test_two_refused_verifications_escalate() -> None:
     model = ScriptedModel(
         [
             call(
-                "device.run_action",
+                "device_run_action",
                 {"device_id": "laptop-7", "action": "flush_dns", "parameters": {}},
             ),
             Decision(kind="resolved", reasoning="Trust the acknowledgement.", resolution="Done."),
@@ -59,12 +59,12 @@ async def test_two_refused_verifications_escalate() -> None:
         ]
     )
     ctx, bus, recorder = context(
-        model, FakeToolBus({"device.run_action": {"accepted": True}}), device_id="laptop-7"
+        model, FakeToolBus({"device_run_action": {"accepted": True}}), device_id="laptop-7"
     )
 
     result = await run(ctx)
 
     assert result.status is RunStatus.ESCALATED
-    assert "device.run_action requires device.read_state" in result.outcome
-    assert [name for name, _ in bus.calls] == ["device.run_action"]
+    assert "device_run_action requires device_read_state" in result.outcome
+    assert [name for name, _ in bus.calls] == ["device_run_action"]
     assert sum("verification pending" in (step.error or "") for step in recorder.steps) == 2

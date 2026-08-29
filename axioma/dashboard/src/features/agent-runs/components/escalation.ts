@@ -22,7 +22,7 @@ export function extractEscalationDetails(
 		) ??
 		evidenceSteps.findLast((step) => step.kind === "observation");
 	const patch =
-		run.steps.findLast((step) => step.toolName === "cluster.patch_image")
+		run.steps.findLast((step) => step.toolName === "cluster_patch_image")
 			?.toolInput ?? findDecisionPatch(run.steps);
 
 	const details = {

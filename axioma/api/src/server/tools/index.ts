@@ -39,20 +39,20 @@ const device = (input: z.ZodType, verifiedBy?: string): ToolHandler => ({
 const pendingVerification = new Map<string, string>();
 
 export const tools: Record<string, ToolHandler> = {
-	"cluster.read_pods": { input: readPodsInput, run: readPods },
-	"cluster.read_deployment": {
+	cluster_read_pods: { input: readPodsInput, run: readPods },
+	cluster_read_deployment: {
 		input: readDeploymentInput,
 		run: readDeployment,
 	},
-	"cluster.patch_image": {
+	cluster_patch_image: {
 		input: patchImageInput,
-		verifiedBy: "cluster.read_deployment",
+		verifiedBy: "cluster_read_deployment",
 		run: patchImage,
 	},
-	"device.read_state": device(deviceReadInput),
-	"device.run_action": device(deviceActionInput, "device.read_state"),
-	"device.computer_use": device(deviceComputerUseInput, "device.read_state"),
-	"cmdb.record_observation": {
+	device_read_state: device(deviceReadInput),
+	device_run_action: device(deviceActionInput, "device_read_state"),
+	device_computer_use: device(deviceComputerUseInput, "device_read_state"),
+	cmdb_record_observation: {
 		input: recordObservationInput,
 		run: recordObservation,
 	},
@@ -72,13 +72,13 @@ export async function executeTool(
 	const verifies = pendingVerification.get(ctx.runId) === name;
 	const marker = verifies
 		? "verifying_fix"
-		: name === "cluster.patch_image" ||
-				name.startsWith("device.run_") ||
-				name === "device.computer_use"
+		: name === "cluster_patch_image" ||
+				name.startsWith("device_run_") ||
+				name === "device_computer_use"
 			? "applying_fix"
-			: name.startsWith("cluster.read_")
+			: name.startsWith("cluster_read_")
 				? "checking_service"
-				: name === "device.read_state"
+				: name === "device_read_state"
 					? "checking_device"
 					: null;
 	if (marker)

@@ -215,12 +215,12 @@ class Gateway {
 		let objective = "";
 		let timeoutSeconds = 30;
 		switch (toolName) {
-			case "device.read_state":
+			case "device_read_state":
 				action = "read_state";
 				parameters = { facets: JSON.stringify(body.facets ?? []) };
 				if (body.target != null) parameters.target = String(body.target);
 				break;
-			case "device.run_action":
+			case "device_run_action":
 				action = String(body.action ?? "");
 				parameters = Object.fromEntries(
 					Object.entries(
@@ -228,7 +228,7 @@ class Gateway {
 					).map(([key, value]) => [key, String(value)]),
 				);
 				break;
-			case "device.computer_use":
+			case "device_computer_use":
 				action = "computer_use";
 				parameters = {};
 				computerUse = true;

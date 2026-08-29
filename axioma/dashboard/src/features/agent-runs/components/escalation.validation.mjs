@@ -35,7 +35,7 @@ const details = extractEscalationDetails({
 		step(2, { evidence: schedulerMessage }),
 		step(3, {
 			kind: "tool_call",
-			toolName: "cluster.patch_image",
+			toolName: "cluster_patch_image",
 			toolInput: {
 				namespace: "analytics",
 				name: "worker",

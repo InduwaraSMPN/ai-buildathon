@@ -274,13 +274,13 @@ func execute(parent context.Context, command *pb.DeviceCommand) *pb.CommandResul
 	var output any
 	var err error
 	switch command.Action {
-	case "read_state", "device.read_state":
+	case "read_state", "device_read_state":
 		var facets []string
 		facets, err = splitFacets(command.Parameters["facets"])
 		if err == nil {
 			output, err = ReadStateWithParams(ctx, facets, command.Parameters)
 		}
-	case "run_action", "device.run_action":
+	case "run_action", "device_run_action":
 		action := command.Parameters["action"]
 		params := make(map[string]string, len(command.Parameters))
 		for key, value := range command.Parameters {

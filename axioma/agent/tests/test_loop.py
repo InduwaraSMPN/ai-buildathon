@@ -13,22 +13,22 @@ async def test_unknown_invalid_and_malformed_decisions_recover() -> None:
     model = ScriptedModel(
         [
             call("missing.tool", {}),
-            call("cluster.read_pods", {"namespace": "default"}),
-            call("cluster.read_pods", {"namespace": "default", "extra": True}),
-            call("cluster.read_pods", {"namespace": "default"}),
-            Decision(kind="invalid", tool="cluster.read_pods", error="malformed JSON arguments"),
-            call("cluster.read_pods", {"namespace": "default"}),
+            call("cluster_read_pods", {"namespace": "default"}),
+            call("cluster_read_pods", {"namespace": "default", "extra": True}),
+            call("cluster_read_pods", {"namespace": "default"}),
+            Decision(kind="invalid", tool="cluster_read_pods", error="malformed JSON arguments"),
+            call("cluster_read_pods", {"namespace": "default"}),
             Decision(kind="resolved", reasoning="Healthy now.", resolution="Recovered."),
         ]
     )
     ctx, bus, recorder = context(
-        model, FakeToolBus({"cluster.read_pods": [{"pods": []}, {"pods": []}, {"pods": []}]})
+        model, FakeToolBus({"cluster_read_pods": [{"pods": []}, {"pods": []}, {"pods": []}]})
     )
 
     result = await run(ctx)
 
     assert result.status is RunStatus.RESOLVED
-    assert [name for name, _ in bus.calls] == ["cluster.read_pods"] * 3
+    assert [name for name, _ in bus.calls] == ["cluster_read_pods"] * 3
     assert bus.source_step_ordinals == [4, 9, 13]
     errors = [step.error for step in recorder.steps if step.error]
     assert any("unknown tool" in error for error in errors)
@@ -56,7 +56,7 @@ async def test_consecutive_failure_ceiling(monkeypatch: pytest.MonkeyPatch) -> N
 
 async def test_deadline_interrupts_hanging_tool(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config, "run_deadline_seconds", 0.02)
-    model = ScriptedModel([call("cluster.read_pods", {"namespace": "default"})])
+    model = ScriptedModel([call("cluster_read_pods", {"namespace": "default"})])
 
     async def hangs(_name: str, _payload: dict, _source_step_ordinal: int = 0) -> object:
         await asyncio.Event().wait()
@@ -67,7 +67,7 @@ async def test_deadline_interrupts_hanging_tool(monkeypatch: pytest.MonkeyPatch)
     result = await run(ctx)
 
     assert result.status is RunStatus.EXHAUSTED
-    assert result.outcome == "tool timed out at run deadline: cluster.read_pods"
+    assert result.outcome == "tool timed out at run deadline: cluster_read_pods"
     assert any(step.error == result.outcome for step in recorder.steps)
 
 
@@ -76,7 +76,7 @@ async def test_transcript_shape_truncation_and_usage(monkeypatch: pytest.MonkeyP
     model = ScriptedModel(
         [
             call(
-                "cluster.read_pods",
+                "cluster_read_pods",
                 {"namespace": "default"},
                 prompt_tokens=11,
                 completion_tokens=3,
@@ -93,7 +93,7 @@ async def test_transcript_shape_truncation_and_usage(monkeypatch: pytest.MonkeyP
         ]
     )
     full_output = {"pods": [{"name": "pod-" + "x" * 100}]}
-    ctx, _, recorder = context(model, FakeToolBus({"cluster.read_pods": full_output}))
+    ctx, _, recorder = context(model, FakeToolBus({"cluster_read_pods": full_output}))
 
     result = await run(ctx)
 
