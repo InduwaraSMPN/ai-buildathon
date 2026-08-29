@@ -262,12 +262,20 @@ export function TicketQueue({
 						}
 					/>
 					<QueueFacet
-						label="Category"
-						value={search.category}
-						items={result?.facets.category ?? []}
-						onChange={(category) =>
+						label="Service"
+						value={search.serviceId}
+						items={(result?.facets.service ?? []).map(
+							({ id, name, count }) => ({
+								value: id,
+								label: name,
+								count,
+							}),
+						)}
+						onChange={(serviceId) =>
 							onSearchChange({
-								category: category as TicketQueueSearch["category"],
+								serviceId: serviceId?.filter(
+									(value): value is string => value !== null,
+								),
 							})
 						}
 					/>

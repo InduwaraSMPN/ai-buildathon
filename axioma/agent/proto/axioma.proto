@@ -183,6 +183,17 @@ message DeviceHello {
   string enrolment_code = 8;
 }
 
+// Canonical fixed action vocabulary. DeviceCommand.action stays a string for wire
+// compatibility; parity tests keep dispatch implementations aligned with this enum.
+enum DeviceAction {
+  DEVICE_ACTION_UNSPECIFIED = 0;
+  DEVICE_ACTION_FLUSH_DNS = 1;
+  DEVICE_ACTION_RENEW_DHCP_LEASE = 2;
+  DEVICE_ACTION_CLEAR_PROXY_OVERRIDE = 3;
+  DEVICE_ACTION_RESET_CREDENTIAL_CACHE = 4;
+  DEVICE_ACTION_RESTART_USER_PROCESS = 5;
+}
+
 message DeviceCommand {
   string command_id = 1;
   uint64 sequence = 2;

@@ -5,7 +5,7 @@ import { prepareLinkDocument } from "../documents";
 import {
 	listVisibleDocuments,
 	requireDocumentWriteTarget,
-} from "../documents/http";
+} from "../documents/access";
 import { capabilityProcedure } from "../orpc";
 
 export const documentsRouter = {

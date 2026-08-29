@@ -1,11 +1,11 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db as defaultDb } from "@/db";
 import { apiKeys } from "@/db/schema/api-keys";
 import { CAPABILITIES, type Capability } from "@/shared";
 import {
 	type ApiKeyRecord,
-	FixedWindowRateLimiter,
 	parseApiKey,
+	type RateLimitResult,
 	verifyApiKeySecret,
 } from "./core";
 
@@ -25,21 +25,46 @@ export type ApiKeyResolution =
 			resetAt?: Date;
 	  };
 
-export type ApiKeyDb = Pick<typeof defaultDb, "select" | "update">;
+export type ApiKeyDb = Pick<typeof defaultDb, "select" | "update" | "execute">;
+export type RateLimitConsumer = (
+	keyId: string,
+	now: Date,
+) => Promise<RateLimitResult>;
+
+export const consumeDatabaseRateLimit =
+	(database: Pick<typeof defaultDb, "execute">): RateLimitConsumer =>
+	async (keyId, now) => {
+		if (!keyId || !Number.isFinite(now.getTime()))
+			throw new Error("Invalid rate-limit input");
+		const result = await database.execute(
+			sql<{
+				allowed: boolean;
+				remaining: number;
+				reset_at: Date;
+				retry_after_ms: number;
+			}>`select * from consume_api_rate_limit(${keyId}, ${now})`,
+		);
+		const row = result.rows[0];
+		if (!row) throw new Error("Rate-limit policy is not configured");
+		const resetAt = new Date(row.reset_at as string | number | Date);
+		return row.allowed
+			? { allowed: true, remaining: Number(row.remaining), resetAt }
+			: {
+					allowed: false,
+					remaining: 0,
+					resetAt,
+					retryAfterMs: Number(row.retry_after_ms),
+				};
+	};
 
 export function createApiKeyResolver(options?: {
 	db?: ApiKeyDb;
-	limiter?: FixedWindowRateLimiter;
+	consumeRateLimit?: RateLimitConsumer;
 	now?: () => Date;
 }) {
 	const database = options?.db ?? defaultDb;
-	const limiter =
-		options?.limiter ??
-		new FixedWindowRateLimiter({
-			perKey: 120,
-			global: 2_000,
-			windowMs: 60_000,
-		});
+	const consumeRateLimit =
+		options?.consumeRateLimit ?? consumeDatabaseRateLimit(database);
 	const now = options?.now ?? (() => new Date());
 
 	return async (token: string): Promise<ApiKeyResolution> => {
@@ -59,7 +84,7 @@ export function createApiKeyResolver(options?: {
 		if (row.revokedAt) return { ok: false, reason: "revoked" };
 		if (row.expiresAt <= checkedAt) return { ok: false, reason: "expired" };
 
-		const rate = limiter.consume(row.id, checkedAt.getTime());
+		const rate = await consumeRateLimit(row.id, checkedAt);
 		if (!rate.allowed) {
 			return {
 				ok: false,

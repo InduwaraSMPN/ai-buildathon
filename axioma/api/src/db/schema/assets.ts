@@ -9,25 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { user } from "./auth";
 
-export const assetTypes = pgTable(
-	"asset_types",
-	{
-		id: text("id").primaryKey(),
-		name: text("name").notNull(),
-		createdAt: timestamp("created_at").defaultNow().notNull(),
-	},
-	(t) => [uniqueIndex("asset_types_name_uidx").on(t.name)],
-);
-
-export const assetLocations = pgTable(
-	"asset_locations",
-	{
-		id: text("id").primaryKey(),
-		name: text("name").notNull(),
-		createdAt: timestamp("created_at").defaultNow().notNull(),
-	},
-	(t) => [uniqueIndex("asset_locations_name_uidx").on(t.name)],
-);
+// asset_types and asset_locations were empty schema-only extension points; 0037 drops them and their unused asset columns.
 
 export const assetStatuses = pgTable(
 	"asset_statuses",
@@ -46,18 +28,13 @@ export const assets = pgTable(
 		name: text("name").notNull(),
 		assetTag: text("asset_tag"),
 		serialNumber: text("serial_number"),
-		typeId: text("type_id").references(() => assetTypes.id, {
-			onDelete: "set null",
-		}),
-		locationId: text("location_id").references(() => assetLocations.id, {
-			onDelete: "set null",
-		}),
 		statusId: text("status_id").references(() => assetStatuses.id, {
 			onDelete: "set null",
 		}),
 		custodianId: text("custodian_id").references(() => user.id, {
 			onDelete: "set null",
 		}),
+		// Normalized full CSV rows retained as import provenance; declared values also live in dynamic fields.
 		attributes: jsonb("attributes"),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -65,8 +42,6 @@ export const assets = pgTable(
 	(t) => [
 		uniqueIndex("assets_tag_uidx").on(t.assetTag),
 		index("assets_serial_idx").on(t.serialNumber),
-		index("assets_type_idx").on(t.typeId),
-		index("assets_location_idx").on(t.locationId),
 		index("assets_status_idx").on(t.statusId),
 		index("assets_custodian_idx").on(t.custodianId),
 	],
@@ -118,6 +93,10 @@ export const assetImportProfiles = pgTable(
 		id: text("id").primaryKey(),
 		name: text("name").notNull(),
 		identityColumns: text("identity_columns").array().notNull(),
+		dynamicFieldColumns: jsonb("dynamic_field_columns")
+			.$type<Record<string, string>>()
+			.notNull()
+			.default({}),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
 	(t) => [uniqueIndex("asset_import_profiles_name_uidx").on(t.name)],

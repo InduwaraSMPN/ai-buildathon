@@ -6,6 +6,7 @@ import { formatDate } from "@/components/ticket-ui";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { conversationCopy } from "@/features/tickets/copy";
 import { orpc, queryClient } from "@/utils/orpc";
 
 type Message = {
@@ -37,16 +38,15 @@ export function ConversationCard({
 				await queryClient.invalidateQueries({
 					queryKey: orpc.getMyTicket.key({ input: { id: ticketId } }),
 				});
-				toast.success("Reply sent");
+				toast.success(conversationCopy.replySent);
 			},
-			onError: () =>
-				toast.error("We couldn’t send your reply. Please try again."),
+			onError: () => toast.error(conversationCopy.replyError),
 		}),
 	);
 	return (
 		<Card className="rounded-xl">
 			<CardHeader className="border-b">
-				<CardTitle>Conversation</CardTitle>
+				<CardTitle>{conversationCopy.title}</CardTitle>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<ol className="space-y-3">
@@ -62,7 +62,9 @@ export function ConversationCard({
 							>
 								<div className="mb-2 flex justify-between gap-3 text-xs opacity-75">
 									<span>
-										{message.authorType === "reporter" ? "You" : "Support"}
+										{message.authorType === "reporter"
+											? conversationCopy.reporter
+											: conversationCopy.staff}
 									</span>
 									<time>{formatDate(message.createdAt)}</time>
 								</div>
@@ -73,7 +75,7 @@ export function ConversationCard({
 						))
 					) : (
 						<li className="rounded-xl border border-dashed p-5 text-center text-muted-foreground text-sm">
-							No replies yet. Send a message if you have more information.
+							{conversationCopy.empty}
 						</li>
 					)}
 				</ol>
@@ -86,18 +88,20 @@ export function ConversationCard({
 					}}
 				>
 					<label htmlFor="portal-reply" className="font-medium text-sm">
-						Reply to support
+						{conversationCopy.replyLabel}
 					</label>
 					<Textarea
 						id="portal-reply"
 						value={body}
 						onChange={(event) => setBody(event.target.value)}
 						maxLength={10_000}
-						placeholder="Add an update or answer support’s question…"
+						placeholder={conversationCopy.replyPlaceholder}
 						className="min-h-24"
 					/>
 					<Button type="submit" disabled={!body.trim() || reply.isPending}>
-						{reply.isPending ? "Sending…" : "Send reply"}
+						{reply.isPending
+							? conversationCopy.sending
+							: conversationCopy.sendReply}
 					</Button>
 				</form>
 			</CardContent>
@@ -110,25 +114,22 @@ export function CsatCard({ csat }: { csat: Csat }) {
 	const [comment, setComment] = useState(csat.comment ?? "");
 	const submit = useMutation(
 		orpc.submitTicketCsat.mutationOptions({
-			onSuccess: () => toast.success("Thanks for your feedback"),
-			onError: () =>
-				toast.error("We couldn’t save your feedback. Please try again."),
+			onSuccess: () => toast.success(conversationCopy.feedbackSaved),
+			onError: () => toast.error(conversationCopy.feedbackError),
 		}),
 	);
 	if (csat.respondedAt || submit.isSuccess)
 		return (
 			<Card className="rounded-xl">
 				<CardContent>
-					<p className="font-medium">
-						Thanks for rating your support experience.
-					</p>
+					<p className="font-medium">{conversationCopy.feedbackThanks}</p>
 				</CardContent>
 			</Card>
 		);
 	return (
 		<Card className="rounded-xl">
 			<CardHeader>
-				<CardTitle>How was your support experience?</CardTitle>
+				<CardTitle>{conversationCopy.feedbackTitle}</CardTitle>
 			</CardHeader>
 			<CardContent>
 				<form
@@ -144,7 +145,7 @@ export function CsatCard({ csat }: { csat: Csat }) {
 					}}
 				>
 					<fieldset className="flex gap-1">
-						<legend className="sr-only">Support rating</legend>
+						<legend className="sr-only">{conversationCopy.ratingLabel}</legend>
 						{[1, 2, 3, 4, 5].map((value) => (
 							<label
 								key={value}
@@ -158,7 +159,7 @@ export function CsatCard({ csat }: { csat: Csat }) {
 									onChange={() => setRating(value)}
 									className="sr-only"
 								/>
-								<span className="sr-only">{value} out of 5 stars</span>
+								<span className="sr-only">{conversationCopy.stars(value)}</span>
 								<Star
 									className={
 										value <= rating
@@ -170,17 +171,19 @@ export function CsatCard({ csat }: { csat: Csat }) {
 						))}
 					</fieldset>
 					<label htmlFor="csat-comment" className="sr-only">
-						Feedback (optional)
+						{conversationCopy.feedbackLabel}
 					</label>
 					<Textarea
 						id="csat-comment"
 						value={comment}
 						onChange={(event) => setComment(event.target.value)}
 						maxLength={2_000}
-						placeholder="Anything else you’d like us to know? (optional)"
+						placeholder={conversationCopy.feedbackPlaceholder}
 					/>
 					<Button type="submit" disabled={!rating || submit.isPending}>
-						{submit.isPending ? "Submitting…" : "Submit feedback"}
+						{submit.isPending
+							? conversationCopy.submitting
+							: conversationCopy.submitFeedback}
 					</Button>
 				</form>
 			</CardContent>

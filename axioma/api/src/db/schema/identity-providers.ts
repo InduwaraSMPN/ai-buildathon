@@ -38,28 +38,7 @@ export const authProviders = pgTable(
 	],
 );
 
-export const ssoIdentities = pgTable(
-	"sso_identities",
-	{
-		id: text("id").primaryKey(),
-		providerId: text("provider_id")
-			.notNull()
-			.references(() => authProviders.id, { onDelete: "restrict" }),
-		userId: text("user_id")
-			.notNull()
-			.references(() => user.id, { onDelete: "cascade" }),
-		issuer: text("issuer").notNull(),
-		subject: text("subject").notNull(),
-		email: text("email").notNull(),
-		createdAt: timestamp("created_at").defaultNow().notNull(),
-		lastSignedInAt: timestamp("last_signed_in_at"),
-	},
-	(t) => [
-		uniqueIndex("sso_identities_issuer_subject_uidx").on(t.issuer, t.subject),
-		index("sso_identities_user_idx").on(t.userId),
-		index("sso_identities_provider_id_idx").on(t.providerId),
-	],
-);
+// sso_identities duplicated Better Auth account linkage and was never populated; 0037 drops it.
 
 export const directoryIdentities = pgTable(
 	"directory_identities",

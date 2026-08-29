@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createApiKey, FixedWindowRateLimiter } from "./core";
+import { createApiKey, type RateLimitResult } from "./core";
 import type { ApiKeyDb } from "./resolver";
 import { bearerToken, createApiKeyResolver, toApiKeyAuth } from "./resolver";
 
@@ -22,6 +22,9 @@ function fakeDb(row: unknown) {
 		db: {
 			select: () => query,
 			update: () => update,
+			execute: () => {
+				throw new Error("unexpected execute");
+			},
 		} as unknown as ApiKeyDb,
 		updated: () => updated,
 	};
@@ -67,13 +70,23 @@ test("resolver authenticates an active key, updates usage, and applies limits", 
 		now,
 	);
 	const database = fakeDb(created.record);
+	let calls = 0;
+	const consumeRateLimit = async (): Promise<RateLimitResult> =>
+		calls++ === 0
+			? {
+					allowed: true,
+					remaining: 0,
+					resetAt: new Date("2026-01-01T00:01:00.000Z"),
+				}
+			: {
+					allowed: false,
+					remaining: 0,
+					retryAfterMs: 60_000,
+					resetAt: new Date("2026-01-01T00:01:00.000Z"),
+				};
 	const resolve = createApiKeyResolver({
 		db: database.db,
-		limiter: new FixedWindowRateLimiter({
-			perKey: 1,
-			global: 10,
-			windowMs: 60_000,
-		}),
+		consumeRateLimit,
 		now: () => now,
 	});
 

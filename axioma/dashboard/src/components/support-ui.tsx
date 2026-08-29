@@ -13,16 +13,18 @@ const connectionTone = {
 export function StatusBadge({
 	status,
 	label = status,
+	stateType,
 }: {
 	status: string;
 	label?: string;
+	stateType?: string;
 }) {
 	const normalized = status.toLowerCase();
 	return (
 		<span
 			className={cn(
 				"inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wider",
-				ticketStatusTone(normalized) ??
+				ticketStatusTone(stateType ?? normalized) ??
 					connectionTone[normalized as keyof typeof connectionTone] ??
 					connectionTone.offline,
 			)}

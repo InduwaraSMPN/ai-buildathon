@@ -1,5 +1,6 @@
 export * from "./agent";
 export * from "./api-keys";
+export * from "./api-rate-limits";
 export * from "./approvals";
 export * from "./assets";
 export * from "./auth";

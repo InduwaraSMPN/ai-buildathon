@@ -1,3 +1,4 @@
+import { customOpenAPIOperation } from "@orpc/openapi";
 import { implement, ORPCError } from "@orpc/server";
 
 import { appContract } from "@/contracts";
@@ -13,10 +14,28 @@ export const publicProcedure = {
 	listAuthProviders: os.listAuthProviders,
 };
 
-const requireAuth = os.middleware(async ({ context, next }) => {
-	if (!context.userId) throw new ORPCError("UNAUTHORIZED");
-	return next({ context: { ...context, userId: context.userId } });
-});
+const documentSecurity = <T extends object>(
+	middleware: T,
+	capabilities?: readonly Capability[],
+	capabilityMode?: "all" | "any",
+) =>
+	customOpenAPIOperation(middleware, (operation) => ({
+		...operation,
+		security: [{ bearerAuth: [] }],
+		...(capabilities
+			? {
+					"x-required-capabilities": capabilities,
+					"x-capability-mode": capabilityMode,
+				}
+			: {}),
+	}));
+
+const requireAuth = documentSecurity(
+	os.middleware(async ({ context, next }) => {
+		if (!context.userId) throw new ORPCError("UNAUTHORIZED");
+		return next({ context: { ...context, userId: context.userId } });
+	}),
+);
 
 export function assertCapabilities(
 	context: { capabilities: ReadonlySet<Capability> },
@@ -27,19 +46,27 @@ export function assertCapabilities(
 }
 
 export const requireCapability = (capability: Capability) =>
-	os.middleware(async ({ context, next }) => {
-		assertCapabilities(context, capability);
-		return next();
-	});
+	documentSecurity(
+		os.middleware(async ({ context, next }) => {
+			assertCapabilities(context, capability);
+			return next();
+		}),
+		[capability],
+		"all",
+	);
 
 const requireAnyCapability = (capabilities: readonly Capability[]) =>
-	os.middleware(async ({ context, next }) => {
-		if (
-			!capabilities.some((capability) => context.capabilities.has(capability))
-		)
-			throw new ORPCError("FORBIDDEN");
-		return next();
-	});
+	documentSecurity(
+		os.middleware(async ({ context, next }) => {
+			if (
+				!capabilities.some((capability) => context.capabilities.has(capability))
+			)
+				throw new ORPCError("FORBIDDEN");
+			return next();
+		}),
+		capabilities,
+		"any",
+	);
 
 const authenticatedProcedure = os.use(requireAuth);
 export const privateDataProcedure = {

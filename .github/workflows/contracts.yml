@@ -1,0 +1,40 @@
+name: contracts
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axioma
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: axioma/api/pnpm-lock.yaml
+      - run: pnpm --dir api install --frozen-lockfile
+      - run: pnpm --dir api contracts:check
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v6
+      - run: bash agent/scripts/generate-proto.sh
+      - run: uv run --directory agent pytest
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: axioma/cli/go.mod
+          cache-dependency-path: axioma/cli/go.sum
+      - run: pwsh cli/scripts/generate-proto.ps1
+      - run: git diff --exit-code -- cli/internal/pb
+      - run: go test ./...
+        working-directory: axioma/cli
+      - run: pnpm --dir api check-types
+      - run: pnpm --dir api test

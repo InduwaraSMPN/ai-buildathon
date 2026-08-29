@@ -59,6 +59,9 @@ const assetPreview = z.object({
 const assetImportInput = z.object({
 	profileId: z.string().trim().min(1),
 	identityColumns: z.array(z.string().trim().min(1)).min(1).max(10),
+	dynamicFieldColumns: z
+		.record(z.string().trim().min(1), z.string().trim().min(1))
+		.default({}),
 	csv: z.string().min(1),
 	fileName: z.string().trim().max(255).optional(),
 });

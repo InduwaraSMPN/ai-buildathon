@@ -5,7 +5,6 @@ import {
 	measureTokensPerTicket,
 	type RuleTicket,
 	routesToHuman,
-	settleTicketBeforeModel,
 	type TicketRule,
 } from ".";
 
@@ -42,7 +41,7 @@ test("fully classifies a matching ticket without model work", () => {
 				{ field: "title", operator: "contains", value: "vpn" },
 			],
 			actions: [
-				{ type: "set_category", value: "access" },
+				{ type: "set_service", value: "svc-access" },
 				{ type: "set_impact", value: "high" },
 				{ type: "set_urgency", value: "high" },
 				{ type: "set_record_type", value: "service_request" },
@@ -54,7 +53,7 @@ test("fully classifies a matching ticket without model work", () => {
 	]);
 
 	assert.deepEqual(result.patch, {
-		category: "access",
+		serviceId: "svc-access",
 		impact: "high",
 		urgency: "high",
 		recordType: "service_request",
@@ -77,7 +76,7 @@ test("returns partial settlement for Axel to complete", () => {
 	]);
 
 	assert.deepEqual(result.patch, { route: "identity" });
-	assert.equal(result.ticket.category, undefined);
+	assert.equal(result.ticket.serviceId, undefined);
 	assert.deepEqual(result.settledActions, ["set_route"]);
 });
 
@@ -119,55 +118,32 @@ test("later criteria see values settled by earlier rules", () => {
 		rule({
 			id: "classify",
 			position: 1,
-			actions: [{ type: "set_category", value: "access" }],
+			actions: [{ type: "set_service", value: "svc-access" }],
 		}),
 		rule({
 			id: "route",
 			position: 2,
-			criteria: [{ field: "category", operator: "equals", value: "access" }],
+			criteria: [
+				{ field: "serviceId", operator: "equals", value: "svc-access" },
+			],
 			actions: [{ type: "set_route", value: "identity" }],
 		}),
 	]);
-	assert.deepEqual(result.patch, { category: "access", route: "identity" });
+	assert.deepEqual(result.patch, {
+		serviceId: "svc-access",
+		route: "identity",
+	});
 });
 
-test("rules fire before model and partial settlement is model context", async () => {
-	const calls: Array<{ category: unknown; settled: readonly string[] }> = [];
-	const partial = await settleTicketBeforeModel(
-		ticket(),
-		[rule({ actions: [{ type: "set_category", value: "access" }] })],
-		async (context, settled) => {
-			calls.push({ category: context.category, settled });
-			return "model";
-		},
-	);
-	assert.equal(partial.modelResult, "model");
-	assert.deepEqual(calls, [{ category: "access", settled: ["set_category"] }]);
-
-	let called = false;
-	const complete = await settleTicketBeforeModel(
-		ticket(),
-		[
-			rule({
-				actions: [
-					{ type: "set_category", value: "access" },
-					{ type: "set_impact", value: "high" },
-					{ type: "set_urgency", value: "high" },
-					{ type: "set_record_type", value: "incident" },
-					{ type: "set_route", value: "identity" },
-					{ type: "route_human" },
-				],
-			}),
-		],
-		async () => {
-			called = true;
-			return "unexpected";
-		},
-	);
-	assert.equal(complete.modelResult, null);
-	assert.equal(called, false);
-	assert.equal(routesToHuman(complete.evaluation.firings), true);
-	assert.equal(routesToHuman(partial.evaluation.firings), false);
+test("detects whether applied rules route a ticket to a human", () => {
+	const routed = evaluateTicketRules(ticket(), [
+		rule({ actions: [{ type: "route_human" }] }),
+	]);
+	const automated = evaluateTicketRules(ticket(), [
+		rule({ actions: [{ type: "set_service", value: "svc-access" }] }),
+	]);
+	assert.equal(routesToHuman(routed.firings), true);
+	assert.equal(routesToHuman(automated.firings), false);
 });
 
 test("measures tokens per unique ticket including zero-run tickets", () => {

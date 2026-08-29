@@ -22,7 +22,6 @@ import { sweepPresence, sweepSla } from "./sla/sweep";
 import { resolveTicketStatus } from "./tickets";
 import { executeTool } from "./tools";
 import { readContextForTicket } from "./tools/cmdb";
-import { sweepWorkflowScheduledEmissions } from "./workflows/runtime";
 import { sweepWebhookDeliveries } from "./workflows/webhooks";
 
 type Message = Record<string, unknown>;
@@ -222,9 +221,8 @@ class Gateway {
 					.returning({ ticketId: agentRuns.ticketId })
 			)[0];
 			if (!run) return;
-			const nextStatus = activeTicket
-				? await resolveTicketStatus(activeTicket.status, "fail")
-				: "escalated";
+			if (!activeTicket) throw new Error(`ticket not found for run: ${runId}`);
+			const nextStatus = await resolveTicketStatus(activeTicket.status, "fail");
 			const ticket = (
 				await tx
 					.update(tickets)
@@ -232,7 +230,7 @@ class Gateway {
 					.where(
 						and(
 							eq(tickets.id, run.ticketId),
-							inArray(tickets.status, ["routing", "resolving"]),
+							eq(tickets.status, activeTicket.status),
 						),
 					)
 					.returning({ id: tickets.id })
@@ -242,17 +240,24 @@ class Gateway {
 				await tx.insert(ticketTransitions).values({
 					id: crypto.randomUUID(),
 					ticketId: run.ticketId,
-					fromStatus:
-						activeTicket?.status === "routing" ? "routing" : "resolving",
-					toStatus: "escalated",
+					fromStatus: activeTicket.status,
+					toStatus: nextStatus,
 					action: "fail",
 					actorType: "agent",
 					actorId: runId,
 				});
 			}
 		});
-		if (transitionedTicketId)
-			await transitionTicketStopwatches(transitionedTicketId, "escalated");
+		if (transitionedTicketId) {
+			const current = (
+				await db
+					.select({ status: tickets.status })
+					.from(tickets)
+					.where(eq(tickets.id, transitionedTicketId))
+			)[0];
+			if (current)
+				await transitionTicketStopwatches(transitionedTicketId, current.status);
+		}
 	}
 
 	async dispatchDeviceTool(
@@ -498,22 +503,39 @@ class Gateway {
 					throw new Error("device tool must target the ticket device");
 			}
 			const stepId = await this.resolveStepId(runId, request, toolName);
+			const currentTicket = (
+				await db
+					.select({ status: tickets.status })
+					.from(tickets)
+					.where(eq(tickets.id, run.ticketId))
+					.limit(1)
+			)[0];
+			if (!currentTicket) throw new Error(`ticket not found: ${run.ticketId}`);
+			const resolvingStatus = await resolveTicketStatus(
+				currentTicket.status,
+				"firstTool",
+			);
 			const beganResolving = await db
 				.update(tickets)
-				.set({ status: "resolving" })
-				.where(and(eq(tickets.id, run.ticketId), eq(tickets.status, "routing")))
+				.set({ status: resolvingStatus })
+				.where(
+					and(
+						eq(tickets.id, run.ticketId),
+						eq(tickets.status, currentTicket.status),
+					),
+				)
 				.returning({ id: tickets.id });
 			if (beganResolving[0]) {
 				await db.insert(ticketTransitions).values({
 					id: crypto.randomUUID(),
 					ticketId: run.ticketId,
-					fromStatus: "routing",
-					toStatus: "resolving",
+					fromStatus: currentTicket.status,
+					toStatus: resolvingStatus,
 					action: "firstTool",
 					actorType: "agent",
 					actorId: runId,
 				});
-				await transitionTicketStopwatches(run.ticketId, "resolving");
+				await transitionTicketStopwatches(run.ticketId, resolvingStatus);
 			}
 			const output = await executeTool(toolName, input, {
 				runId,
@@ -828,7 +850,14 @@ class Gateway {
 				.returning({ id: agentRuns.id });
 			if (run && finished[0]) {
 				const resolved = status === "resolved";
-				const toStatus = resolved ? "resolved" : "escalated";
+				const action =
+					status === "failed"
+						? "fail"
+						: status === "exhausted"
+							? "exhaust"
+							: resolved
+								? "resolve"
+								: "escalate";
 				const currentTicket = (
 					await db
 						.select({ status: tickets.status })
@@ -836,47 +865,40 @@ class Gateway {
 						.where(eq(tickets.id, run.ticketId))
 						.limit(1)
 				)[0];
-				const fromStatus =
-					currentTicket?.status === "routing" ||
-					currentTicket?.status === "resolving"
-						? currentTicket.status
-						: null;
-				const changed = fromStatus
-					? await db
-							.update(tickets)
-							.set({
-								status: toStatus,
-								resolution: String(update.outcome || "") || null,
-								resolutionCode: resolved
-									? (resolutionCode as (typeof RESOLUTION_CODES)[number])
-									: undefined,
-								resolvedAt: resolved ? new Date() : undefined,
-								progressMarker: resolved
-									? "verifying_fix"
-									: "handing_to_person",
-							})
-							.where(
-								and(
-									eq(tickets.id, run.ticketId),
-									eq(tickets.status, fromStatus),
-								),
-							)
-							.returning({ id: tickets.id })
-					: [];
-				if (changed[0]) {
+				const fromStatus = currentTicket?.status;
+				const toStatus = fromStatus
+					? await resolveTicketStatus(fromStatus, action)
+					: null;
+				const changed =
+					fromStatus && toStatus
+						? await db
+								.update(tickets)
+								.set({
+									status: toStatus,
+									resolution: String(update.outcome || "") || null,
+									resolutionCode: resolved
+										? (resolutionCode as (typeof RESOLUTION_CODES)[number])
+										: undefined,
+									resolvedAt: resolved ? new Date() : undefined,
+									progressMarker: resolved
+										? "verifying_fix"
+										: "handing_to_person",
+								})
+								.where(
+									and(
+										eq(tickets.id, run.ticketId),
+										eq(tickets.status, fromStatus),
+									),
+								)
+								.returning({ id: tickets.id })
+						: [];
+				if (changed[0] && fromStatus && toStatus) {
 					await db.insert(ticketTransitions).values({
 						id: crypto.randomUUID(),
 						ticketId: run.ticketId,
-						fromStatus: fromStatus ?? "resolving",
+						fromStatus,
 						toStatus,
-						action:
-							status === "failed"
-								? "fail"
-								: status === "exhausted"
-									? "exhaust"
-									: resolved
-										? "resolve"
-										: "escalate",
+						action,
 						actorType: "agent",
 						actorId: runId,
 					});
@@ -959,8 +981,9 @@ class Gateway {
 
 	private async reconcileOrphans() {
 		const orphanedRuns = await db
-			.select({ ticketId: agentRuns.ticketId })
+			.select({ ticketId: agentRuns.ticketId, status: tickets.status })
 			.from(agentRuns)
+			.innerJoin(tickets, eq(agentRuns.ticketId, tickets.id))
 			.where(eq(agentRuns.status, "running"));
 		await db
 			.update(deviceCommands)
@@ -978,23 +1001,22 @@ class Gateway {
 				endedAt: new Date(),
 			})
 			.where(eq(agentRuns.status, "running"));
-		if (orphanedRuns.length)
+		for (const orphan of orphanedRuns) {
+			const failedStatus = await resolveTicketStatus(orphan.status, "fail");
 			await db
 				.update(tickets)
 				.set({
-					status: "escalated",
+					status: failedStatus,
 					resolution: "gateway restarted during run",
 					progressMarker: "handing_to_person",
 				})
 				.where(
 					and(
-						inArray(
-							tickets.id,
-							orphanedRuns.map(({ ticketId }) => ticketId),
-						),
-						inArray(tickets.status, ["routing", "resolving"]),
+						eq(tickets.id, orphan.ticketId),
+						eq(tickets.status, orphan.status),
 					),
 				);
+		}
 	}
 
 	private async sweep() {
@@ -1004,7 +1026,6 @@ class Gateway {
 			sweepPending(new Date(now)),
 			sweepPresence(new Date(now)),
 			sweepWebhookDeliveries(db, 25, fetch, new Date(now)),
-			sweepWorkflowScheduledEmissions(25, new Date(now)),
 			reconcileCoreSearchDocuments(db, new Date(now - HEARTBEAT_MS * 2)),
 		]);
 		for (const { stream } of this.agents.values()) {

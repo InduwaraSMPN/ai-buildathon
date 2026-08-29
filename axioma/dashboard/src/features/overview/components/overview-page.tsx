@@ -105,7 +105,7 @@ export function OverviewPage() {
 								value={stats.awaitingConfirmation}
 								detail="Resolved tickets"
 								icon={CircleCheckBig}
-								search={{ status: ["resolved"] }}
+								search={{ resolvedAt: true }}
 							/>
 						) : null}
 						{key === "escalations" ? (
@@ -124,7 +124,7 @@ export function OverviewPage() {
 								value={formatPercent(stats.autonomousResolutionRate)}
 								detail={`${stats.autonomousResolutionNumerator} of ${stats.autonomousResolutionDenominator} closed`}
 								icon={Sparkles}
-								search={{ status: ["closed"], autonomous: true }}
+								search={{ resolvedAt: true, autonomous: true }}
 							/>
 						) : null}
 						{key === "median-ttr" ? (
@@ -141,6 +141,31 @@ export function OverviewPage() {
 			</div>
 
 			<div className="mt-4 grid gap-4 lg:grid-cols-2">
+				<ChartCard
+					title="Service-level attainment"
+					description="Completed targets"
+				>
+					<ul className="grid gap-2 text-sm">
+						{(["sla", "ola"] as const).flatMap((policy) =>
+							(["response", "resolution"] as const).map((target) => {
+								const value = stats.attainment[policy][target];
+								return (
+									<li
+										key={`${policy}:${target}`}
+										className="flex justify-between gap-4"
+									>
+										<span className="uppercase">
+											{policy} {target}
+										</span>
+										<span className="font-medium tabular-nums">
+											{formatPercent(value.rate)} · {value.met}/{value.total}
+										</span>
+									</li>
+								);
+							}),
+						)}
+					</ul>
+				</ChartCard>
 				<ChartCard
 					title="Resolution code mix"
 					description="All coded resolutions"
@@ -300,10 +325,7 @@ function PriorityStat({
 						<Link
 							key={priority}
 							to="/tickets"
-							search={{
-								status: ["open", "routing", "resolving", "escalated"],
-								priority: [priority],
-							}}
+							search={{ priority: [priority] }}
 							className={
 								priority === "P1"
 									? "text-destructive hover:underline"
@@ -314,9 +336,7 @@ function PriorityStat({
 						</Link>
 					))}
 				</CardTitle>
-				<CardDescription>
-					Open, routing, resolving, and escalated tickets
-				</CardDescription>
+				<CardDescription>Tickets currently being worked</CardDescription>
 				<CardAction>
 					<span className="grid size-8 place-items-center rounded-md border bg-background">
 						<TriangleAlert className="size-4 text-destructive" />
@@ -340,9 +360,8 @@ function Stat({
 	detail: string;
 	icon: typeof Clock3;
 	search:
-		| { status: ("resolved" | "closed")[]; autonomous?: boolean }
 		| { escalatedSince: Date }
-		| { resolvedAt: boolean };
+		| { resolvedAt: boolean; autonomous?: boolean };
 	alert?: boolean;
 }) {
 	return (

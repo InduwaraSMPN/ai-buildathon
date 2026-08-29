@@ -29,6 +29,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { env } from "@/env";
+import { uploadDocuments } from "@/features/documents/api";
 import { updateMyTicketMutationOptions } from "@/features/tickets/api/mutations";
 import { myTicketQueryOptions } from "@/features/tickets/api/queries";
 import {
@@ -37,12 +38,16 @@ import {
 } from "@/features/tickets/components/conversation-card";
 import { ProgressTimeline } from "@/features/tickets/components/progress-timeline";
 import { ResolutionCard } from "@/features/tickets/components/resolution-card";
-import { approvalStatusCopy, attachmentCopy } from "@/features/tickets/copy";
+import {
+	approvalStatusCopy,
+	attachmentCopy,
+	ticketDetailCopy,
+} from "@/features/tickets/copy";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/tickets/$ticketId")({
 	component: RouteComponent,
-	head: () => ({ meta: [{ title: "Request details · Axioma" }] }),
+	head: () => ({ meta: [{ title: ticketDetailCopy.pageTitle }] }),
 });
 
 function RouteComponent() {
@@ -71,17 +76,20 @@ function RouteComponent() {
 		...updateMyTicketMutationOptions(),
 		onSuccess: async (...args) => {
 			await updateMyTicketMutationOptions().onSuccess?.(...args);
-			toast.success("Request updated");
+			toast.success(ticketDetailCopy.updated);
 		},
-		onError: () =>
-			toast.error("We couldn’t update this request. Please try again."),
+		onError: () => toast.error(ticketDetailCopy.updateError),
 	});
 
 	if (ticket.isPending) {
 		return (
 			<PageShell>
 				<Skeleton className="mb-8 h-8 w-36 rounded-md" />
-				<div className="space-y-4" role="status" aria-label="Loading request">
+				<div
+					className="space-y-4"
+					role="status"
+					aria-label={ticketDetailCopy.loading}
+				>
 					<Skeleton className="h-32 w-full rounded-xl" />
 					<Skeleton className="h-64 w-full rounded-xl" />
 				</div>
@@ -103,14 +111,13 @@ function RouteComponent() {
 				<Card className="rounded-xl">
 					<Empty>
 						<EmptyHeader>
-							<EmptyTitle>Request not found</EmptyTitle>
+							<EmptyTitle>{ticketDetailCopy.notFound}</EmptyTitle>
 							<EmptyDescription>
-								This request may have been removed or may not belong to your
-								account.
+								{ticketDetailCopy.notFoundDescription}
 							</EmptyDescription>
 						</EmptyHeader>
 						<Link to="/home" className={buttonVariants()}>
-							Back to requests
+							{ticketDetailCopy.back}
 						</Link>
 					</Empty>
 				</Card>
@@ -119,15 +126,11 @@ function RouteComponent() {
 	}
 
 	const data = ticket.data;
-	const progress = getStatus(data.status);
+	const progress = getStatus(data.statusStateType);
 	const approvalCopy = approval.data
 		? approvalStatusCopy[approval.data.status]
 		: undefined;
-	const active =
-		data.status === "open" ||
-		data.status === "routing" ||
-		data.status === "resolving" ||
-		data.status === "pending";
+	const active = ["new", "open", "pending"].includes(data.statusStateType);
 
 	return (
 		<PageShell>
@@ -139,22 +142,25 @@ function RouteComponent() {
 					className: "mb-6 -ml-2",
 				})}
 			>
-				<ArrowLeft aria-hidden="true" /> Back to requests
+				<ArrowLeft aria-hidden="true" /> {ticketDetailCopy.back}
 			</Link>
 
 			<header className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
 				<div className="min-w-0 max-w-3xl">
 					<div className="mb-3 flex flex-wrap items-center gap-3">
-						<StatusBadge status={data.status} label={data.statusLabel} />
+						<StatusBadge
+							stateType={data.statusStateType}
+							label={data.statusLabel}
+						/>
 						<span className="text-muted-foreground text-xs">
-							Opened {formatDate(data.createdAt)}
+							{ticketDetailCopy.opened} {formatDate(data.createdAt)}
 						</span>
 					</div>
 					<h1 className="wrap-break-word font-semibold text-2xl tracking-tight sm:text-4xl">
 						{data.title}
 					</h1>
 					<p className="mt-3 font-mono text-muted-foreground text-sm">
-						Request {data.number ?? data.id}
+						{ticketDetailCopy.request} {data.number ?? data.id}
 					</p>
 				</div>
 				{active ? (
@@ -163,7 +169,7 @@ function RouteComponent() {
 						className="w-full sm:w-auto"
 						onClick={() => setDetailHelpOpen(true)}
 					>
-						<Plus aria-hidden="true" /> Add more detail
+						<Plus aria-hidden="true" /> {ticketDetailCopy.addDetail}
 					</Button>
 				) : null}
 			</header>
@@ -173,7 +179,7 @@ function RouteComponent() {
 					<Card className="rounded-xl">
 						<CardContent>
 							<ProgressTimeline
-								status={data.status}
+								stateType={data.statusStateType}
 								progressMarker={data.progressMarker}
 							/>
 						</CardContent>
@@ -181,7 +187,7 @@ function RouteComponent() {
 
 					<Card id="shared-details" className="rounded-xl">
 						<CardHeader className="border-b">
-							<CardTitle>What you shared</CardTitle>
+							<CardTitle>{ticketDetailCopy.shared}</CardTitle>
 						</CardHeader>
 						<CardContent>
 							<p className="whitespace-pre-wrap text-sm leading-7">
@@ -197,16 +203,16 @@ function RouteComponent() {
 						pending={updateTicket.isPending}
 						onAction={(input) => updateTicket.mutate(input)}
 					/>
-					{data.status === "closed" && data.csat ? (
+					{data.statusStateType === "closed" && data.csat ? (
 						<CsatCard csat={data.csat} />
 					) : null}
 				</div>
 
-				<aside className="space-y-4" aria-label="Request information">
+				<aside className="space-y-4" aria-label={ticketDetailCopy.information}>
 					{approvalCopy ? (
 						<Card className="rounded-xl">
 							<CardHeader className="border-b">
-								<CardTitle>Approval</CardTitle>
+								<CardTitle>{ticketDetailCopy.approval}</CardTitle>
 							</CardHeader>
 							<CardContent>
 								<p className="font-medium text-sm">{approvalCopy.label}</p>
@@ -218,7 +224,7 @@ function RouteComponent() {
 					) : null}
 					<Card className="rounded-xl">
 						<CardHeader className="border-b">
-							<CardTitle>Request information</CardTitle>
+							<CardTitle>{ticketDetailCopy.information}</CardTitle>
 						</CardHeader>
 						<CardContent className="space-y-5">
 							<div className="flex gap-3">
@@ -227,7 +233,9 @@ function RouteComponent() {
 									aria-hidden="true"
 								/>
 								<div>
-									<p className="text-muted-foreground text-xs">Status</p>
+									<p className="text-muted-foreground text-xs">
+										{ticketDetailCopy.status}
+									</p>
 									<p className="mt-1 font-medium text-sm">{progress.label}</p>
 								</div>
 							</div>
@@ -239,14 +247,18 @@ function RouteComponent() {
 									/>
 									<div>
 										<p className="text-muted-foreground text-xs">
-											Device attached
+											{ticketDetailCopy.deviceAttached}
 										</p>
-										<p className="mt-1 font-medium text-sm">Yes</p>
+										<p className="mt-1 font-medium text-sm">
+											{ticketDetailCopy.yes}
+										</p>
 									</div>
 								</div>
 							) : null}
 							<div>
-								<p className="text-muted-foreground text-xs">Last updated</p>
+								<p className="text-muted-foreground text-xs">
+									{ticketDetailCopy.lastUpdated}
+								</p>
 								<p className="mt-1 font-medium text-sm">
 									{formatDate(data.updatedAt)}
 								</p>
@@ -316,32 +328,12 @@ function RouteComponent() {
 										className="sr-only"
 										type="file"
 										multiple
-										onChange={async (event) => {
-											try {
-												for (const file of event.target.files ?? []) {
-													const body = new FormData();
-													body.set("file", file);
-													body.set("targetType", "ticket");
-													body.set("targetId", ticketId);
-													const response = await fetch(
-														new URL(
-															"api/documents",
-															`${env.VITE_SERVER_URL.replace(/\/$/, "")}/`,
-														),
-														{ method: "POST", body, credentials: "include" },
-													);
-													if (!response.ok)
-														throw new Error(await response.text());
-												}
-												await queryClient.invalidateQueries({
-													queryKey: orpc.listDocuments.key({
-														input: documentInput,
-													}),
+										onChange={(event) => {
+											if (event.target.files)
+												void uploadDocuments({
+													...documentInput,
+													files: event.target.files,
 												});
-												toast.success(attachmentCopy.uploaded);
-											} catch {
-												toast.error(attachmentCopy.uploadFailed);
-											}
 										}}
 									/>
 									{attachmentCopy.attachFiles}
@@ -355,13 +347,13 @@ function RouteComponent() {
 			<Dialog open={detailHelpOpen} onOpenChange={setDetailHelpOpen}>
 				<DialogContent>
 					<DialogHeader>
-						<DialogTitle>Add more detail</DialogTitle>
+						<DialogTitle>{ticketDetailCopy.addDetail}</DialogTitle>
 						<DialogDescription>
-							Share anything else that could help with this request.
+							{ticketDetailCopy.addDetailDescription}
 						</DialogDescription>
 					</DialogHeader>
 					<label htmlFor="detail-note" className="font-medium text-sm">
-						Additional detail
+						{ticketDetailCopy.additionalDetail}
 					</label>
 					<Textarea
 						id="detail-note"
@@ -369,7 +361,7 @@ function RouteComponent() {
 						maxLength={2_000}
 						value={detailNote}
 						onChange={(event) => setDetailNote(event.target.value)}
-						placeholder="Add a short note"
+						placeholder={ticketDetailCopy.notePlaceholder}
 						className="min-h-24 rounded-md text-sm"
 					/>
 					<DialogFooter>
@@ -391,7 +383,7 @@ function RouteComponent() {
 								)
 							}
 						>
-							Add detail
+							{ticketDetailCopy.addDetail}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

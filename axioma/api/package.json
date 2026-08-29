@@ -20,6 +20,7 @@
 		"db:stop": "docker compose stop",
 		"db:down": "docker compose down",
 		"contracts:publish": "node scripts/publish-contracts.mjs",
+		"contracts:check": "node scripts/publish-contracts.mjs --check",
 		"seed": "node scripts/seed-scenarios.mjs",
 		"seed:reset": "node scripts/seed-scenarios.mjs --reset",
 		"seed:device": "pwsh -File scripts/seed-device-fault.ps1"

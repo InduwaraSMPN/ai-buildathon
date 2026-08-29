@@ -22,12 +22,16 @@ import {
 } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getTicketStage, isFinishedTicket } from "@/features/tickets/copy";
+import {
+	getTicketStage,
+	homeCopy,
+	isFinishedTicket,
+} from "@/features/tickets/copy";
 import { orpc, queryClient } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/home")({
 	component: RouteComponent,
-	head: () => ({ meta: [{ title: "My requests · Axioma" }] }),
+	head: () => ({ meta: [{ title: homeCopy.pageTitle }] }),
 });
 
 function RouteComponent() {
@@ -48,16 +52,14 @@ function RouteComponent() {
 		onSubmit: ({ value }) => enroll.mutateAsync({ code: value.code.trim() }),
 		validators: {
 			onSubmit: ({ value }) =>
-				value.code.trim().length >= 4
-					? undefined
-					: "Enter the code shown on your computer.",
+				value.code.trim().length >= 4 ? undefined : homeCopy.codeError,
 		},
 	});
 	const activeTickets = items.filter(
-		(ticket) => !isFinishedTicket(ticket.status),
+		(ticket) => !isFinishedTicket(ticket.statusStateType),
 	);
 	const finishedTickets = items.filter((ticket) =>
-		isFinishedTicket(ticket.status),
+		isFinishedTicket(ticket.statusStateType),
 	);
 	const ticketCard = (ticket: (typeof items)[number]) => (
 		<Link
@@ -70,18 +72,21 @@ function RouteComponent() {
 				<CardContent className="flex items-center justify-between gap-4 py-1 sm:gap-5">
 					<div className="min-w-0">
 						<div className="mb-3 flex flex-wrap items-center gap-2 sm:gap-3">
-							<StatusBadge status={ticket.status} label={ticket.statusLabel} />
+							<StatusBadge
+								stateType={ticket.statusStateType}
+								label={ticket.statusLabel}
+							/>
 							<span className="font-medium text-muted-foreground text-xs">
-								Stage: {getTicketStage(ticket.status)}
+								{homeCopy.stage} {getTicketStage(ticket.statusStateType)}
 							</span>
-							{ticket.status === "resolved" ? (
+							{ticket.statusStateType === "resolved" ? (
 								<span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
 									<CircleCheck className="size-3.5" aria-hidden="true" />
-									<span>Resolution ready</span>
+									<span>{homeCopy.resolutionReady}</span>
 								</span>
 							) : null}
 							<span className="text-muted-foreground text-xs">
-								Updated {formatDate(ticket.updatedAt)}
+								{homeCopy.updated} {formatDate(ticket.updatedAt)}
 							</span>
 						</div>
 						<h3 className="truncate font-semibold text-base">{ticket.title}</h3>
@@ -104,21 +109,19 @@ function RouteComponent() {
 	return (
 		<PageShell>
 			<PageHeading
-				eyebrow="Employee support"
-				title={
-					firstName ? `Good to see you, ${firstName}` : "Your support requests"
-				}
-				description="Ask for help, see what’s happening, and return to your work with confidence."
+				eyebrow={homeCopy.eyebrow}
+				title={firstName ? homeCopy.welcome(firstName) : homeCopy.title}
+				description={homeCopy.description}
 				action={
 					<Link to="/tickets/new" className={buttonVariants({ size: "lg" })}>
-						<Plus aria-hidden="true" /> New request
+						<Plus aria-hidden="true" /> {homeCopy.newRequest}
 					</Link>
 				}
 			/>
 
 			<details className="mb-6 rounded-xl border bg-card">
 				<summary className="cursor-pointer rounded-xl px-4 py-3 font-medium outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring sm:px-6">
-					Connect a computer
+					{homeCopy.connectComputer}
 				</summary>
 				<form
 					className="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-end sm:p-6"
@@ -130,13 +133,13 @@ function RouteComponent() {
 					<enrollmentForm.Field name="code">
 						{(field) => (
 							<div className="min-w-0 flex-1 space-y-2">
-								<Label htmlFor="enrollment-code">Code shown by axel-cli</Label>
+								<Label htmlFor="enrollment-code">{homeCopy.codeLabel}</Label>
 								<Input
 									id="enrollment-code"
 									value={field.state.value}
 									onChange={(event) => field.handleChange(event.target.value)}
 									maxLength={64}
-									placeholder="ABCDEF-1234"
+									placeholder={homeCopy.codePlaceholder}
 								/>
 								{field.state.meta.errors.length ? (
 									<p className="text-destructive text-sm" role="alert">
@@ -147,26 +150,27 @@ function RouteComponent() {
 						)}
 					</enrollmentForm.Field>
 					<Button type="submit" disabled={enroll.isPending}>
-						{enroll.isPending ? "Connecting…" : "Connect computer"}
+						{enroll.isPending ? homeCopy.connecting : homeCopy.connectComputer}
 					</Button>
 				</form>
 				{enroll.isError ? (
 					<p className="px-4 pb-4 text-destructive text-sm" role="alert">
-						We couldn’t use that code. Check it and try again.
+						{homeCopy.connectError}
 					</p>
 				) : null}
 				{enroll.isSuccess ? (
 					<p className="px-4 pb-4 text-sm" role="status">
-						Computer connected.
+						{homeCopy.connected}
 					</p>
 				) : null}
 			</details>
 
 			<div className="mb-4 flex items-center justify-between">
-				<h2 className="font-semibold text-lg">Your requests</h2>
+				<h2 className="font-semibold text-lg">{homeCopy.requests}</h2>
 				{items.length ? (
 					<p className="text-muted-foreground text-sm">
-						{items.length} {items.length === 1 ? "request" : "requests"}
+						{items.length}{" "}
+						{items.length === 1 ? homeCopy.request : homeCopy.requestsPlural}
 					</p>
 				) : null}
 			</div>
@@ -180,15 +184,12 @@ function RouteComponent() {
 							<EmptyMedia variant="icon">
 								<Inbox aria-hidden="true" />
 							</EmptyMedia>
-							<EmptyTitle>No requests yet</EmptyTitle>
-							<EmptyDescription>
-								When something gets in the way of your work, start here. We’ll
-								keep every update in one place.
-							</EmptyDescription>
+							<EmptyTitle>{homeCopy.emptyTitle}</EmptyTitle>
+							<EmptyDescription>{homeCopy.emptyDescription}</EmptyDescription>
 						</EmptyHeader>
 						<EmptyContent>
 							<Link to="/tickets/new" className={buttonVariants()}>
-								Create your first request
+								{homeCopy.createFirst}
 							</Link>
 						</EmptyContent>
 					</Empty>
@@ -197,7 +198,7 @@ function RouteComponent() {
 			{activeTickets?.length ? (
 				<section aria-labelledby="active-requests-heading">
 					<h3 id="active-requests-heading" className="sr-only">
-						Active requests
+						{homeCopy.active}
 					</h3>
 					<div className="grid gap-4">{activeTickets.map(ticketCard)}</div>
 				</section>
@@ -205,7 +206,7 @@ function RouteComponent() {
 			{finishedTickets?.length ? (
 				<details className="group/finished mt-6 rounded-xl border bg-card">
 					<summary className="cursor-pointer rounded-xl px-4 py-4 font-semibold outline-none marker:text-muted-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring sm:px-6">
-						Finished requests ({finishedTickets.length})
+						{homeCopy.finished} ({finishedTickets.length})
 					</summary>
 					<div className="grid gap-4 border-t p-4 sm:p-6">
 						{finishedTickets.map(ticketCard)}

@@ -1,19 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { ORPCError } from "@orpc/server";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { db } from "@/db";
-import { documentLinks, documents, ticketMessages, tickets } from "@/db/schema";
+import { documentLinks, documents } from "@/db/schema";
 import { type Context, createContext } from "../context";
 import {
-	canReadCaseNote,
 	canReadDocument,
 	type DocumentTarget,
 	type DocumentViewer,
 	prepareFileDocument,
 } from ".";
+import { canReadTarget, requireDocumentWriteTarget } from "./access";
 import { FileBlobStore, MAX_DOCUMENT_BYTES } from "./storage";
 
 const storage = new FileBlobStore(
@@ -24,69 +24,6 @@ const viewer = (context: Context): DocumentViewer => ({
 	userId: context.userId as string,
 	role: context.capabilities.has("ticket.read.all") ? "analyst" : "reporter",
 });
-
-async function canReadTarget(target: DocumentTarget, subject: DocumentViewer) {
-	if (target.targetType === "ticket") {
-		const [ticket] = await db
-			.select({ reporterId: tickets.reporterId })
-			.from(tickets)
-			.where(eq(tickets.id, target.targetId))
-			.limit(1);
-		return Boolean(
-			ticket &&
-				(subject.role === "analyst" || ticket.reporterId === subject.userId),
-		);
-	}
-	const [note] = await db
-		.select({
-			reporterId: tickets.reporterId,
-			visibility: ticketMessages.visibility,
-		})
-		.from(ticketMessages)
-		.innerJoin(tickets, eq(ticketMessages.ticketId, tickets.id))
-		.where(eq(ticketMessages.id, target.targetId))
-		.limit(1);
-	return Boolean(
-		note &&
-			canReadCaseNote(subject, {
-				reporterId: note.reporterId,
-				private: note.visibility === "private",
-			}),
-	);
-}
-
-export async function requireDocumentTarget(
-	target: DocumentTarget,
-	subject: DocumentViewer,
-) {
-	if (!(await canReadTarget(target, subject))) throw new ORPCError("NOT_FOUND");
-}
-
-export async function listVisibleDocuments(
-	target: DocumentTarget,
-	subject: DocumentViewer,
-) {
-	await requireDocumentTarget(target, subject);
-	return db
-		.select({ document: documents })
-		.from(documentLinks)
-		.innerJoin(documents, eq(documentLinks.documentId, documents.id))
-		.where(
-			and(
-				eq(documentLinks.targetType, target.targetType),
-				eq(documentLinks.targetId, target.targetId),
-			),
-		);
-}
-
-export async function requireDocumentWriteTarget(
-	target: DocumentTarget,
-	subject: DocumentViewer,
-) {
-	if (target.targetType === "case_note" && subject.role !== "analyst")
-		throw new ORPCError("NOT_FOUND");
-	await requireDocumentTarget(target, subject);
-}
 
 async function uploadDocument(
 	target: DocumentTarget,

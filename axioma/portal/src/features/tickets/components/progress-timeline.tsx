@@ -4,29 +4,28 @@ import {
 	activeStatusCopy,
 	getProgressMarkerCopy,
 	ticketStages,
+	timelineCopy,
 } from "@/features/tickets/copy";
 import { cn } from "@/lib/utils";
 
 const stageIndex: Record<string, number> = {
-	open: 0,
-	routing: 1,
-	resolving: 2,
-	pending: 2,
-	resolved: 3,
-	closed: 3,
+	new: 0,
+	open: 1,
+	pending: 1,
+	resolved: 2,
+	closed: 2,
 };
 
 export function ProgressTimeline({
-	status,
+	stateType,
 	progressMarker,
 }: {
-	status: string;
+	stateType: string;
 	progressMarker: string | null;
 }) {
-	const escalated = status === "escalated";
-	const current = stageIndex[status] ?? (escalated ? 2 : 0);
+	const current = stageIndex[stateType] ?? 0;
 	const marker = getProgressMarkerCopy(progressMarker);
-	const detail = activeStatusCopy[status];
+	const detail = activeStatusCopy[stateType];
 
 	return (
 		<section
@@ -38,11 +37,11 @@ export function ProgressTimeline({
 				id="request-progress-heading"
 				className="mb-4 font-semibold text-base"
 			>
-				Request progress
+				{timelineCopy.heading}
 			</h2>
 			<ol className="grid grid-cols-1 gap-0 sm:grid-cols-4">
 				{ticketStages.map((stage, index) => {
-					const complete = index < current || (current === 3 && index === 3);
+					const complete = index < current || (current === 2 && index === 2);
 					const active = index === current && !complete;
 					return (
 						<li
@@ -72,7 +71,11 @@ export function ProgressTimeline({
 									<Circle className="size-3" aria-hidden="true" />
 								)}
 								<span className="sr-only">
-									{complete ? "Complete" : active ? "Current" : "Pending"}
+									{complete
+										? timelineCopy.complete
+										: active
+											? timelineCopy.current
+											: timelineCopy.upcoming}
 								</span>
 							</span>
 							<p className="pt-1 font-medium text-sm sm:mt-2 sm:pt-0 sm:pr-3">

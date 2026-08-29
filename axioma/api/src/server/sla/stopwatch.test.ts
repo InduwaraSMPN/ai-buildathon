@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { elapsedWorkingMs, type WorkingCalendar } from "./calendar";
 import {
 	createStopwatch,
 	pauseStopwatch,
@@ -30,6 +31,36 @@ test("stopwatch accumulates running and pending working time independently", () 
 	assert.equal(
 		transitionStopwatch(resumed, true, at(30), 2 * 60_000).accumulatedMs,
 		12 * 60_000,
+	);
+});
+
+test("transitionStopwatch closed period", async () => {
+	const calendar: WorkingCalendar = {
+		timezone: "America/New_York",
+		hours: [1, 2, 3, 4, 5].map((weekday) => ({
+			weekday,
+			startTime: "09:00:00",
+			endTime: "17:00:00",
+		})),
+		holidays: [],
+	};
+	const friday = new Date("2026-08-28T20:30:00.000Z");
+	const monday = new Date("2026-08-31T13:30:00.000Z");
+	const elapsedMs = await elapsedWorkingMs(
+		friday,
+		monday,
+		"test",
+		async () => calendar,
+	);
+
+	assert.deepEqual(
+		transitionStopwatch(createStopwatch(friday), false, monday, elapsedMs),
+		{
+			accumulatedMs: 60 * 60_000,
+			pendingMs: 0,
+			running: false,
+			startedAt: monday,
+		},
 	);
 });
 

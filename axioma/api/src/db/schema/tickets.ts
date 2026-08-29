@@ -10,7 +10,6 @@ import {
 } from "drizzle-orm/pg-core";
 
 import {
-	CATEGORY_NAMES,
 	IMPACT_LEVELS,
 	PRIORITIES,
 	PROGRESS_MARKERS,
@@ -60,10 +59,6 @@ export const tickets = pgTable(
 		serviceSubcategoryId: text("service_subcategory_id")
 			.notNull()
 			.default("ss-general"),
-		// Compatibility-only until all existing rows are backfilled by the Tier 2 migration.
-		category: text("category", { enum: CATEGORY_NAMES }),
-		subcategory: text("subcategory"),
-
 		status: text("status")
 			.notNull()
 			.default("open")

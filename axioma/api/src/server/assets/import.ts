@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	assetHistory,
@@ -8,12 +8,24 @@ import {
 	assetImportRuns,
 	assets,
 } from "@/db/schema/assets";
+import {
+	type DynamicFieldType,
+	dynamicFields,
+	dynamicFieldValues,
+} from "@/db/schema/dynamic-fields";
+import { validateFieldValue } from "../dynamic-fields";
 import { indexAsset } from "../search/projections";
-import { type CsvRow, previewAssetCsv } from "./csv";
+import {
+	type AssetImportCandidate,
+	type AssetImportRejection,
+	type CsvRow,
+	previewAssetCsv,
+} from "./csv";
 
 export type AssetImportInput = {
 	profileId: string;
 	identityColumns: readonly string[];
+	dynamicFieldColumns?: Readonly<Record<string, string>>;
 	csv: string;
 	fileName?: string;
 };
@@ -25,6 +37,48 @@ export type AssetImportResult = {
 	rejected: number;
 };
 
+export type AssetImportOperation =
+	| { kind: "insert"; identityKey: string; rowNumber: number; values: CsvRow }
+	| {
+			kind: "update";
+			assetId: string;
+			identityKey: string;
+			rowNumber: number;
+			values: CsvRow;
+	  };
+
+export function planAssetUpserts(
+	candidates: readonly AssetImportCandidate[],
+	existingAssets: ReadonlyMap<string, string>,
+): { operations: AssetImportOperation[]; rejected: AssetImportRejection[] } {
+	const operations: AssetImportOperation[] = [];
+	const rejected: AssetImportRejection[] = [];
+	const seen = new Set<string>();
+
+	for (const candidate of candidates) {
+		let reason: string | undefined;
+		if (!candidate.values.name) reason = "Missing required value: name";
+		else if (seen.has(candidate.identityKey))
+			reason = "Duplicate identity in CSV";
+		if (reason) {
+			rejected.push({
+				rowNumber: candidate.rowNumber,
+				reason,
+				row: candidate.values,
+			});
+			continue;
+		}
+		seen.add(candidate.identityKey);
+		const assetId = existingAssets.get(candidate.identityKey);
+		operations.push(
+			assetId
+				? { kind: "update", assetId, ...candidate }
+				: { kind: "insert", ...candidate },
+		);
+	}
+	return { operations, rejected };
+}
+
 export function assetValues(row: CsvRow) {
 	return {
 		name: row.name ?? "",
@@ -33,6 +87,25 @@ export function assetValues(row: CsvRow) {
 		attributes: row,
 		updatedAt: new Date(),
 	};
+}
+
+export function parseImportedDynamicValue(
+	type: DynamicFieldType,
+	value: string,
+) {
+	if (type === "integer") {
+		const parsed = Number(value);
+		if (!Number.isSafeInteger(parsed)) throw new TypeError("Invalid integer");
+		return parsed;
+	}
+	if (type === "checkbox") {
+		if (value === "true") return true;
+		if (value === "false") return false;
+		throw new TypeError("Invalid checkbox; expected true or false");
+	}
+	if (type === "multiselect")
+		throw new TypeError("CSV multiselect encoding is not supported");
+	return value;
 }
 
 /** Preview is deliberately pure: importing is the only path that receives a database. */
@@ -44,55 +117,79 @@ export async function importAssetsCsv(
 	input: AssetImportInput,
 ): Promise<AssetImportResult> {
 	const preview = previewAssetImport(input);
+	const mappings = Object.entries(input.dynamicFieldColumns ?? {});
+	if (new Set(mappings.map(([, key]) => key)).size !== mappings.length)
+		throw new TypeError(
+			"Each dynamic field may be mapped from only one CSV column",
+		);
+	for (const [column] of mappings)
+		if (!preview.headers.includes(column))
+			throw new TypeError(`Mapped CSV column ${column} was not found`);
 	const runId = crypto.randomUUID();
 	let inserted = 0;
 	let updated = 0;
-	const rejected = [...preview.rejected];
-	const seen = new Set<string>();
-
-	for (const candidate of preview.accepted) {
-		if (!candidate.values.name) {
-			rejected.push({
-				rowNumber: candidate.rowNumber,
-				reason: "Missing required value: name",
-				row: candidate.values,
-			});
-			continue;
-		}
-		if (seen.has(candidate.identityKey)) {
-			rejected.push({
-				rowNumber: candidate.rowNumber,
-				reason: "Duplicate identity in CSV",
-				row: candidate.values,
-			});
-			continue;
-		}
-		seen.add(candidate.identityKey);
-	}
-	const rejectedRows = new Set(rejected.map((entry) => entry.rowNumber));
-	const accepted = preview.accepted.filter(
-		(candidate) => !rejectedRows.has(candidate.rowNumber),
-	);
+	let rejectedCount = 0;
 
 	const changedAssetIds: string[] = [];
 	await db.transaction(async (tx) => {
+		const definitions = mappings.length
+			? await tx
+					.select()
+					.from(dynamicFields)
+					.where(
+						and(
+							eq(dynamicFields.objectType, "asset"),
+							eq(dynamicFields.isActive, true),
+							inArray(
+								dynamicFields.key,
+								mappings.map(([, key]) => key),
+							),
+						),
+					)
+			: [];
+		const definitionsByKey = new Map(
+			definitions.map((item) => [item.key, item]),
+		);
+		for (const [, key] of mappings)
+			if (!definitionsByKey.has(key))
+				throw new TypeError(`Unknown or inactive asset dynamic field ${key}`);
+
 		await tx
 			.insert(assetImportProfiles)
 			.values({
 				id: input.profileId,
 				name: input.profileId,
 				identityColumns: [...input.identityColumns],
+				dynamicFieldColumns: input.dynamicFieldColumns ?? {},
 			})
 			.onConflictDoUpdate({
 				target: assetImportProfiles.id,
-				set: { identityColumns: [...input.identityColumns] },
+				set: {
+					identityColumns: [...input.identityColumns],
+					dynamicFieldColumns: input.dynamicFieldColumns ?? {},
+				},
 			});
+		const identities = await tx
+			.select({
+				identityKey: assetImportIdentities.identityKey,
+				assetId: assetImportIdentities.assetId,
+			})
+			.from(assetImportIdentities)
+			.where(eq(assetImportIdentities.profileId, input.profileId));
+		const plan = planAssetUpserts(
+			preview.accepted,
+			new Map(
+				identities.map(({ identityKey, assetId }) => [identityKey, assetId]),
+			),
+		);
+		const rejected = [...preview.rejected, ...plan.rejected];
+		rejectedCount = rejected.length;
 		await tx.insert(assetImportRuns).values({
 			id: runId,
 			profileId: input.profileId,
 			fileName: input.fileName,
 			totalRows: preview.accepted.length + preview.rejected.length,
-			acceptedRows: accepted.length,
+			acceptedRows: plan.operations.length,
 			rejectedRows: rejected.length,
 		});
 		if (rejected.length > 0)
@@ -104,26 +201,21 @@ export async function importAssetsCsv(
 				})),
 			);
 
-		for (const candidate of accepted) {
-			const [identity] = await tx
-				.select({ assetId: assetImportIdentities.assetId })
-				.from(assetImportIdentities)
-				.where(
-					and(
-						eq(assetImportIdentities.profileId, input.profileId),
-						eq(assetImportIdentities.identityKey, candidate.identityKey),
-					),
-				);
-			const assetId = identity?.assetId;
-			const values = assetValues(candidate.values);
-			if (assetId) {
-				await tx.update(assets).set(values).where(eq(assets.id, assetId));
+		for (const operation of plan.operations) {
+			const values = assetValues(operation.values);
+			let assetId: string;
+			if (operation.kind === "update") {
+				await tx
+					.update(assets)
+					.set(values)
+					.where(eq(assets.id, operation.assetId));
 				await tx.insert(assetHistory).values({
 					id: crypto.randomUUID(),
-					assetId,
+					assetId: operation.assetId,
 					action: "csv_update",
-					changes: candidate.values,
+					changes: operation.values,
 				});
+				assetId = operation.assetId;
 				changedAssetIds.push(assetId);
 				updated += 1;
 			} else {
@@ -132,20 +224,38 @@ export async function importAssetsCsv(
 				await tx.insert(assetImportIdentities).values({
 					id: crypto.randomUUID(),
 					profileId: input.profileId,
-					identityKey: candidate.identityKey,
+					identityKey: operation.identityKey,
 					assetId: newAssetId,
 				});
 				await tx.insert(assetHistory).values({
 					id: crypto.randomUUID(),
 					assetId: newAssetId,
 					action: "csv_create",
-					changes: candidate.values,
+					changes: operation.values,
 				});
-				changedAssetIds.push(newAssetId);
+				assetId = newAssetId;
+				changedAssetIds.push(assetId);
 				inserted += 1;
+			}
+			for (const [column, key] of mappings) {
+				const definition = definitionsByKey.get(key);
+				if (!definition)
+					throw new TypeError(`Unknown asset dynamic field ${key}`);
+				const value = parseImportedDynamicValue(
+					definition.fieldType,
+					operation.values[column] ?? "",
+				);
+				validateFieldValue(definition, value);
+				await tx
+					.insert(dynamicFieldValues)
+					.values({ fieldId: definition.id, objectId: assetId, value })
+					.onConflictDoUpdate({
+						target: [dynamicFieldValues.fieldId, dynamicFieldValues.objectId],
+						set: { value },
+					});
 			}
 		}
 	});
 	await Promise.all(changedAssetIds.map((id) => indexAsset(db, id)));
-	return { runId, inserted, updated, rejected: rejected.length };
+	return { runId, inserted, updated, rejected: rejectedCount };
 }

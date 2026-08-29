@@ -16,12 +16,12 @@ everything, and an API other systems can call.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
-> the running API. **2 of 7 milestones complete** — T3.A and T3.G. The data model is the best-made layer in the programme, but the tier's own thesis is unwired: rules run before the model in ordering yet never stop it, and the shared action vocabulary was never extracted.
+> The 2026-08-29 close-out audit found **2 of 7 milestones complete** under the tier's strict definitions.
+> Rules can now stop model dispatch, action handling is explicit, CMDB impact data is seeded, settlement is
+> measurable and API keys are database-limited, but five broader milestones remain partial.
 >
-> The remaining work is in [../execution/chat-d-tier3.md](../execution/chat-d-tier3.md), with the confirmed
-> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
-> against and is still current.
+> Section 7 remains the definition of done; [../execution/chat-d-tier3.md](../execution/chat-d-tier3.md)
+> is retained as execution history.
 
 ## 1. Current state
 

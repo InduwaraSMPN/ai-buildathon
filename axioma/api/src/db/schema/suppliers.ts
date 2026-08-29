@@ -5,8 +5,6 @@ import {
 	date,
 	index,
 	integer,
-	jsonb,
-	numeric,
 	pgTable,
 	text,
 	timestamp,
@@ -85,33 +83,4 @@ export const contractCoverageWindows = pgTable(
 	],
 );
 
-export const contractTerms = pgTable(
-	"contract_terms",
-	{
-		id: text("id").primaryKey(),
-		contractId: text("contract_id")
-			.notNull()
-			.references(() => contracts.id, { onDelete: "cascade" }),
-		name: text("name").notNull(),
-		value: jsonb("value").notNull(),
-	},
-	(t) => [index("contract_terms_contract_idx").on(t.contractId)],
-);
-
-export const paymentSchedules = pgTable(
-	"payment_schedules",
-	{
-		id: text("id").primaryKey(),
-		contractId: text("contract_id")
-			.notNull()
-			.references(() => contracts.id, { onDelete: "cascade" }),
-		dueOn: date("due_on", { mode: "string" }).notNull(),
-		amount: numeric("amount", { precision: 14, scale: 2 }).notNull(),
-		currency: text("currency").notNull(),
-		paidAt: timestamp("paid_at"),
-	},
-	(t) => [
-		index("payment_schedules_contract_due_idx").on(t.contractId, t.dueOn),
-		check("payment_schedules_amount_nonnegative", sql`${t.amount} >= 0`),
-	],
-);
+// contract_terms and payment_schedules had no application path; 0037 drops them until contract detail needs them.

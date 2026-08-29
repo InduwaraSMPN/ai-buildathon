@@ -4,9 +4,9 @@ export const myTicketQueryOptions = (id: string) =>
 	orpc.getMyTicket.queryOptions({
 		input: { id },
 		refetchInterval: (query) =>
-			query.state.data?.status === "routing" ||
-			query.state.data?.status === "resolving" ||
-			query.state.data?.status === "pending"
+			["new", "open", "pending"].includes(
+				query.state.data?.statusStateType ?? "",
+			)
 				? 5_000
 				: false,
 		refetchIntervalInBackground: false,

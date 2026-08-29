@@ -39,6 +39,9 @@ const mailboxActivity = z.object({
 });
 
 export const mailContract = {
+	listTicketOrigins: oc.output(
+		z.array(z.object({ id: z.string(), key: z.string(), name: z.string() })),
+	),
 	listMailboxes: oc.output(z.array(mailbox)),
 	upsertMailbox: oc
 		.input(

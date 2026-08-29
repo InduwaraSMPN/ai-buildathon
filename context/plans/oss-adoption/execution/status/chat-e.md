@@ -13,10 +13,17 @@ Branch: main
 
 ## E5 choice
 - `dashboard_widgets` is kept and wired; its existing arrangement read/write path is used by overview.
-- `sso_identities`, `status_incident_updates`, `asset_types`, `asset_locations`, `contract_terms`, and `payment_schedules` are deferred rather than given fake CRUD surfaces. They remain schema-only for a later focused feature, because dropping applied tables would destroy planned extension points without reducing current application behavior.
+- `sso_identities` duplicated Better Auth account linkage, so it is dropped forward-only.
+- `status_incident_updates`, `contract_terms`, and `payment_schedules` had no application path, so they are dropped forward-only until their owning features need them.
+- Empty `asset_types` and `asset_locations`, plus their unused nullable asset columns, are dropped forward-only; dynamic fields already provide declared asset metadata.
+- These choices are recorded beside the removed declarations in schema source and in migration `0037_phase6_brief_e_remainder.sql`.
+
+## E7 choice
+- `assets.attributes` retains every normalized CSV source column as raw-row provenance (not byte-for-byte CSV).
+- Import profiles may map declared CSV headers to active asset dynamic-field keys. Integer and checkbox values are converted; string-shaped field types remain strings. Multiselect import is rejected until an encoding is specified.
+- The configured database had zero assets, asset import profiles/runs, and active asset dynamic fields, so there was no live sample payload to preserve beyond the existing normalized-row contract.
 
 ## Handed off / blockers
-- E2 dashboard mailbox CRUD UI and origin dropdown remain to be completed if full CRUD hand-verification is required; API procedures are present. This is the only incomplete required surface.
+- E2 mailbox CRUD and the origin picker are implemented in the dashboard using existing mailbox procedures and `listTicketOrigins`.
 - Optional Darwin/Linux inventory collectors were not added; current unsupported-platform fallback remains intentional.
-- E7 raw import provenance vs Tier 3 dynamic-field mapping was not changed because the plan explicitly reserves that decision for the user and the dynamic-fields owner.
 - Full API/dashboard gates remain blocked by pre-existing unrelated failures; changed-scope typechecks pass. Full gate output is reported by the orchestrator.

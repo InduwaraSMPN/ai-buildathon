@@ -10,7 +10,7 @@ import {
 	timestamp,
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { RuleAction, RuleCriterion, RuleFiring } from "@/server/rules";
+import type { RuleAction, RuleCriterion, RuleFiring } from "@/domain/rules";
 import { tickets } from "./tickets";
 
 /** Ordered ticket-create rules. Criteria are ANDed; action conflicts use first-match-wins. */

@@ -4,7 +4,7 @@ import type { ContractRouterClient } from "@orpc/contract";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
 import { QueryClient } from "@tanstack/react-query";
 import { env } from "@/env";
-import type { AppContract } from "@/sdk/contracts";
+import type { PortalContract } from "@/sdk/contracts";
 
 export function createQueryClient() {
 	return new QueryClient();
@@ -57,6 +57,7 @@ export const link = new RPCLink({
 	},
 });
 
-export const client: ContractRouterClient<AppContract> = createORPCClient(link);
+export const client: ContractRouterClient<PortalContract> =
+	createORPCClient(link);
 
 export const orpc = createTanstackQueryUtils(client);

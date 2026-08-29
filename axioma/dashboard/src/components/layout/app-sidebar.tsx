@@ -44,6 +44,7 @@ export const navigation = [
 	{ to: "/calendar", label: "Scheduled work", icon: CalendarDays },
 	{ to: "/suppliers", label: "Suppliers & contracts", icon: Store },
 	{ to: "/mail-log", label: "Mail send log", icon: Mail },
+	{ to: "/mailboxes", label: "Mailboxes", icon: Mail },
 	{ to: "/mail-templates", label: "Mail templates", icon: Mail },
 	{ to: "/overview-widgets", label: "Overview widgets", icon: LayoutDashboard },
 	{ to: "/ticket-rules", label: "Ticket rules", icon: ListChecks },
@@ -87,6 +88,7 @@ export function AppSidebar() {
 									!(
 										to === "/ticket-rules" ||
 										to === "/workflows" ||
+										to === "/mailboxes" ||
 										to === "/mail-templates"
 									) || capabilities.includes("admin.settings"),
 							)

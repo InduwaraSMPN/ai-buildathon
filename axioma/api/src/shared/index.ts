@@ -88,16 +88,6 @@ export type Urgency = (typeof URGENCY_LEVELS)[number];
 export const PRIORITIES = ["P1", "P2", "P3", "P4"] as const;
 export type Priority = (typeof PRIORITIES)[number];
 
-// Keep these values in sync with `src/contracts/index.ts`; contracts cannot import this module.
-export const CATEGORY_NAMES = ["infrastructure", "device", "access"] as const;
-export const CATEGORIES = {
-	infrastructure: ["deployment"],
-	device: ["network"],
-	access: ["account"],
-} as const;
-export type Category = (typeof CATEGORY_NAMES)[number];
-export type Subcategory = (typeof CATEGORIES)[Category][number];
-
 export const PROGRESS_MARKERS = [
 	"gathering_evidence",
 	"checking_device",

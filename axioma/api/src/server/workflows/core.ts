@@ -7,12 +7,21 @@ import {
 	isAction,
 } from "../automation/actions";
 
-export type { Action, ActionType };
 export { ACTION_TYPES };
-export type WorkflowAction = Action;
+export type WorkflowAction = Extract<
+	Action,
+	{ type: "send_webhook" | "send_notification" }
+>;
+export const WORKFLOW_ACTION_TYPES = [
+	"send_webhook",
+	"send_notification",
+] as const satisfies readonly ActionType[];
 
 export function isWorkflowAction(value: unknown): value is WorkflowAction {
-	return isAction(value);
+	return (
+		isAction(value) &&
+		(WORKFLOW_ACTION_TYPES as readonly string[]).includes(value.type)
+	);
 }
 
 export function assertWorkflowActions(

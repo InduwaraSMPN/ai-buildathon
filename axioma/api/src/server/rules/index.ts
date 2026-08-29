@@ -1,53 +1,21 @@
-import type {
-	Category,
-	Impact,
-	RecordType,
-	TicketRoute,
-	Urgency,
-} from "@/shared";
-import type {
-	Action,
-	ActionType as SharedActionType,
+import {
+	RULE_FIELDS,
+	type RuleAction,
+	type RuleCriterion,
+	type RuleFiring,
+} from "@/domain/rules";
+import type { Impact, RecordType, TicketRoute, Urgency } from "@/shared";
+import {
+	ACTION_TYPES,
+	type Action,
+	type ActionType as SharedActionType,
 } from "../automation/actions";
-import { ACTION_TYPES } from "../automation/actions";
 
-export const RULE_FIELDS = [
-	"serviceId",
-	"category",
-	"requesterId",
-	"requesterDepartment",
-	"recordType",
-	"origin",
-	"title",
-	"body",
-] as const;
-export type RuleField = (typeof RULE_FIELDS)[number];
-
-export type RuleCriterion =
-	| {
-			field: Exclude<RuleField, "title" | "body">;
-			operator: "equals" | "in";
-			value: string | string[];
-	  }
-	| { field: "title" | "body"; operator: "contains" | "equals"; value: string };
-
-export type RuleAction = Extract<
-	Action,
-	{
-		type:
-			| "set_category"
-			| "set_impact"
-			| "set_urgency"
-			| "set_record_type"
-			| "set_route"
-			| "set_team"
-			| "set_assignee"
-			| "route_human";
-	}
->;
+export type { RuleAction, RuleCriterion, RuleFiring };
+export { ACTION_TYPES, RULE_FIELDS };
 
 export const RULE_ACTION_TYPES = [
-	"set_category",
+	"set_service",
 	"set_impact",
 	"set_urgency",
 	"set_record_type",
@@ -57,8 +25,6 @@ export const RULE_ACTION_TYPES = [
 	"route_human",
 ] as const satisfies readonly SharedActionType[];
 
-export const SHARED_ACTION_TYPES = ACTION_TYPES;
-
 export type RuleActionType = (typeof RULE_ACTION_TYPES)[number];
 export type WorkflowAction = Action;
 
@@ -66,7 +32,6 @@ export interface RuleTicket {
 	title: string;
 	body: string;
 	serviceId?: string | null;
-	category?: Category | null;
 	requesterId: string;
 	requesterDepartment?: string | null;
 	recordType: RecordType;
@@ -91,7 +56,7 @@ type ActionType = RuleAction["type"];
 type TicketPatch = Partial<
 	Pick<
 		RuleTicket,
-		| "category"
+		| "serviceId"
 		| "impact"
 		| "urgency"
 		| "recordType"
@@ -100,14 +65,6 @@ type TicketPatch = Partial<
 		| "assigneeId"
 	>
 >;
-
-export interface RuleFiring {
-	ruleId: string;
-	ruleName: string;
-	rulePosition: number;
-	applied: RuleAction[];
-	skipped: Array<RuleAction & { reason: "action_already_set" }>;
-}
 
 export interface RuleEvaluation {
 	patch: TicketPatch;
@@ -122,7 +79,7 @@ export const routesToHuman = (firings: readonly RuleFiring[]) =>
 	);
 
 const actionField = {
-	set_category: "category",
+	set_service: "serviceId",
 	set_impact: "impact",
 	set_urgency: "urgency",
 	set_record_type: "recordType",
@@ -196,24 +153,6 @@ export function evaluateTicketRules(
 		result.firings.push(firing);
 	}
 	return result;
-}
-
-export async function settleTicketBeforeModel<T>(
-	ticket: RuleTicket,
-	rules: readonly TicketRule[],
-	model: (
-		ticket: RuleTicket,
-		settledActions: readonly ActionType[],
-	) => Promise<T>,
-): Promise<{ evaluation: RuleEvaluation; modelResult: T | null }> {
-	const evaluation = evaluateTicketRules(ticket, rules);
-	const noAgentWork = evaluation.settledActions.includes("route_human");
-	return {
-		evaluation,
-		modelResult: noAgentWork
-			? null
-			: await model(evaluation.ticket, evaluation.settledActions),
-	};
 }
 
 export interface TokenRun {

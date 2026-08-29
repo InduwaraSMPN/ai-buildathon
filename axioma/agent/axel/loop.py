@@ -315,6 +315,15 @@ async def run(ctx: RunContext) -> RunResult:
                 )
             continue
 
+        if message := _tool_failure(output):
+            await _failure(ctx, call_id, tool.name, message, payload)
+            consecutive_failures += 1
+            if consecutive_failures >= config.max_consecutive_failures:
+                return await _finish(
+                    ctx, RunStatus.EXHAUSTED, "consecutive failure ceiling reached"
+                )
+            continue
+
         consecutive_failures = verification_rejections = 0
         evidence = _evidence(output)
         last_evidence = evidence or last_evidence
@@ -385,6 +394,17 @@ async def _failure(
         Step(kind=StepKind.OBSERVATION, tool_name=tool_name, tool_input=tool_input, error=message)
     )
     ctx.transcript.append({"role": "tool", "tool_call_id": call_id, "content": message})
+
+
+def _tool_failure(output: object) -> str | None:
+    if not isinstance(output, dict):
+        return None
+    error = output.get("error")
+    typed_error = error if isinstance(error, dict) else output
+    if output.get("ok") is not False and typed_error.get("code") != "unknown_property":
+        return None
+    detail = error if error is not None else output
+    return f"tool returned failure: {json.dumps(detail, default=str, separators=(',', ':'))}"
 
 
 def _same_resource(write: dict[str, Any], read: dict[str, Any]) -> bool:

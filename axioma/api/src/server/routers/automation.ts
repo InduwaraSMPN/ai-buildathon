@@ -24,6 +24,7 @@ import type { RuleAction, RuleCriterion } from "../rules";
 import { search as searchDocuments } from "../search";
 import { reconcileCoreSearchDocuments } from "../search/projections";
 import { canAccessSavedView, listSavedViews } from "../search/views";
+import { assertWorkflowActions } from "../workflows/core";
 import { sweepWebhookDeliveries } from "../workflows/webhooks";
 
 async function savedViewContext(userId: string) {
@@ -114,7 +115,11 @@ export const automationRouter = {
 			(
 				await db
 					.insert(workflows)
-					.values({ id: crypto.randomUUID(), ...input })
+					.values({
+						id: crypto.randomUUID(),
+						...input,
+						actions: assertWorkflowActions(input.actions ?? []),
+					})
 					.returning()
 			)[0]!,
 	),
@@ -122,7 +127,12 @@ export const automationRouter = {
 		async ({ input: { id, ...patch } }) => {
 			const [row] = await db
 				.update(workflows)
-				.set(patch)
+				.set({
+					...patch,
+					actions: patch.actions
+						? assertWorkflowActions(patch.actions)
+						: undefined,
+				})
 				.where(eq(workflows.id, id))
 				.returning();
 			if (!row) throw new ORPCError("NOT_FOUND");

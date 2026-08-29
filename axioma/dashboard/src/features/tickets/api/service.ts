@@ -8,6 +8,7 @@ import type {
 export const ticketService = {
 	list: (input: TicketListInput) => client.listTickets(input),
 	get: (id: string) => client.getTicket({ id }),
+	sla: (ticketId: string) => client.listTicketSla({ ticketId }),
 	create: (input: CreateTicketInput) => client.createTicket(input),
 	update: (input: UpdateTicketInput) => client.updateTicket(input),
 };

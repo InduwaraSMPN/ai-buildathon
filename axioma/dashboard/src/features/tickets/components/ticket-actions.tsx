@@ -87,6 +87,7 @@ export function TicketActions({
 	const canUnpend = has("unpend");
 	const [classificationOpen, setClassificationOpen] = useState(false);
 	const pendingReasons = useQuery(orpc.listPendingReasons.queryOptions());
+	const catalogue = useQuery(orpc.listCatalogue.queryOptions());
 
 	useEffect(() => {
 		const target = window.location.hash.slice(1);
@@ -187,7 +188,8 @@ export function TicketActions({
 						</SheetHeader>
 						<TicketClassificationForm
 							ticket={ticket}
-							disabled={pending}
+							catalogue={catalogue.data}
+							disabled={pending || catalogue.isPending}
 							onSubmit={async (input) => {
 								await onAction(input);
 								setClassificationOpen(false);

@@ -8,18 +8,11 @@ import {
 	pgTable,
 	text,
 	timestamp,
-	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const WORKFLOW_EXECUTION_STATUSES = [
 	"running",
 	"succeeded",
-	"failed",
-] as const;
-export const SCHEDULED_EMISSION_STATUSES = [
-	"pending",
-	"emitted",
-	"cancelled",
 	"failed",
 ] as const;
 export const WEBHOOK_DELIVERY_STATUSES = [
@@ -80,51 +73,6 @@ export const workflowExecutions = pgTable(
 	],
 );
 
-export const workflowScheduledEmissions = pgTable(
-	"workflow_scheduled_emissions",
-	{
-		id: text("id").primaryKey(),
-		workflowId: text("workflow_id")
-			.notNull()
-			.references(() => workflows.id, { onDelete: "cascade" }),
-		executionId: text("execution_id").references(() => workflowExecutions.id, {
-			onDelete: "set null",
-		}),
-		idempotencyKey: text("idempotency_key").notNull(),
-		recordType: text("record_type").notNull(),
-		recordId: text("record_id").notNull(),
-		emitAt: timestamp("emit_at").notNull(),
-		payload: jsonb("payload").notNull(),
-		status: text("status", { enum: SCHEDULED_EMISSION_STATUSES })
-			.notNull()
-			.default("pending"),
-		emittedAt: timestamp("emitted_at"),
-		error: text("error"),
-		createdAt: timestamp("created_at").defaultNow().notNull(),
-	},
-	(t) => [
-		uniqueIndex("workflow_scheduled_emissions_idempotency_uidx").on(
-			t.idempotencyKey,
-		),
-		index("workflow_scheduled_emissions_due_idx").on(t.status, t.emitAt),
-		index("workflow_scheduled_emissions_workflow_id_idx").on(t.workflowId),
-		index("workflow_scheduled_emissions_execution_id_idx").on(t.executionId),
-	],
-);
-
-export const webhookMessageFormats = pgTable("webhook_message_formats", {
-	id: text("id").primaryKey(),
-	name: text("name").notNull(),
-	contentType: text("content_type").notNull().default("application/json"),
-	bodyTemplate: text("body_template").notNull(),
-	isActive: boolean("is_active").notNull().default(true),
-	createdAt: timestamp("created_at").defaultNow().notNull(),
-	updatedAt: timestamp("updated_at")
-		.defaultNow()
-		.$onUpdate(() => new Date())
-		.notNull(),
-});
-
 export const webhookDeliveries = pgTable(
 	"webhook_deliveries",
 	{
@@ -132,10 +80,6 @@ export const webhookDeliveries = pgTable(
 		executionId: text("execution_id").references(() => workflowExecutions.id, {
 			onDelete: "set null",
 		}),
-		messageFormatId: text("message_format_id").references(
-			() => webhookMessageFormats.id,
-			{ onDelete: "set null" },
-		),
 		url: text("url").notNull(),
 		requestHeaders: jsonb("request_headers")
 			.$type<Record<string, string>>()
@@ -158,7 +102,6 @@ export const webhookDeliveries = pgTable(
 	(t) => [
 		index("webhook_deliveries_due_idx").on(t.status, t.nextAttemptAt),
 		index("webhook_deliveries_execution_idx").on(t.executionId, t.createdAt),
-		index("webhook_deliveries_message_format_id_idx").on(t.messageFormatId),
 		check(
 			"webhook_deliveries_attempt_count_nonnegative",
 			sql`${t.attemptCount} >= 0`,

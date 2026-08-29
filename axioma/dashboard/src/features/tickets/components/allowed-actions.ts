@@ -1,47 +1,27 @@
-import type {
-	TicketDetail,
-	TicketOperatorAction,
-	TicketStatus,
-} from "../api/types";
+import type { TicketDetail, TicketOperatorAction } from "../api/types";
 
-const statusConfig: Partial<
-	Record<
-		TicketStatus,
-		{ tone: string; actions: readonly TicketOperatorAction[] }
-	>
-> = {
-	open: {
-		tone: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-		actions: ["assign", "reclassify", "pend"],
-	},
-	pending: {
-		tone: "border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
-		actions: ["unpend"],
-	},
-	routing: {
-		tone: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
-		actions: ["assign", "reclassify"],
-	},
-	resolving: {
-		tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-		actions: ["resolve", "escalate", "assign", "reclassify"],
-	},
-	resolved: {
-		tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-		actions: ["close", "escalate", "assign", "reclassify"],
-	},
-	escalated: {
-		tone: "border-orange-500/30 bg-orange-500/10 text-orange-700 dark:text-orange-300",
-		actions: ["close", "escalate", "assign", "reclassify"],
-	},
-	closed: {
-		tone: "border-border bg-muted text-muted-foreground",
-		actions: ["reopen"],
-	},
-} as const;
+const stateTones: Record<string, string> = {
+	new: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+	open: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+	pending:
+		"border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
+	resolved:
+		"border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+	closed: "border-border bg-muted text-muted-foreground",
+};
 
-export function ticketStatusTone(status: string): string | undefined {
-	return statusConfig[status as TicketStatus]?.tone;
+const actionsByLabel: Record<string, readonly TicketOperatorAction[]> = {
+	Open: ["assign", "reclassify", "pend"],
+	"Waiting for reply": ["unpend"],
+	Routing: ["assign", "reclassify"],
+	Resolving: ["resolve", "escalate", "assign", "reclassify"],
+	Resolved: ["close", "escalate", "assign", "reclassify"],
+	Escalated: ["close", "escalate", "assign", "reclassify"],
+	Closed: ["reopen"],
+};
+
+export function ticketStatusTone(stateType: string): string | undefined {
+	return stateTones[stateType];
 }
 
 const actionCapabilities: Record<TicketOperatorAction, string> = {
@@ -56,13 +36,16 @@ const actionCapabilities: Record<TicketOperatorAction, string> = {
 };
 
 export function allowedActions(
-	ticket: Pick<TicketDetail, "status" | "closedAt" | "reopenedAt">,
+	ticket: Pick<
+		TicketDetail,
+		"statusLabel" | "statusStateType" | "closedAt" | "reopenedAt"
+	>,
 	capabilities: readonly string[],
 	now = Date.now(),
 ): readonly TicketOperatorAction[] {
-	const actions = statusConfig[ticket.status]?.actions ?? [];
+	const actions = actionsByLabel[ticket.statusLabel] ?? [];
 	if (
-		ticket.status === "closed" &&
+		ticket.statusStateType === "closed" &&
 		(!ticket.closedAt ||
 			ticket.reopenedAt ||
 			now - ticket.closedAt.getTime() > 7 * 24 * 60 * 60 * 1_000)

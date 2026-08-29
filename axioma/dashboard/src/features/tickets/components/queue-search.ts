@@ -1,5 +1,4 @@
 import type {
-	TicketCategory,
 	TicketListInput,
 	TicketPriority,
 	TicketRecordType,
@@ -35,14 +34,11 @@ const status = values<TicketStatus>([
 ]);
 const priority = values<TicketPriority>(["P1", "P2", "P3", "P4"]);
 const recordType = values<TicketRecordType>(["incident", "service_request"]);
-const category = (value: unknown): (TicketCategory | null)[] | undefined => {
+const serviceIds = (value: unknown) => {
 	const input = Array.isArray(value) ? value : [value];
-	const normalized = input.flatMap((item) =>
-		item === null || item === "unclassified"
-			? [null]
-			: ["infrastructure", "device", "access"].includes(String(item))
-				? [item as TicketCategory]
-				: [],
+	const normalized = input.filter(
+		(item): item is string =>
+			typeof item === "string" && item.trim().length > 0,
 	);
 	return normalized.length ? [...new Set(normalized)] : undefined;
 };
@@ -67,7 +63,7 @@ export type TicketQueueSearch = Partial<
 		| "status"
 		| "priority"
 		| "recordType"
-		| "category"
+		| "serviceId"
 		| "route"
 		| "assigneeId"
 		| "teamId"
@@ -98,7 +94,7 @@ export function normalizeTicketQueueSearch(
 		status: status(search.status),
 		priority: priority(search.priority),
 		recordType: recordType(search.recordType),
-		category: category(search.category),
+		serviceId: serviceIds(search.serviceId),
 		route: route(search.route),
 		assigneeId: text(search.assigneeId, 160),
 		teamId: text(search.teamId, 160),
@@ -136,7 +132,7 @@ export function toTicketListInput(search: TicketQueueSearch): TicketListInput {
 		status: search.status,
 		priority: search.priority,
 		recordType: search.recordType,
-		category: search.category,
+		serviceId: search.serviceId,
 		route: search.route,
 		assigneeId: search.assigneeId,
 		teamId: search.teamId,

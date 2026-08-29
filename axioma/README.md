@@ -25,7 +25,9 @@ Two contracts, each where a boundary actually exists.
 zod schemas and imports nothing else, which is what lets it be mirrored verbatim
 into both frontends by `pnpm contracts:publish` from `api/`. Handlers live in
 `api/src/server` and are checked against the contract, so the two cannot drift.
-The mirrored copies are marked generated and are never edited in place.
+The mirrored copies are marked generated and are never edited in place. Run
+`pnpm contracts:publish` in `api/` to regenerate them, or `pnpm contracts:check`
+to perform the same freshness check CI uses without modifying files.
 
 **Protocol buffers**, for the language boundaries. `api/proto/axioma.proto` is
 the source of truth and is mirrored into `agent/` and `cli/` by the same

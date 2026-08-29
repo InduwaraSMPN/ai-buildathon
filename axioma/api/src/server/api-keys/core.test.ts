@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	createApiKey,
-	FixedWindowRateLimiter,
 	parseApiKey,
 	validateCapabilitySubset,
 	verifyApiKeySecret,
@@ -83,39 +82,4 @@ test("validates caller capabilities against the shared vocabulary", () => {
 		() => validateCapabilitySubset([" ticket.read.own"], [" ticket.read.own"]),
 		/trimmed/,
 	);
-});
-
-test("fixed-window limiter enforces per-key and global limits and reports retry timing", () => {
-	const perKey = new FixedWindowRateLimiter({
-		perKey: 2,
-		global: 10,
-		windowMs: 1_000,
-	});
-	assert.equal(perKey.consume("a", 100).allowed, true);
-	assert.deepEqual(perKey.consume("a", 200), {
-		allowed: true,
-		remaining: 0,
-		resetAt: new Date(1_000),
-	});
-	assert.deepEqual(perKey.consume("a", 250), {
-		allowed: false,
-		remaining: 0,
-		resetAt: new Date(1_000),
-		retryAfterMs: 750,
-	});
-	assert.equal(perKey.consume("a", 1_000).allowed, true);
-
-	const global = new FixedWindowRateLimiter({
-		perKey: 5,
-		global: 2,
-		windowMs: 1_000,
-	});
-	assert.equal(global.consume("a", 0).allowed, true);
-	assert.equal(global.consume("b", 1).allowed, true);
-	assert.deepEqual(global.consume("c", 2), {
-		allowed: false,
-		remaining: 0,
-		resetAt: new Date(1_000),
-		retryAfterMs: 998,
-	});
 });

@@ -188,8 +188,6 @@ const ticketRoute = z.enum([
 	"human_triage",
 ]);
 
-const category = z.enum(["infrastructure", "device", "access"]);
-
 const ticketStatus = z.string().min(1);
 
 const recordType = z.enum(["incident", "service_request"]);
@@ -204,6 +202,28 @@ const progressMarker = z.enum([
 	"verifying_fix",
 	"handing_to_person",
 ]);
+
+const ticketSlaTarget = z.object({
+	policyType: z.enum(["sla", "ola"]),
+	policyId: z.string(),
+	policyName: z.string(),
+	targetType: z.enum(["response", "resolution"]),
+	targetMs: z.number().int().nonnegative(),
+	elapsedMs: z.number().int().nonnegative(),
+	remainingMs: z.number().int(),
+	pendingMs: z.number().int().nonnegative(),
+	running: z.boolean(),
+	breached: z.boolean(),
+	attained: z.boolean().nullable(),
+	dueAt: z.date().nullable(),
+});
+
+const attainment = z.object({
+	met: z.number().int().nonnegative(),
+	missed: z.number().int().nonnegative(),
+	total: z.number().int().nonnegative(),
+	rate: z.number().min(0).max(1).nullable(),
+});
 
 const ticket = z.object({
 	id: z.string(),
@@ -225,9 +245,9 @@ const ticket = z.object({
 	urgency,
 	priority,
 	serviceId: z.string(),
+	serviceName: z.string(),
 	serviceSubcategoryId: z.string(),
-	category: category.nullable(),
-	subcategory: z.string().nullable(),
+	serviceSubcategoryName: z.string(),
 	status: ticketStatus,
 	statusLabel: z.string(),
 	statusStateType: z.string(),
@@ -250,6 +270,38 @@ const ticket = z.object({
 	reopenedAt: z.date().nullable(),
 	customFields: jsonRecord.default({}),
 });
+
+const closeTicketInput = z.object({
+	id: z.string().min(1),
+	action: z.literal("close"),
+	resolution: z.string().trim().max(10_000).optional(),
+});
+const escalateTicketInput = z.object({
+	id: z.string().min(1),
+	action: z.literal("escalate"),
+	note: z.string().trim().min(1).max(2_000),
+	route: ticketRoute.optional(),
+});
+const addTicketDetailInput = z.object({
+	id: z.string().min(1),
+	action: z.literal("add_detail"),
+	note: z.string().trim().min(1).max(2_000),
+});
+const reopenTicketInput = z.object({
+	id: z.string().min(1),
+	action: z.literal("reopen"),
+});
+
+const reporterUpdateTicketInput = z.discriminatedUnion("action", [
+	closeTicketInput,
+	escalateTicketInput,
+	addTicketDetailInput,
+	reopenTicketInput,
+]);
+
+export const reporterUpdateTicket = oc
+	.input(reporterUpdateTicketInput)
+	.output(ticket);
 
 export const ticketsContract = {
 	createTicket: oc
@@ -275,7 +327,6 @@ export const ticketsContract = {
 				priority: z.array(priority).max(4).optional(),
 				recordType: z.array(recordType).max(2).optional(),
 				serviceId: z.array(z.string().min(1)).max(100).optional(),
-				category: z.array(category.nullable()).max(4).optional(),
 				route: z.array(ticketRoute.nullable()).max(7).optional(),
 				assigneeId: z.string().min(1).optional(),
 				teamId: z.string().min(1).optional(),
@@ -325,12 +376,6 @@ export const ticketsContract = {
 							count: z.number().int().nonnegative(),
 						}),
 					),
-					category: z.array(
-						z.object({
-							value: category.nullable(),
-							count: z.number().int().nonnegative(),
-						}),
-					),
 					route: z.array(
 						z.object({
 							value: ticketRoute.nullable(),
@@ -375,6 +420,9 @@ export const ticketsContract = {
 	listTicketPresence: oc
 		.input(z.object({ ticketId: z.string().min(1) }))
 		.output(z.array(presence)),
+	listTicketSla: oc
+		.input(z.object({ ticketId: z.string().min(1) }))
+		.output(z.array(ticketSlaTarget)),
 	submitTicketCsat: oc
 		.input(
 			z.object({
@@ -430,6 +478,26 @@ export const ticketsContract = {
 	listTicketAudit: oc
 		.input(z.object({ ticketId: z.string().min(1) }))
 		.output(z.array(ticketAuditRow)),
+	listTicketRuleFirings: oc
+		.input(z.object({ ticketId: z.string().min(1) }))
+		.output(
+			z.array(
+				z.object({
+					id: z.string(),
+					ticketId: z.string(),
+					ruleId: z.string(),
+					rulePosition: z.number().int().nonnegative(),
+					result: z.object({
+						ruleId: z.string(),
+						ruleName: z.string(),
+						rulePosition: z.number().int().nonnegative(),
+						applied: z.array(z.unknown()),
+						skipped: z.array(z.unknown()),
+					}),
+					createdAt: z.date(),
+				}),
+			),
+		),
 	listTicketTimeEntries: oc
 		.input(z.object({ ticketId: z.string().min(1) }))
 		.output(
@@ -466,32 +534,27 @@ export const ticketsContract = {
 			}),
 		),
 	),
+	setTicketDynamicFields: oc
+		.input(
+			z.object({
+				ticketId: z.string().min(1),
+				values: jsonRecord,
+			}),
+		)
+		.output(jsonRecord),
 	updateTicket: oc
 		.input(
 			z.discriminatedUnion("action", [
-				z.object({
-					id: z.string().min(1),
-					action: z.literal("close"),
-					resolution: z.string().trim().max(10_000).optional(),
-				}),
-				z.object({
-					id: z.string().min(1),
-					action: z.literal("escalate"),
-					note: z.string().trim().min(1).max(2_000),
-					route: ticketRoute.optional(),
-				}),
-				z.object({
-					id: z.string().min(1),
-					action: z.literal("add_detail"),
-					note: z.string().trim().min(1).max(2_000),
-				}),
+				closeTicketInput,
+				escalateTicketInput,
+				addTicketDetailInput,
 				z.object({
 					id: z.string().min(1),
 					action: z.literal("resolve"),
 					resolution: z.string().trim().min(1).max(10_000),
 					resolutionCode,
 				}),
-				z.object({ id: z.string().min(1), action: z.literal("reopen") }),
+				reopenTicketInput,
 				z.object({
 					id: z.string().min(1),
 					action: z.literal("pend"),
@@ -505,8 +568,8 @@ export const ticketsContract = {
 					recordType: recordType.optional(),
 					impact: impact.optional(),
 					urgency: urgency.optional(),
-					category: category.nullable().optional(),
-					subcategory: z.string().trim().max(160).nullable().optional(),
+					serviceId: z.string().min(1).optional(),
+					serviceSubcategoryId: z.string().min(1).optional(),
 				}),
 				z
 					.object({
@@ -548,6 +611,21 @@ export const ticketsContract = {
 				autonomousResolutionNumerator: z.number().int().nonnegative(),
 				autonomousResolutionDenominator: z.number().int().nonnegative(),
 				autonomousResolutionRate: z.number().min(0).max(1).nullable(),
+				settledBy: z.object({
+					rule: z.number().int().nonnegative(),
+					model: z.number().int().nonnegative(),
+				}),
+				tokensPerTicket: z.object({
+					ticketCount: z.number().int().nonnegative(),
+					promptTokens: z.number().int().nonnegative(),
+					completionTokens: z.number().int().nonnegative(),
+					totalTokens: z.number().int().nonnegative(),
+					tokensPerTicket: z.number().nonnegative().nullable(),
+				}),
+				attainment: z.object({
+					sla: z.object({ response: attainment, resolution: attainment }),
+					ola: z.object({ response: attainment, resolution: attainment }),
+				}),
 				csat: z.object({
 					responses: z.number().int().nonnegative(),
 					average: z.number().min(1).max(5).nullable(),

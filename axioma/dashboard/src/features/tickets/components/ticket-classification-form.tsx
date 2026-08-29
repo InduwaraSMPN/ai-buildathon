@@ -1,7 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
@@ -14,18 +13,20 @@ import type { TicketActionInput, TicketDetail } from "../api/types";
 type Classification = TicketActionInput<"reclassify">;
 type RecordType = NonNullable<Classification["recordType"]>;
 type Level = NonNullable<Classification["impact"]>;
-type Category = NonNullable<Classification["category"]>;
 
 const recordTypes: RecordType[] = ["incident", "service_request"];
 const levels: Level[] = ["high", "medium", "low"];
-const categories: Category[] = ["infrastructure", "device", "access"];
 
 export function TicketClassificationForm({
 	ticket,
+	catalogue,
 	disabled,
 	onSubmit,
 }: {
 	ticket: TicketDetail;
+	catalogue?: Awaited<
+		ReturnType<typeof import("@/utils/orpc").client.listCatalogue>
+	>;
 	disabled: boolean;
 	onSubmit: (input: Classification) => Promise<unknown>;
 }) {
@@ -34,18 +35,10 @@ export function TicketClassificationForm({
 			recordType: ticket.recordType,
 			impact: ticket.impact,
 			urgency: ticket.urgency,
-			category: (ticket.category ?? "") as Category | "",
-			subcategory: ticket.subcategory ?? "",
+			serviceId: ticket.serviceId,
+			serviceSubcategoryId: ticket.serviceSubcategoryId,
 		},
-		onSubmit: ({ value }) =>
-			onSubmit({
-				action: "reclassify",
-				recordType: value.recordType,
-				impact: value.impact,
-				urgency: value.urgency,
-				category: value.category || null,
-				subcategory: value.subcategory.trim() || null,
-			}),
+		onSubmit: ({ value }) => onSubmit({ action: "reclassify", ...value }),
 	});
 
 	return (
@@ -82,6 +75,72 @@ export function TicketClassificationForm({
 						</Field>
 					)}
 				</form.Field>
+				<form.Subscribe selector={(state) => state.values.serviceId}>
+					{(serviceId) => (
+						<div className="grid grid-cols-2 gap-2">
+							<form.Field name="serviceId">
+								{(field) => (
+									<Field>
+										<FieldLabel htmlFor="ticket-service">Service</FieldLabel>
+										<Select
+											value={field.state.value}
+											onValueChange={(value) =>
+												value && field.handleChange(value)
+											}
+											disabled={disabled}
+										>
+											<SelectTrigger id="ticket-service" className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{catalogue?.services.map((service) => (
+													<SelectItem key={service.id} value={service.id}>
+														{service.name}
+													</SelectItem>
+												))}
+											</SelectContent>
+										</Select>
+									</Field>
+								)}
+							</form.Field>
+							<form.Field name="serviceSubcategoryId">
+								{(field) => (
+									<Field>
+										<FieldLabel htmlFor="ticket-subcategory">
+											Subcategory
+										</FieldLabel>
+										<Select
+											value={field.state.value}
+											onValueChange={(value) =>
+												value && field.handleChange(value)
+											}
+											disabled={disabled}
+										>
+											<SelectTrigger id="ticket-subcategory" className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												{catalogue?.subcategories
+													.filter(
+														(subcategory) =>
+															subcategory.serviceId === serviceId,
+													)
+													.map((subcategory) => (
+														<SelectItem
+															key={subcategory.id}
+															value={subcategory.id}
+														>
+															{subcategory.name}
+														</SelectItem>
+													))}
+											</SelectContent>
+										</Select>
+									</Field>
+								)}
+							</form.Field>
+						</div>
+					)}
+				</form.Subscribe>
 				<div className="grid grid-cols-2 gap-2">
 					{(["impact", "urgency"] as const).map((name) => (
 						<form.Field key={name} name={name}>
@@ -113,46 +172,6 @@ export function TicketClassificationForm({
 						</form.Field>
 					))}
 				</div>
-				<form.Field name="category">
-					{(field) => (
-						<Field>
-							<FieldLabel htmlFor="ticket-category">Category</FieldLabel>
-							<Select
-								value={field.state.value}
-								onValueChange={(value) =>
-									field.handleChange((value ?? "") as Category | "")
-								}
-								disabled={disabled}
-							>
-								<SelectTrigger id="ticket-category" className="w-full">
-									<SelectValue placeholder="Unclassified" />
-								</SelectTrigger>
-								<SelectContent>
-									<SelectItem value="">Unclassified</SelectItem>
-									{categories.map((category) => (
-										<SelectItem key={category} value={category}>
-											{category}
-										</SelectItem>
-									))}
-								</SelectContent>
-							</Select>
-						</Field>
-					)}
-				</form.Field>
-				<form.Field name="subcategory">
-					{(field) => (
-						<Field>
-							<FieldLabel htmlFor="ticket-subcategory">Subcategory</FieldLabel>
-							<Input
-								id="ticket-subcategory"
-								maxLength={160}
-								value={field.state.value}
-								onChange={(event) => field.handleChange(event.target.value)}
-								disabled={disabled}
-							/>
-						</Field>
-					)}
-				</form.Field>
 				<Button type="submit" disabled={disabled}>
 					Save classification
 				</Button>

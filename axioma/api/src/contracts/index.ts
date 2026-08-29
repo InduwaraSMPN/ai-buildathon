@@ -13,7 +13,7 @@ import { problemsContract } from "./problems";
 import { schedulingContract } from "./scheduling";
 import { statusContract } from "./status";
 import { suppliersContract } from "./suppliers";
-import { ticketsContract } from "./tickets";
+import { reporterUpdateTicket, ticketsContract } from "./tickets";
 
 export const appContract = {
 	listForms: catalogueContract.listForms,
@@ -94,6 +94,7 @@ export const appContract = {
 	listAssetImportRejections: assetsContract.listAssetImportRejections,
 	listAssetHistory: assetsContract.listAssetHistory,
 	setAssetDynamicFields: assetsContract.setAssetDynamicFields,
+	listTicketOrigins: mailContract.listTicketOrigins,
 	listMailboxes: mailContract.listMailboxes,
 	upsertMailbox: mailContract.upsertMailbox,
 	deleteMailbox: mailContract.deleteMailbox,
@@ -139,6 +140,7 @@ export const appContract = {
 	getMyTicket: ticketsContract.getMyTicket,
 	heartbeatTicketPresence: ticketsContract.heartbeatTicketPresence,
 	listTicketPresence: ticketsContract.listTicketPresence,
+	listTicketSla: ticketsContract.listTicketSla,
 	submitTicketCsat: ticketsContract.submitTicketCsat,
 	getTicket: ticketsContract.getTicket,
 	addTicketMessage: ticketsContract.addTicketMessage,
@@ -152,11 +154,13 @@ export const appContract = {
 	mergeTickets: ticketsContract.mergeTickets,
 	unmergeTicket: ticketsContract.unmergeTicket,
 	listTicketAudit: ticketsContract.listTicketAudit,
+	listTicketRuleFirings: ticketsContract.listTicketRuleFirings,
 	listTicketTimeEntries: ticketsContract.listTicketTimeEntries,
 	addTicketTimeEntry: ticketsContract.addTicketTimeEntry,
 	lookupTicket: ticketsContract.lookupTicket,
 	listTicketAssignmentOptions: ticketsContract.listTicketAssignmentOptions,
 	listPendingReasons: ticketsContract.listPendingReasons,
+	setTicketDynamicFields: ticketsContract.setTicketDynamicFields,
 	updateTicket: ticketsContract.updateTicket,
 	listMyDevices: devicesContract.listMyDevices,
 	enrollDevice: devicesContract.enrollDevice,
@@ -178,3 +182,29 @@ export const appContract = {
 };
 
 export type AppContract = typeof appContract;
+
+export const portalContract = {
+	listNotifications: automationContract.listNotifications,
+	markNotificationRead: automationContract.markNotificationRead,
+	listFieldDefinitions: automationContract.listFieldDefinitions,
+	readStatus: statusContract.readStatus,
+	listAuthProviders: identityContract.listAuthProviders,
+	privateData: identityContract.privateData,
+	listPublicKnowledge: knowledgeContract.listPublicKnowledge,
+	getPublicKnowledgeArticle: knowledgeContract.getPublicKnowledgeArticle,
+	listRequestCatalogue: catalogueContract.listRequestCatalogue,
+	createCatalogueRequest: catalogueContract.createCatalogueRequest,
+	getMyApprovalStatus: catalogueContract.getMyApprovalStatus,
+	listDocuments: documentsContract.listDocuments,
+	createLinkDocument: documentsContract.createLinkDocument,
+	createTicket: ticketsContract.createTicket,
+	listTickets: ticketsContract.listTickets,
+	getMyTicket: ticketsContract.getMyTicket,
+	submitTicketCsat: ticketsContract.submitTicketCsat,
+	addMyTicketMessage: ticketsContract.addMyTicketMessage,
+	updateTicket: reporterUpdateTicket,
+	listMyDevices: devicesContract.listMyDevices,
+	enrollDevice: devicesContract.enrollDevice,
+};
+
+export type PortalContract = typeof portalContract;

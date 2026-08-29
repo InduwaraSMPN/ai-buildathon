@@ -29,6 +29,7 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 				<StatusBadge
 					status={row.original.status}
 					label={row.original.statusLabel}
+					stateType={row.original.statusStateType}
 				/>
 				{row.original.escalationFlag !== "none" ? (
 					<Badge
@@ -79,12 +80,11 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 		),
 	},
 	{
-		id: "category",
-		header: "Category",
+		id: "service",
+		header: "Service",
 		cell: ({ row }) => (
 			<span>
-				{row.original.category ?? "—"}
-				{row.original.subcategory ? ` / ${row.original.subcategory}` : ""}
+				{row.original.serviceName} / {row.original.serviceSubcategoryName}
 			</span>
 		),
 	},

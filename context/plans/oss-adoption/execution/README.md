@@ -4,11 +4,11 @@
 **Parent:** [oss-adoption.md](../oss-adoption.md)
 **Written:** 2026-08-29, from a verification audit of the working tree, the live database and the running API
 
-The programme is 20 of 40 milestones complete. The schema layer is close to finished — 132 tables,
-16 migrations applied, zero drift between the Drizzle schema and the database. What is missing is the
-last mile, and it fails the same way in every tier: **tables land, wiring does not.** Fifteen tables are
-defined, migrated and never read or written by any code. Nearly every reference table is empty with
-nothing to seed it. The dashboard is read-only across three practice areas.
+The programme is **30 of 40 milestones complete**: Tier 0 5/5, Tier 1 10/12, Tier 2 4/7, Tier 3 2/7,
+and Tier 4 9/9. The close-out repaired and strengthened the migration ledger, seeded the reference data
+needed by shipped features, removed legacy ticket categories, completed the SLA and settlement read
+surfaces, hardened API keys, and closed the deferred architecture and parity issues. Remaining partial
+milestones are explicitly tracked in the tier definitions rather than hidden behind schema-only work.
 
 Five briefs divide that remaining work so five sessions can run at once without fighting over the same
 files. Each brief is self-contained: it carries the confirmed evidence, so no session needs to re-audit.

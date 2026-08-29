@@ -69,7 +69,6 @@ const notification = z.object({
 const webhookDelivery = z.object({
 	id: z.string(),
 	executionId: z.string().nullable(),
-	messageFormatId: z.string().nullable(),
 	url: z.string(),
 	requestHeaders: z.record(z.string(), z.string()),
 	requestBody: z.string(),

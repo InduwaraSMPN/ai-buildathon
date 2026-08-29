@@ -23,6 +23,7 @@ import {
 	changeTicketLinks,
 	devices,
 	pendingReasons,
+	serviceSubcategories,
 	services,
 	ticketAudit,
 	ticketCsatResponses,
@@ -31,6 +32,7 @@ import {
 	ticketMessages,
 	ticketNumberHistory,
 	ticketPresence,
+	ticketRuleFirings,
 	ticketScheduling,
 	ticketStatuses,
 	tickets,
@@ -41,7 +43,6 @@ import {
 import { teamMembers, teams } from "@/db/schema/org";
 import { env } from "@/env";
 import {
-	CATEGORY_NAMES,
 	derivePriority,
 	PRIORITIES,
 	RECORD_TYPES,
@@ -61,7 +62,9 @@ import {
 } from "../orpc";
 import { nextPendingFollowupAt } from "../pending";
 import { listLinkedPublishedWorkarounds } from "../problems";
+import { measureTokensPerTicket } from "../rules";
 import { indexTicket } from "../search/projections";
+import { listTicketSla, slaAttainment } from "../sla/read";
 import { transitionTicketStopwatches } from "../sla/runtime";
 import { auditChanges } from "../ticket-records";
 import { preserveUndefined, resolveTicketStatus } from "../tickets";
@@ -112,9 +115,9 @@ const ticketSelection = {
 	urgency: tickets.urgency,
 	priority: tickets.priority,
 	serviceId: tickets.serviceId,
+	serviceName: sql<string>`(select name from ${services} where id = ${tickets.serviceId})`,
 	serviceSubcategoryId: tickets.serviceSubcategoryId,
-	category: tickets.category,
-	subcategory: tickets.subcategory,
+	serviceSubcategoryName: sql<string>`(select name from ${serviceSubcategories} where id = ${tickets.serviceSubcategoryId})`,
 	status: tickets.status,
 	statusLabel: sql<string>`(select label from ${ticketStatuses} where key = ${tickets.status})`,
 	statusStateType: sql<string>`(select state_type from ${ticketStatuses} where key = ${tickets.status})`,
@@ -250,6 +253,18 @@ export const ticketsRouter = {
 			context,
 			input.scope === "all" ? "ticket.read.all" : "ticket.read.own",
 		);
+		if (input.status?.length) {
+			const validStatuses = await db
+				.select({ key: ticketStatuses.key })
+				.from(ticketStatuses)
+				.where(inArray(ticketStatuses.key, input.status));
+			const validKeys = new Set(validStatuses.map(({ key }) => key));
+			const invalid = input.status.filter((status) => !validKeys.has(status));
+			if (invalid.length)
+				throw new ORPCError("BAD_REQUEST", {
+					message: `Unknown ticket status: ${invalid.join(", ")}`,
+				});
+		}
 		const filters = [
 			sql`not exists (
 				select 1 from ${ticketScheduling}
@@ -276,22 +291,6 @@ export const ticketsRouter = {
 				: undefined,
 			input.serviceId?.length
 				? inArray(tickets.serviceId, input.serviceId)
-				: undefined,
-			input.category?.length
-				? or(
-						input.category.some((value) => value === null)
-							? sql`${tickets.category} is null`
-							: undefined,
-						input.category.some((value) => value !== null)
-							? inArray(
-									tickets.category,
-									input.category.filter(
-										(value): value is NonNullable<typeof value> =>
-											value !== null,
-									),
-								)
-							: undefined,
-					)
 				: undefined,
 			input.route?.length
 				? or(
@@ -445,7 +444,6 @@ export const ticketsRouter = {
 			priorities,
 			recordTypes,
 			serviceFacets,
-			categories,
 			routes,
 			assignees,
 			ticketTeams,
@@ -481,11 +479,6 @@ export const ticketsRouter = {
 				.where(scope)
 				.groupBy(services.id, services.name)
 				.orderBy(asc(services.name)),
-			db
-				.select({ value: tickets.category, count: count() })
-				.from(tickets)
-				.where(scope)
-				.groupBy(tickets.category),
 			db
 				.select({ value: tickets.route, count: count() })
 				.from(tickets)
@@ -524,10 +517,6 @@ export const ticketsRouter = {
 					count: recordTypes.find((row) => row.value === value)?.count ?? 0,
 				})),
 				service: serviceFacets,
-				category: [...CATEGORY_NAMES, null].map((value) => ({
-					value,
-					count: categories.find((row) => row.value === value)?.count ?? 0,
-				})),
 				route: [...TICKET_ROUTES, null].map((value) => ({
 					value,
 					count: routes.find((row) => row.value === value)?.count ?? 0,
@@ -641,6 +630,12 @@ export const ticketsRouter = {
 			)
 			.orderBy(desc(ticketPresence.lastSeenAt));
 	}),
+	listTicketSla: capabilityProcedure("ticket.read.all").listTicketSla.handler(
+		async ({ input }) => {
+			if (!(await findTicket(input.ticketId))) throw new ORPCError("NOT_FOUND");
+			return listTicketSla(input.ticketId);
+		},
+	),
 	submitTicketCsat: capabilityProcedure(
 		"ticket.read.own",
 	).submitTicketCsat.handler(async ({ input }) => {
@@ -685,8 +680,8 @@ export const ticketsRouter = {
 	addMyTicketMessage: capabilityProcedure(
 		"ticket.read.own",
 	).addMyTicketMessage.handler(async ({ context, input }) => {
-		if (!(await findTicket(input.ticketId, context.userId)))
-			throw new ORPCError("NOT_FOUND");
+		const ticket = await findTicket(input.ticketId, context.userId);
+		if (!ticket) throw new ORPCError("NOT_FOUND");
 		const [message] = await db
 			.insert(ticketMessages)
 			.values({
@@ -699,19 +694,27 @@ export const ticketsRouter = {
 			})
 			.returning();
 		if (!message) throw new ORPCError("INTERNAL_SERVER_ERROR");
-		await db
-			.update(tickets)
-			.set({
-				status: "open",
-				pendingReasonId: null,
-				pendingUntil: null,
-				lastPendingAt: null,
-				updatedAt: new Date(),
-			})
-			.where(
-				and(eq(tickets.id, input.ticketId), eq(tickets.status, "pending")),
-			);
-		await transitionTicketStopwatches(input.ticketId, "open");
+		if (ticket.statusStateType === "pending") {
+			const nextStatus = await resolveTicketStatus(ticket.status, "unpend");
+			const changed = await db
+				.update(tickets)
+				.set({
+					status: nextStatus,
+					pendingReasonId: null,
+					pendingUntil: null,
+					lastPendingAt: null,
+					updatedAt: new Date(),
+				})
+				.where(
+					and(
+						eq(tickets.id, input.ticketId),
+						eq(tickets.status, ticket.status),
+					),
+				)
+				.returning({ id: tickets.id });
+			if (changed[0])
+				await transitionTicketStopwatches(input.ticketId, nextStatus);
+		}
 		const [portalMessage] = toPortalMessages([message]);
 		if (!portalMessage) throw new ORPCError("INTERNAL_SERVER_ERROR");
 		return portalMessage;
@@ -875,6 +878,15 @@ export const ticketsRouter = {
 			.where(eq(ticketAudit.ticketId, input.ticketId))
 			.orderBy(desc(ticketAudit.createdAt)),
 	),
+	listTicketRuleFirings: capabilityProcedure(
+		"ticket.read.all",
+	).listTicketRuleFirings.handler(({ input }) =>
+		db
+			.select()
+			.from(ticketRuleFirings)
+			.where(eq(ticketRuleFirings.ticketId, input.ticketId))
+			.orderBy(desc(ticketRuleFirings.createdAt)),
+	),
 	listTicketTimeEntries: capabilityProcedure(
 		"ticket.read.all",
 	).listTicketTimeEntries.handler(async ({ input }) => {
@@ -944,6 +956,19 @@ export const ticketsRouter = {
 	).listPendingReasons.handler(async () =>
 		db.select().from(pendingReasons).orderBy(asc(pendingReasons.name)),
 	),
+	setTicketDynamicFields: capabilityProcedure(
+		"ticket.update",
+	).setTicketDynamicFields.handler(async ({ input }) => {
+		if (!(await findTicket(input.ticketId))) throw new ORPCError("NOT_FOUND");
+		const values = await writeDynamicFieldValues(
+			db,
+			"ticket",
+			input.ticketId,
+			input.values,
+		);
+		await indexTicket(db, input.ticketId);
+		return values;
+	}),
 	updateTicket: anyCapabilityProcedure(
 		"ticket.create",
 		"ticket.resolve",
@@ -1052,6 +1077,30 @@ export const ticketsRouter = {
 			input.action === "reclassify"
 				? (input.urgency ?? current.urgency)
 				: current.urgency;
+		const serviceId =
+			input.action === "reclassify"
+				? (input.serviceId ?? current.serviceId)
+				: current.serviceId;
+		const serviceSubcategoryId =
+			input.action === "reclassify"
+				? (input.serviceSubcategoryId ?? current.serviceSubcategoryId)
+				: current.serviceSubcategoryId;
+		if (input.action === "reclassify") {
+			const [validClassification] = await db
+				.select({ id: serviceSubcategories.id })
+				.from(serviceSubcategories)
+				.where(
+					and(
+						eq(serviceSubcategories.id, serviceSubcategoryId),
+						eq(serviceSubcategories.serviceId, serviceId),
+					),
+				)
+				.limit(1);
+			if (!validClassification)
+				throw new ORPCError("BAD_REQUEST", {
+					message: "Ticket service and subcategory do not match",
+				});
+		}
 		const now = new Date();
 		const changed = await db
 			.update(tickets)
@@ -1064,14 +1113,8 @@ export const ticketsRouter = {
 				impact,
 				urgency,
 				priority: derivePriority(impact, urgency),
-				category:
-					input.action === "reclassify"
-						? preserveUndefined(input.category, current.category)
-						: current.category,
-				subcategory:
-					input.action === "reclassify"
-						? preserveUndefined(input.subcategory, current.subcategory)
-						: current.subcategory,
+				serviceId,
+				serviceSubcategoryId,
 				route:
 					input.action === "assign"
 						? preserveUndefined(input.route, current.route)
@@ -1208,8 +1251,8 @@ export const ticketsRouter = {
 				impact: current.impact,
 				urgency: current.urgency,
 				priority: current.priority,
-				category: current.category,
-				subcategory: current.subcategory,
+				serviceId: current.serviceId,
+				serviceSubcategoryId: current.serviceSubcategoryId,
 				route: current.route,
 				assigneeId: current.assigneeId,
 				ownerId: current.ownerId,
@@ -1220,8 +1263,8 @@ export const ticketsRouter = {
 				impact: updated.impact,
 				urgency: updated.urgency,
 				priority: updated.priority,
-				category: updated.category,
-				subcategory: updated.subcategory,
+				serviceId: updated.serviceId,
+				serviceSubcategoryId: updated.serviceSubcategoryId,
 				route: updated.route,
 				assigneeId: updated.assigneeId,
 				ownerId: updated.ownerId,
@@ -1255,12 +1298,17 @@ export const ticketsRouter = {
 				outcomeDaily,
 				resolutionRows,
 				escalatedRows,
-				closedRows,
-				humanTransitionRows,
+				closedTickets,
+				ruleSettledRows,
+				tokenRuns,
 				csatRows,
+				attainment,
 			] = await Promise.all([
 				db
-					.select({ key: ticketStatuses.key })
+					.select({
+						key: ticketStatuses.key,
+						stateType: ticketStatuses.stateType,
+					})
 					.from(ticketStatuses)
 					.where(eq(ticketStatuses.isActive, true))
 					.orderBy(asc(ticketStatuses.displayOrder)),
@@ -1276,12 +1324,13 @@ export const ticketsRouter = {
 					.select({ value: tickets.priority, count: count() })
 					.from(tickets)
 					.where(
-						inArray(tickets.status, [
-							"open",
-							"routing",
-							"resolving",
-							"escalated",
-						]),
+						inArray(
+							tickets.status,
+							db
+								.select({ key: ticketStatuses.key })
+								.from(ticketStatuses)
+								.where(inArray(ticketStatuses.stateType, ["new", "open"])),
+						),
 					)
 					.groupBy(tickets.priority),
 				db
@@ -1308,19 +1357,32 @@ export const ticketsRouter = {
 				db
 					.select({
 						date: sql<string>`to_char(date_trunc('day', ${ticketTransitions.createdAt}), 'YYYY-MM-DD')`,
-						status: ticketTransitions.toStatus,
+						stateType: ticketStatuses.stateType,
+						action: ticketTransitions.action,
 						count: count(),
 					})
 					.from(ticketTransitions)
+					.innerJoin(
+						ticketStatuses,
+						eq(ticketTransitions.toStatus, ticketStatuses.key),
+					)
 					.where(
 						and(
-							inArray(ticketTransitions.toStatus, ["resolved", "escalated"]),
+							or(
+								eq(ticketStatuses.stateType, "resolved"),
+								inArray(ticketTransitions.action, [
+									"escalate",
+									"fail",
+									"exhaust",
+								]),
+							),
 							gte(ticketTransitions.createdAt, since),
 						),
 					)
 					.groupBy(
 						sql`date_trunc('day', ${ticketTransitions.createdAt})`,
-						ticketTransitions.toStatus,
+						ticketStatuses.stateType,
+						ticketTransitions.action,
 					),
 				db
 					.select({
@@ -1334,29 +1396,35 @@ export const ticketsRouter = {
 					.from(ticketTransitions)
 					.where(
 						and(
-							eq(ticketTransitions.toStatus, "escalated"),
+							inArray(ticketTransitions.action, [
+								"escalate",
+								"fail",
+								"exhaust",
+							]),
 							gte(ticketTransitions.createdAt, escalatedSince),
 						),
 					),
 				db
-					.select({ count: count() })
+					.select({ id: tickets.id })
 					.from(tickets)
-					.where(eq(tickets.status, "closed")),
+					.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
+					.where(eq(ticketStatuses.isClosed, true)),
 				db
-					.select({ count: countDistinct(ticketTransitions.ticketId) })
-					.from(ticketTransitions)
-					.innerJoin(tickets, eq(ticketTransitions.ticketId, tickets.id))
-					.where(
-						and(
-							eq(tickets.status, "closed"),
-							eq(ticketTransitions.actorType, "human"),
-						),
-					),
+					.selectDistinct({ ticketId: ticketRuleFirings.ticketId })
+					.from(ticketRuleFirings),
+				db
+					.select({
+						ticketId: agentRuns.ticketId,
+						promptTokens: agentRuns.promptTokens,
+						completionTokens: agentRuns.completionTokens,
+					})
+					.from(agentRuns),
 				db
 					.select({ rating: ticketCsatResponses.rating, count: count() })
 					.from(ticketCsatResponses)
 					.where(sql`${ticketCsatResponses.rating} is not null`)
 					.groupBy(ticketCsatResponses.rating),
+				slaAttainment(),
 			]);
 			const dates = Array.from({ length: input.days }, (_, index) =>
 				new Date(since.getTime() + index * 86_400_000)
@@ -1371,15 +1439,28 @@ export const ticketsRouter = {
 					: ((resolutionRows[middle - 1]?.duration ?? 0) +
 							(resolutionRows[middle]?.duration ?? 0)) /
 						2;
-			const closedTotal = closedRows[0]?.count ?? 0;
+			const closedTicketIds = closedTickets.map(({ id }) => id);
+			const closedSet = new Set(closedTicketIds);
+			const modelSettledIds = new Set(
+				tokenRuns
+					.filter(({ ticketId }) => closedSet.has(ticketId))
+					.map(({ ticketId }) => ticketId),
+			);
+			const modelSettled = modelSettledIds.size;
+			const ruleSettled = ruleSettledRows.filter(
+				({ ticketId }) =>
+					closedSet.has(ticketId) && !modelSettledIds.has(ticketId),
+			).length;
+			const autonomousClosed = ruleSettled + modelSettled;
+			const closedTotal = closedTicketIds.length;
+			const tokensPerTicket = measureTokensPerTicket(
+				closedTicketIds,
+				tokenRuns,
+			);
 			const csatResponses = csatRows.reduce((sum, row) => sum + row.count, 0);
 			const csatTotal = csatRows.reduce(
 				(sum, row) => sum + (row.rating ?? 0) * row.count,
 				0,
-			);
-			const autonomousClosed = Math.max(
-				0,
-				closedTotal - (humanTransitionRows[0]?.count ?? 0),
 			);
 			return {
 				byStatus: Object.fromEntries(
@@ -1412,8 +1493,13 @@ export const ticketsRouter = {
 						openPriorities.find((row) => row.value === value)?.count ?? 0,
 					]),
 				) as Record<(typeof PRIORITIES)[number], number>,
-				awaitingConfirmation:
-					statuses.find((row) => row.value === "resolved")?.count ?? 0,
+				awaitingConfirmation: statusDefinitions
+					.filter(({ stateType }) => stateType === "resolved")
+					.reduce(
+						(sum, { key }) =>
+							sum + (statuses.find((row) => row.value === key)?.count ?? 0),
+						0,
+					),
 				escalatedLast24h: escalatedRows[0]?.count ?? 0,
 				escalatedSince,
 				closedTotal,
@@ -1423,6 +1509,9 @@ export const ticketsRouter = {
 				autonomousResolutionRate: closedTotal
 					? autonomousClosed / closedTotal
 					: null,
+				settledBy: { rule: ruleSettled, model: modelSettled },
+				tokensPerTicket,
+				attainment,
 				csat: {
 					responses: csatResponses,
 					average: csatResponses ? csatTotal / csatResponses : null,
@@ -1445,10 +1534,14 @@ export const ticketsRouter = {
 						)
 						.reduce((sum, row) => sum + row.count, 0),
 					resolved: outcomeDaily
-						.filter((row) => row.date === date && row.status === "resolved")
+						.filter((row) => row.date === date && row.stateType === "resolved")
 						.reduce((sum, row) => sum + row.count, 0),
 					escalated: outcomeDaily
-						.filter((row) => row.date === date && row.status === "escalated")
+						.filter(
+							(row) =>
+								row.date === date &&
+								["escalate", "fail", "exhaust"].includes(row.action),
+						)
 						.reduce((sum, row) => sum + row.count, 0),
 				})),
 				medianTimeToResolutionMs: median,

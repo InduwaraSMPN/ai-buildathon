@@ -134,7 +134,6 @@ export async function createTicketInTransaction(
 		status: "open",
 		serviceId: normalized.serviceId,
 		serviceSubcategoryId: normalized.serviceSubcategoryId,
-		category: settled.category,
 		route: settled.route,
 		teamId: settled.teamId,
 		assigneeId: settled.assigneeId,

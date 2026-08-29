@@ -30,10 +30,25 @@ export function ticketRunOrigin(
 	return mailOrigin || channelOrigin || "portal";
 }
 
-export function canRerun(status: TicketStatus, latestRunStatus?: RunStatus) {
-	return (
-		status === "escalated" &&
-		(latestRunStatus === "failed" || latestRunStatus === "exhausted")
+export async function canRerun(
+	status: TicketStatus,
+	latestRunStatus?: RunStatus,
+) {
+	if (latestRunStatus !== "failed" && latestRunStatus !== "exhausted")
+		return false;
+	return Boolean(
+		(
+			await db
+				.select({ toStatus: ticketStatusTransitions.toStatus })
+				.from(ticketStatusTransitions)
+				.where(
+					and(
+						eq(ticketStatusTransitions.fromStatus, status),
+						eq(ticketStatusTransitions.action, "startRun"),
+					),
+				)
+				.limit(1)
+		)[0],
 	);
 }
 

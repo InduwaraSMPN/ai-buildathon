@@ -15,12 +15,11 @@ and §5 gives the reason.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
-> the running API. **4 of 5 milestones complete** — T0.B, T0.C, T0.D and T0.E. T0.A is partial: the schema landed but no code writes `user.kind = 'staff'`, and nobody holds `admin.roles`, so on a live database the dashboard is unreachable and the roles screen is gated behind itself.
+> The 2026-08-29 close-out audit found **5 of 5 milestones complete**. Identity administration is wired
+> end to end, and the live database contains a staff administrator with the required role grants.
 >
-> The remaining work is in [../execution/chat-a-identity.md](../execution/chat-a-identity.md), with the confirmed
-> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
-> against and is still current.
+> Section 7 remains the definition of done; [../execution/chat-a-identity.md](../execution/chat-a-identity.md)
+> is retained as execution history.
 
 ## 1. Current state
 

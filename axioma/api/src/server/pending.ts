@@ -80,7 +80,7 @@ export async function sweepPending(now = new Date()): Promise<number> {
 			.where(
 				and(
 					eq(tickets.id, ticket.id),
-					eq(tickets.status, "pending"),
+					eq(tickets.status, ticket.status),
 					eq(tickets.pendingFollowups, ticket.pendingFollowups),
 				),
 			)

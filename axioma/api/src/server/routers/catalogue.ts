@@ -12,7 +12,11 @@ import {
 	user,
 } from "@/db/schema";
 import { validateFormSubmission } from "../forms";
-import { capabilityProcedure, reporterProcedure } from "../orpc";
+import {
+	anyCapabilityProcedure,
+	capabilityProcedure,
+	reporterProcedure,
+} from "../orpc";
 import {
 	createTicketInTransaction,
 	finalizeCreatedTicket,
@@ -119,19 +123,17 @@ export const catalogueRouter = {
 			return getForm(input.id);
 		},
 	),
-	listCatalogue: capabilityProcedure("catalogue.manage").listCatalogue.handler(
-		async () => {
-			const [families, serviceRows, subcategories] = await Promise.all([
-				db.select().from(serviceFamilies).orderBy(serviceFamilies.name),
-				db.select().from(services).orderBy(services.name),
-				db
-					.select()
-					.from(serviceSubcategories)
-					.orderBy(serviceSubcategories.name),
-			]);
-			return { families, services: serviceRows, subcategories };
-		},
-	),
+	listCatalogue: anyCapabilityProcedure(
+		"catalogue.manage",
+		"ticket.reclassify",
+	).listCatalogue.handler(async () => {
+		const [families, serviceRows, subcategories] = await Promise.all([
+			db.select().from(serviceFamilies).orderBy(serviceFamilies.name),
+			db.select().from(services).orderBy(services.name),
+			db.select().from(serviceSubcategories).orderBy(serviceSubcategories.name),
+		]);
+		return { families, services: serviceRows, subcategories };
+	}),
 	listRequestCatalogue: capabilityProcedure(
 		"ticket.create",
 	).listRequestCatalogue.handler(async () => {

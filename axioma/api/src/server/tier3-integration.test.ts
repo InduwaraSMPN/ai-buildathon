@@ -2,33 +2,24 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import "dotenv/config";
 import { Client } from "pg";
-import { createApiKey, FixedWindowRateLimiter } from "./api-keys/core";
+import { createApiKey, type RateLimitResult } from "./api-keys/core";
 import type { ApiKeyDb } from "./api-keys/resolver";
 import { createApiKeyResolver } from "./api-keys/resolver";
 import { assertCapabilities } from "./orpc";
 
 const databaseUrl = process.env.DATABASE_URL;
 
-test("Tier 3 migration preserves CMDB row count and provenance", {
-	skip: !databaseUrl,
-}, async () => {
+test("legacy CMDB storage is retired", { skip: !databaseUrl }, async () => {
 	const client = new Client({ connectionString: databaseUrl });
 	await client.connect();
 	try {
 		const {
 			rows: [row],
-		} = await client.query(`
-			SELECT
-				(SELECT count(*)::int FROM cmdb_items) legacy_rows,
-				(SELECT count(*)::int FROM cmdb_objects o JOIN cmdb_items i ON i.id = o.id) migrated_rows,
-				(SELECT count(*)::int FROM cmdb_items i JOIN cmdb_objects o ON o.id = i.id
-				 WHERE o.source_ticket_id IS DISTINCT FROM i.source_ticket_id
-				    OR o.source_run_id IS DISTINCT FROM i.source_run_id
-				    OR o.source_step_id IS DISTINCT FROM i.source_step_id
-				    OR o.observed_at IS DISTINCT FROM i.observed_at) provenance_mismatches
-		`);
-		assert.equal(row.migrated_rows, row.legacy_rows);
-		assert.equal(row.provenance_mismatches, 0);
+		} = await client.query(`SELECT
+			to_regclass('public.cmdb_items') legacy_table,
+			to_regclass('public.cmdb_objects') replacement_table`);
+		assert.equal(row.legacy_table, null);
+		assert.equal(row.replacement_table, "cmdb_objects");
 	} finally {
 		await client.end();
 	}
@@ -51,13 +42,17 @@ test("read-only API key is denied write and then rate limited", async () => {
 		limit: async () => [created.record],
 	};
 	const update = { set: () => update, where: async () => undefined };
+	let consumed = false;
+	const consumeRateLimit = async (): Promise<RateLimitResult> => {
+		const resetAt = new Date(now.getTime() + 60_000);
+		if (consumed)
+			return { allowed: false, remaining: 0, resetAt, retryAfterMs: 60_000 };
+		consumed = true;
+		return { allowed: true, remaining: 0, resetAt };
+	};
 	const resolve = createApiKeyResolver({
 		db: { select: () => query, update: () => update } as unknown as ApiKeyDb,
-		limiter: new FixedWindowRateLimiter({
-			perKey: 1,
-			global: 10,
-			windowMs: 60_000,
-		}),
+		consumeRateLimit,
 		now: () => now,
 	});
 	const first = await resolve(created.token);

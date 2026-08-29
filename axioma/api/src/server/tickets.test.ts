@@ -49,12 +49,13 @@ test("ticket lifecycle covers every state-changing transition", async () => {
 		assert.equal(await resolveTicketStatus(from, action), to);
 });
 
-test("reruns require an escalated ticket and failed or exhausted latest run", () => {
-	assert.equal(canRerun("escalated", "failed"), true);
-	assert.equal(canRerun("escalated", "exhausted"), true);
-	assert.equal(canRerun("escalated", "resolved"), false);
-	assert.equal(canRerun("open", "failed"), false);
-	assert.equal(canRerun("escalated"), false);
+test("reruns require a startRun transition and failed or exhausted latest run", async () => {
+	assert.equal(await canRerun("escalated", "failed"), true);
+	assert.equal(await canRerun("escalated", "exhausted"), true);
+	assert.equal(await canRerun("escalated", "resolved"), false);
+	assert.equal(await canRerun("open", "failed"), true);
+	assert.equal(await canRerun("resolved", "failed"), false);
+	assert.equal(await canRerun("escalated"), false);
 });
 
 test("pending lifecycle pauses and returns to open", async () => {

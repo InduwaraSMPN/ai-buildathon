@@ -3,7 +3,7 @@ import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { requireDocumentWriteTarget } from "./http";
+import { requireDocumentWriteTarget } from "./access";
 import {
 	canReadCaseNote,
 	canReadDocument,

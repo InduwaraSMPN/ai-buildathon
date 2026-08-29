@@ -10,38 +10,41 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { fallbackStatusCopy, statusCopy } from "@/features/tickets/copy";
+import {
+	fallbackStatusCopy,
+	statusCopy,
+	ticketUiCopy,
+} from "@/features/tickets/copy";
 import { cn } from "@/lib/utils";
 
 const statusIcons: Record<string, LucideIcon> = {
-	open: Clock3,
-	routing: Route,
-	resolving: LifeBuoy,
+	new: Clock3,
+	open: LifeBuoy,
+	pending: Route,
 	resolved: CircleCheck,
-	escalated: LifeBuoy,
 	closed: CircleCheck,
 };
 
-export function getStatus(status: string) {
+export function getStatus(stateType: string) {
 	return {
-		...(statusCopy[status] ?? fallbackStatusCopy),
-		icon: statusIcons[status] ?? Clock3,
+		...(statusCopy[stateType] ?? fallbackStatusCopy),
+		icon: statusIcons[stateType] ?? Clock3,
 	};
 }
 
 export function StatusBadge({
-	status,
+	stateType,
 	label: configuredLabel,
 }: {
-	status: string;
+	stateType: string;
 	label?: string;
 }) {
-	const { label } = getStatus(status);
+	const { label } = getStatus(stateType);
 	return (
 		<span
 			className={cn(
 				"inline-flex items-center rounded-full border px-2.5 py-1 font-medium text-xs",
-				status === "resolved" || status === "closed"
+				stateType === "resolved" || stateType === "closed"
 					? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
 					: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300",
 			)}
@@ -99,7 +102,7 @@ export function PageHeading({
 
 export function LoadingCards() {
 	return (
-		<div className="grid gap-4" role="status" aria-label="Loading requests">
+		<div className="grid gap-4" role="status" aria-label={ticketUiCopy.loading}>
 			{[0, 1, 2].map((item) => (
 				<Card className="rounded-xl" key={item}>
 					<CardContent className="space-y-4 py-2">
@@ -119,15 +122,13 @@ export function ErrorState({ retry }: { retry: () => void }) {
 			<CardContent className="flex flex-col items-center gap-4 py-12 text-center">
 				<AlertCircle className="size-8 text-destructive" aria-hidden="true" />
 				<div>
-					<h2 className="font-semibold text-lg">
-						We couldn’t load this right now
-					</h2>
+					<h2 className="font-semibold text-lg">{ticketUiCopy.errorTitle}</h2>
 					<p className="mt-1 text-muted-foreground">
-						Check your connection and try again.
+						{ticketUiCopy.errorDescription}
 					</p>
 				</div>
 				<Button variant="outline" onClick={retry}>
-					Try again
+					{ticketUiCopy.tryAgain}
 				</Button>
 			</CardContent>
 		</Card>

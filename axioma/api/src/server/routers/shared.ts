@@ -93,11 +93,7 @@ export async function startTicketRun(
 			.where(eq(ticketStatuses.key, ticket.status))
 			.limit(1)
 	)[0]?.stateType;
-	if (
-		ticketState === "open" &&
-		ticket.status !== "routing" &&
-		ticket.status !== "resolving"
-	) {
+	if (ticketState === "open") {
 		const previous = (
 			await db
 				.select({ status: agentRuns.status })
@@ -106,7 +102,7 @@ export async function startTicketRun(
 				.orderBy(desc(agentRuns.startedAt))
 				.limit(1)
 		)[0];
-		if (!canRerun(ticket.status, previous?.status))
+		if (!(await canRerun(ticket.status, previous?.status)))
 			throw new ORPCError("CONFLICT", {
 				message: "Only failed or exhausted runs can be rerun",
 			});

@@ -11,6 +11,7 @@ import {
 	messagingChannels,
 	messagingThreads,
 	ticketMessages,
+	ticketOrigins,
 } from "@/db/schema";
 import { planThreadIngestion } from "../channel-ingestion";
 import { capabilityProcedure } from "../orpc";
@@ -20,6 +21,18 @@ import {
 } from "../tickets/create";
 
 export const mailRouter = {
+	listTicketOrigins: capabilityProcedure(
+		"admin.settings",
+	).listTicketOrigins.handler(() =>
+		db
+			.select({
+				id: ticketOrigins.id,
+				key: ticketOrigins.key,
+				name: ticketOrigins.name,
+			})
+			.from(ticketOrigins)
+			.orderBy(asc(ticketOrigins.name)),
+	),
 	listMailboxes: capabilityProcedure("admin.settings").listMailboxes.handler(
 		() => db.select().from(mailboxes).orderBy(asc(mailboxes.name)),
 	),

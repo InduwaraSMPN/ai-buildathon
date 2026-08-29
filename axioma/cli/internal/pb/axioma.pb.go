@@ -21,6 +21,66 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Canonical fixed action vocabulary. DeviceCommand.action stays a string for wire
+// compatibility; parity tests keep dispatch implementations aligned with this enum.
+type DeviceAction int32
+
+const (
+	DeviceAction_DEVICE_ACTION_UNSPECIFIED            DeviceAction = 0
+	DeviceAction_DEVICE_ACTION_FLUSH_DNS              DeviceAction = 1
+	DeviceAction_DEVICE_ACTION_RENEW_DHCP_LEASE       DeviceAction = 2
+	DeviceAction_DEVICE_ACTION_CLEAR_PROXY_OVERRIDE   DeviceAction = 3
+	DeviceAction_DEVICE_ACTION_RESET_CREDENTIAL_CACHE DeviceAction = 4
+	DeviceAction_DEVICE_ACTION_RESTART_USER_PROCESS   DeviceAction = 5
+)
+
+// Enum value maps for DeviceAction.
+var (
+	DeviceAction_name = map[int32]string{
+		0: "DEVICE_ACTION_UNSPECIFIED",
+		1: "DEVICE_ACTION_FLUSH_DNS",
+		2: "DEVICE_ACTION_RENEW_DHCP_LEASE",
+		3: "DEVICE_ACTION_CLEAR_PROXY_OVERRIDE",
+		4: "DEVICE_ACTION_RESET_CREDENTIAL_CACHE",
+		5: "DEVICE_ACTION_RESTART_USER_PROCESS",
+	}
+	DeviceAction_value = map[string]int32{
+		"DEVICE_ACTION_UNSPECIFIED":            0,
+		"DEVICE_ACTION_FLUSH_DNS":              1,
+		"DEVICE_ACTION_RENEW_DHCP_LEASE":       2,
+		"DEVICE_ACTION_CLEAR_PROXY_OVERRIDE":   3,
+		"DEVICE_ACTION_RESET_CREDENTIAL_CACHE": 4,
+		"DEVICE_ACTION_RESTART_USER_PROCESS":   5,
+	}
+)
+
+func (x DeviceAction) Enum() *DeviceAction {
+	p := new(DeviceAction)
+	*p = x
+	return p
+}
+
+func (x DeviceAction) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DeviceAction) Descriptor() protoreflect.EnumDescriptor {
+	return file_axioma_proto_enumTypes[0].Descriptor()
+}
+
+func (DeviceAction) Type() protoreflect.EnumType {
+	return &file_axioma_proto_enumTypes[0]
+}
+
+func (x DeviceAction) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DeviceAction.Descriptor instead.
+func (DeviceAction) EnumDescriptor() ([]byte, []int) {
+	return file_axioma_proto_rawDescGZIP(), []int{0}
+}
+
 type RunUpdate_Kind int32
 
 const (
@@ -63,11 +123,11 @@ func (x RunUpdate_Kind) String() string {
 }
 
 func (RunUpdate_Kind) Descriptor() protoreflect.EnumDescriptor {
-	return file_axioma_proto_enumTypes[0].Descriptor()
+	return file_axioma_proto_enumTypes[1].Descriptor()
 }
 
 func (RunUpdate_Kind) Type() protoreflect.EnumType {
-	return &file_axioma_proto_enumTypes[0]
+	return &file_axioma_proto_enumTypes[1]
 }
 
 func (x RunUpdate_Kind) Number() protoreflect.EnumNumber {
@@ -1661,7 +1721,14 @@ const file_axioma_proto_rawDesc = "" +
 	"\x02ok\x18\x03 \x01(\bR\x02ok\x12\x1f\n" +
 	"\voutput_json\x18\x04 \x01(\tR\n" +
 	"outputJson\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error2M\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error*\xe8\x01\n" +
+	"\fDeviceAction\x12\x1d\n" +
+	"\x19DEVICE_ACTION_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17DEVICE_ACTION_FLUSH_DNS\x10\x01\x12\"\n" +
+	"\x1eDEVICE_ACTION_RENEW_DHCP_LEASE\x10\x02\x12&\n" +
+	"\"DEVICE_ACTION_CLEAR_PROXY_OVERRIDE\x10\x03\x12(\n" +
+	"$DEVICE_ACTION_RESET_CREDENTIAL_CACHE\x10\x04\x12&\n" +
+	"\"DEVICE_ACTION_RESTART_USER_PROCESS\x10\x052M\n" +
 	"\fAgentChannel\x12=\n" +
 	"\aConnect\x12\x17.axioma.v1.AgentMessage\x1a\x15.axioma.v1.ApiMessage(\x010\x012S\n" +
 	"\rDeviceChannel\x12B\n" +
@@ -1679,50 +1746,51 @@ func file_axioma_proto_rawDescGZIP() []byte {
 	return file_axioma_proto_rawDescData
 }
 
-var file_axioma_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_axioma_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_axioma_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_axioma_proto_goTypes = []any{
-	(RunUpdate_Kind)(0),      // 0: axioma.v1.RunUpdate.Kind
-	(*AgentMessage)(nil),     // 1: axioma.v1.AgentMessage
-	(*ApiMessage)(nil),       // 2: axioma.v1.ApiMessage
-	(*AgentHello)(nil),       // 3: axioma.v1.AgentHello
-	(*StartRun)(nil),         // 4: axioma.v1.StartRun
-	(*CancelRun)(nil),        // 5: axioma.v1.CancelRun
-	(*RunUpdate)(nil),        // 6: axioma.v1.RunUpdate
-	(*ToolRequest)(nil),      // 7: axioma.v1.ToolRequest
-	(*ToolResult)(nil),       // 8: axioma.v1.ToolResult
-	(*Heartbeat)(nil),        // 9: axioma.v1.Heartbeat
-	(*DeviceMessage)(nil),    // 10: axioma.v1.DeviceMessage
-	(*InventoryReport)(nil),  // 11: axioma.v1.InventoryReport
-	(*GatewayMessage)(nil),   // 12: axioma.v1.GatewayMessage
-	(*DeviceEnrollment)(nil), // 13: axioma.v1.DeviceEnrollment
-	(*DeviceHello)(nil),      // 14: axioma.v1.DeviceHello
-	(*DeviceCommand)(nil),    // 15: axioma.v1.DeviceCommand
-	(*CommandResult)(nil),    // 16: axioma.v1.CommandResult
-	nil,                      // 17: axioma.v1.DeviceCommand.ParametersEntry
+	(DeviceAction)(0),        // 0: axioma.v1.DeviceAction
+	(RunUpdate_Kind)(0),      // 1: axioma.v1.RunUpdate.Kind
+	(*AgentMessage)(nil),     // 2: axioma.v1.AgentMessage
+	(*ApiMessage)(nil),       // 3: axioma.v1.ApiMessage
+	(*AgentHello)(nil),       // 4: axioma.v1.AgentHello
+	(*StartRun)(nil),         // 5: axioma.v1.StartRun
+	(*CancelRun)(nil),        // 6: axioma.v1.CancelRun
+	(*RunUpdate)(nil),        // 7: axioma.v1.RunUpdate
+	(*ToolRequest)(nil),      // 8: axioma.v1.ToolRequest
+	(*ToolResult)(nil),       // 9: axioma.v1.ToolResult
+	(*Heartbeat)(nil),        // 10: axioma.v1.Heartbeat
+	(*DeviceMessage)(nil),    // 11: axioma.v1.DeviceMessage
+	(*InventoryReport)(nil),  // 12: axioma.v1.InventoryReport
+	(*GatewayMessage)(nil),   // 13: axioma.v1.GatewayMessage
+	(*DeviceEnrollment)(nil), // 14: axioma.v1.DeviceEnrollment
+	(*DeviceHello)(nil),      // 15: axioma.v1.DeviceHello
+	(*DeviceCommand)(nil),    // 16: axioma.v1.DeviceCommand
+	(*CommandResult)(nil),    // 17: axioma.v1.CommandResult
+	nil,                      // 18: axioma.v1.DeviceCommand.ParametersEntry
 }
 var file_axioma_proto_depIdxs = []int32{
-	3,  // 0: axioma.v1.AgentMessage.hello:type_name -> axioma.v1.AgentHello
-	6,  // 1: axioma.v1.AgentMessage.run_update:type_name -> axioma.v1.RunUpdate
-	7,  // 2: axioma.v1.AgentMessage.tool_request:type_name -> axioma.v1.ToolRequest
-	9,  // 3: axioma.v1.AgentMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	4,  // 4: axioma.v1.ApiMessage.start_run:type_name -> axioma.v1.StartRun
-	8,  // 5: axioma.v1.ApiMessage.tool_result:type_name -> axioma.v1.ToolResult
-	5,  // 6: axioma.v1.ApiMessage.cancel_run:type_name -> axioma.v1.CancelRun
-	9,  // 7: axioma.v1.ApiMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	0,  // 8: axioma.v1.RunUpdate.kind:type_name -> axioma.v1.RunUpdate.Kind
-	14, // 9: axioma.v1.DeviceMessage.hello:type_name -> axioma.v1.DeviceHello
-	16, // 10: axioma.v1.DeviceMessage.result:type_name -> axioma.v1.CommandResult
-	9,  // 11: axioma.v1.DeviceMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	11, // 12: axioma.v1.DeviceMessage.inventory:type_name -> axioma.v1.InventoryReport
-	15, // 13: axioma.v1.GatewayMessage.command:type_name -> axioma.v1.DeviceCommand
-	9,  // 14: axioma.v1.GatewayMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	13, // 15: axioma.v1.GatewayMessage.enrollment:type_name -> axioma.v1.DeviceEnrollment
-	17, // 16: axioma.v1.DeviceCommand.parameters:type_name -> axioma.v1.DeviceCommand.ParametersEntry
-	1,  // 17: axioma.v1.AgentChannel.Connect:input_type -> axioma.v1.AgentMessage
-	10, // 18: axioma.v1.DeviceChannel.Connect:input_type -> axioma.v1.DeviceMessage
-	2,  // 19: axioma.v1.AgentChannel.Connect:output_type -> axioma.v1.ApiMessage
-	12, // 20: axioma.v1.DeviceChannel.Connect:output_type -> axioma.v1.GatewayMessage
+	4,  // 0: axioma.v1.AgentMessage.hello:type_name -> axioma.v1.AgentHello
+	7,  // 1: axioma.v1.AgentMessage.run_update:type_name -> axioma.v1.RunUpdate
+	8,  // 2: axioma.v1.AgentMessage.tool_request:type_name -> axioma.v1.ToolRequest
+	10, // 3: axioma.v1.AgentMessage.heartbeat:type_name -> axioma.v1.Heartbeat
+	5,  // 4: axioma.v1.ApiMessage.start_run:type_name -> axioma.v1.StartRun
+	9,  // 5: axioma.v1.ApiMessage.tool_result:type_name -> axioma.v1.ToolResult
+	6,  // 6: axioma.v1.ApiMessage.cancel_run:type_name -> axioma.v1.CancelRun
+	10, // 7: axioma.v1.ApiMessage.heartbeat:type_name -> axioma.v1.Heartbeat
+	1,  // 8: axioma.v1.RunUpdate.kind:type_name -> axioma.v1.RunUpdate.Kind
+	15, // 9: axioma.v1.DeviceMessage.hello:type_name -> axioma.v1.DeviceHello
+	17, // 10: axioma.v1.DeviceMessage.result:type_name -> axioma.v1.CommandResult
+	10, // 11: axioma.v1.DeviceMessage.heartbeat:type_name -> axioma.v1.Heartbeat
+	12, // 12: axioma.v1.DeviceMessage.inventory:type_name -> axioma.v1.InventoryReport
+	16, // 13: axioma.v1.GatewayMessage.command:type_name -> axioma.v1.DeviceCommand
+	10, // 14: axioma.v1.GatewayMessage.heartbeat:type_name -> axioma.v1.Heartbeat
+	14, // 15: axioma.v1.GatewayMessage.enrollment:type_name -> axioma.v1.DeviceEnrollment
+	18, // 16: axioma.v1.DeviceCommand.parameters:type_name -> axioma.v1.DeviceCommand.ParametersEntry
+	2,  // 17: axioma.v1.AgentChannel.Connect:input_type -> axioma.v1.AgentMessage
+	11, // 18: axioma.v1.DeviceChannel.Connect:input_type -> axioma.v1.DeviceMessage
+	3,  // 19: axioma.v1.AgentChannel.Connect:output_type -> axioma.v1.ApiMessage
+	13, // 20: axioma.v1.DeviceChannel.Connect:output_type -> axioma.v1.GatewayMessage
 	19, // [19:21] is the sub-list for method output_type
 	17, // [17:19] is the sub-list for method input_type
 	17, // [17:17] is the sub-list for extension type_name
@@ -1763,7 +1831,7 @@ func file_axioma_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_axioma_proto_rawDesc), len(file_axioma_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   2,

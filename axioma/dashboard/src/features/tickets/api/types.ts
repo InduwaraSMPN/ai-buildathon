@@ -7,15 +7,15 @@ export type TicketFacets = TicketListResult["facets"];
 export type TicketDetail = NonNullable<
 	Awaited<ReturnType<typeof client.getTicket>>
 >;
+export type TicketSlaTarget = Awaited<
+	ReturnType<typeof client.listTicketSla>
+>[number];
 export type TicketScope = TicketListInput["scope"];
 export type TicketStatus = NonNullable<TicketListInput["status"]>[number];
 export type TicketPriority = NonNullable<TicketListInput["priority"]>[number];
 export type TicketRecordType = NonNullable<
 	TicketListInput["recordType"]
 >[number];
-export type TicketCategory = NonNullable<
-	NonNullable<TicketListInput["category"]>[number]
->;
 export type TicketRoute = NonNullable<
 	NonNullable<TicketListInput["route"]>[number]
 >;

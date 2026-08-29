@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
 	formatDate,
@@ -26,7 +27,8 @@ import type {
 	TicketOperatorActionInput,
 	UpdateTicketInput,
 } from "../api/types";
-import { DynamicFields } from "./dynamic-fields";
+import { DynamicFields, serializeDynamicFields } from "./dynamic-fields";
+import { SlaCountdown } from "./sla-countdown";
 import { TicketActions } from "./ticket-actions";
 import { TicketActivity, TicketConversation } from "./ticket-collaboration";
 
@@ -77,6 +79,19 @@ function TicketDetail({
 			input: { ticketId: ticket.id },
 		}),
 	);
+	const sla = useQuery(ticketQueries.sla(ticket.id));
+	const [customFields, setCustomFields] = useState(ticket.customFields);
+	const customFieldsMutation = useMutation(
+		orpc.setTicketDynamicFields.mutationOptions({
+			onSuccess: async () => {
+				await queryClient.invalidateQueries({
+					queryKey: ticketQueries.detail(ticket.id).queryKey,
+				});
+				toast.success("Custom fields updated");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 	const mutation = useMutation(
 		ticketMutations.update(queryClient, {
 			onSuccess: () => toast.success("Ticket updated"),
@@ -93,7 +108,11 @@ function TicketDetail({
 				title={ticket.title}
 				description={`Reported by ${ticket.reporterName} · ${formatDate(ticket.createdAt)}`}
 				actions={
-					<StatusBadge status={ticket.status} label={ticket.statusLabel} />
+					<StatusBadge
+						status={ticket.status}
+						label={ticket.statusLabel}
+						stateType={ticket.statusStateType}
+					/>
 				}
 			/>
 			<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -134,9 +153,21 @@ function TicketDetail({
 				</Tabs>
 				<aside className="space-y-4">
 					<Metadata ticket={ticket} />
+					<SlaCountdown targets={sla.data ?? []} />
 					<DynamicFields
 						definitions={fieldDefinitions.data ?? []}
-						values={ticket.customFields}
+						values={customFields}
+						onChange={setCustomFields}
+						onSave={() =>
+							customFieldsMutation.mutate({
+								ticketId: ticket.id,
+								values: serializeDynamicFields(
+									fieldDefinitions.data ?? [],
+									customFields,
+								),
+							})
+						}
+						pending={customFieldsMutation.isPending}
 					/>
 					<TicketImpact ticketId={ticket.id} />
 					<section className="rounded-xl border bg-card p-4 shadow-sm">
@@ -202,7 +233,11 @@ function Metadata({ ticket }: { ticket: TicketDetailData }) {
 			<dl className="mt-3 divide-y text-xs">
 				<Meta label="Reference">{ticket.number ?? ticket.id}</Meta>
 				<Meta label="Status">
-					<StatusBadge status={ticket.status} label={ticket.statusLabel} />
+					<StatusBadge
+						status={ticket.status}
+						label={ticket.statusLabel}
+						stateType={ticket.statusStateType}
+					/>
 				</Meta>
 				<Meta label="Type">{label(ticket.recordType)}</Meta>
 				<Meta label="Priority">
@@ -220,10 +255,8 @@ function Metadata({ ticket }: { ticket: TicketDetailData }) {
 				</Meta>
 				<Meta label="Impact">{label(ticket.impact)}</Meta>
 				<Meta label="Urgency">{label(ticket.urgency)}</Meta>
-				<Meta label="Category">
-					{ticket.category ? label(ticket.category) : "Unclassified"}
-				</Meta>
-				<Meta label="Subcategory">{ticket.subcategory ?? "None"}</Meta>
+				<Meta label="Service">{ticket.serviceName}</Meta>
+				<Meta label="Service subcategory">{ticket.serviceSubcategoryName}</Meta>
 				<Meta label="Route">
 					{ticket.route ? label(ticket.route) : "Unassigned"}
 				</Meta>

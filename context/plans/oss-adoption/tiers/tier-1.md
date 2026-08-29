@@ -16,12 +16,12 @@ of who changed what.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
-> the running API. **7 of 12 milestones complete** — T1.B, T1.G, T1.H, T1.I, T1.J, T1.K and T1.L. T1.A is half converted; `grpc.ts` and both frontends still key behaviour off status names. T1.C, T1.D, T1.E and T1.F are complete in the database and invisible in the product.
+> The 2026-08-29 close-out audit found **10 of 12 milestones complete**. Status behavior is data-driven
+> across API and frontends; pending, SLA/OLA and resolution reporting are wired. Two milestones remain
+> partial against their full tier definitions.
 >
-> The remaining work is in [../execution/chat-b-tier1.md](../execution/chat-b-tier1.md), with the confirmed
-> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
-> against and is still current.
+> Section 7 remains the definition of done; [../execution/chat-b-tier1.md](../execution/chat-b-tier1.md)
+> is retained as execution history.
 
 ## 1. Current state
 

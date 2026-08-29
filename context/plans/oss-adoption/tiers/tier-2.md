@@ -15,12 +15,12 @@ ticket system with an agent and becomes a service management system.
 > written because the milestones, decisions and definition of done are argued from it. It no longer
 > describes the tree.
 >
-> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
-> the running API. **1 of 7 milestones complete** — T2.C. The API and schema are largely done and the human surfaces are not: the dashboard is read-only across problems, changes and knowledge, and no form exists or can be created.
+> The 2026-08-29 close-out audit found **4 of 7 milestones complete**. Forms, catalogue-backed ticket
+> classification, change transitions and the principal human surfaces are wired; three milestones remain
+> partial against their full tier definitions.
 >
-> The remaining work is in [../execution/chat-c-tier2.md](../execution/chat-c-tier2.md), with the confirmed
-> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
-> against and is still current.
+> Section 7 remains the definition of done; [../execution/chat-c-tier2.md](../execution/chat-c-tier2.md)
+> is retained as execution history.
 
 ## Lexical knowledge-search decision
 

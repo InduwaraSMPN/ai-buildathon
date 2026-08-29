@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { eq, isNotNull, or } from "drizzle-orm";
+import { eq, inArray, isNotNull, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -8,6 +8,7 @@ import {
 	knowledgeGapTickets,
 } from "@/db/schema/knowledge";
 import { tickets } from "@/db/schema/tickets";
+import { ticketStatuses } from "@/db/schema/vocabulary";
 
 const STOP_WORDS = new Set([
 	"a",
@@ -94,7 +95,18 @@ export async function sweepKnowledgeGaps() {
 				.select({ id: tickets.id, title: tickets.title })
 				.from(tickets)
 				.where(
-					or(eq(tickets.status, "resolved"), isNotNull(tickets.resolvedAt)),
+					or(
+						inArray(
+							tickets.status,
+							tx
+								.select({ key: ticketStatuses.key })
+								.from(ticketStatuses)
+								.where(
+									inArray(ticketStatuses.stateType, ["resolved", "closed"]),
+								),
+						),
+						isNotNull(tickets.resolvedAt),
+					),
 				),
 			tx
 				.select({

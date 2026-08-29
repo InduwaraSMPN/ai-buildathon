@@ -1,12 +1,5 @@
 import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
-export const STATUS_INCIDENT_STATES = [
-	"investigating",
-	"identified",
-	"monitoring",
-	"resolved",
-] as const;
-
 export const serviceImpactLevels = pgTable("service_impact_levels", {
 	key: text("key").primaryKey(),
 	label: text("label").notNull(),
@@ -43,18 +36,4 @@ export const statusIncidents = pgTable(
 	],
 );
 
-export const statusIncidentUpdates = pgTable(
-	"status_incident_updates",
-	{
-		id: text("id").primaryKey(),
-		incidentId: text("incident_id")
-			.notNull()
-			.references(() => statusIncidents.id, { onDelete: "cascade" }),
-		state: text("state", { enum: STATUS_INCIDENT_STATES }).notNull(),
-		message: text("message").notNull(),
-		createdAt: timestamp("created_at").defaultNow().notNull(),
-	},
-	(t) => [
-		index("status_incident_updates_incident_idx").on(t.incidentId, t.createdAt),
-	],
-);
+// status_incident_updates had no read/write path; 0037 drops it until an incident timeline is implemented.
