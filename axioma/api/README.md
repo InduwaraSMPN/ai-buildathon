@@ -19,7 +19,7 @@ execute tools, and the API owns the side effect and the persistence.
 ```bash
 pnpm install
 pnpm db:start
-pnpm db:push
+pnpm db:migrate
 pnpm dev
 ```
 

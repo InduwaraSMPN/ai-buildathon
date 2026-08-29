@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from axel import model
+from axel import model, tools
 from axel.loop import RunContext, _append_call
 
 
@@ -46,7 +46,7 @@ async def test_malformed_model_arguments_become_recoverable_invalid_decision(
     )
 
 
-def test_wire_tool_name_maps_back_to_registry_name() -> None:
+def test_model_tool_name_matches_registry_name() -> None:
     decision = model._decision(
         "cluster_read_pods",
         {"reasoning": "Inspect pods.", "namespace": "demo", "label_selector": None},
@@ -54,7 +54,7 @@ def test_wire_tool_name_maps_back_to_registry_name() -> None:
     assert decision.tool == "cluster_read_pods"
 
 
-def test_transcript_uses_wire_safe_tool_name() -> None:
+def test_transcript_uses_registry_tool_name() -> None:
     context = RunContext(
         run_id="r",
         ticket_id="t",
@@ -68,6 +68,13 @@ def test_transcript_uses_wire_safe_tool_name() -> None:
     )
     _append_call(context, "call", "cluster_read_pods", {"namespace": "demo"})
     assert context.transcript[0]["tool_calls"][0]["function"]["name"] == "cluster_read_pods"  # type: ignore[index]
+
+
+def test_device_tool_cross_field_validation() -> None:
+    with pytest.raises(ValueError, match="target is required"):
+        tools.DeviceReadState(device_id="device", facets=["reachability"])
+    with pytest.raises(ValueError, match="process_name is required"):
+        tools.DeviceRunAction(device_id="device", action="restart_user_process")
 
 
 def test_escalation_adapter_preserves_structured_proposal() -> None:

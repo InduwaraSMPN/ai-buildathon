@@ -134,6 +134,7 @@ class Gateway {
 		recordType?: string;
 		impact?: string;
 		urgency?: string;
+		priority?: string;
 	}) {
 		const selected = this.selectAgent();
 		if (!selected) throw new Error("Axel is not connected");
@@ -165,6 +166,7 @@ class Gateway {
 					recordType: input.recordType ?? "incident",
 					impact: input.impact ?? "medium",
 					urgency: input.urgency ?? "medium",
+					priority: input.priority ?? "P3",
 				},
 			});
 		} catch (error) {
@@ -191,10 +193,47 @@ class Gateway {
 		const agent = workerId ? this.agents.get(workerId) : undefined;
 		if (agent) agent.stream.write({ cancelRun: { runId, reason } });
 		this.runAgents.delete(runId);
-		await db
-			.update(agentRuns)
-			.set({ status: "failed", outcome: reason, endedAt: new Date() })
-			.where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")));
+		await db.transaction(async (tx) => {
+			const activeTicket = (
+				await tx
+					.select({ status: tickets.status })
+					.from(tickets)
+					.innerJoin(agentRuns, eq(agentRuns.ticketId, tickets.id))
+					.where(eq(agentRuns.id, runId))
+					.limit(1)
+			)[0];
+			const run = (
+				await tx
+					.update(agentRuns)
+					.set({ status: "failed", outcome: reason, endedAt: new Date() })
+					.where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+					.returning({ ticketId: agentRuns.ticketId })
+			)[0];
+			if (!run) return;
+			const ticket = (
+				await tx
+					.update(tickets)
+					.set({ status: "escalated", progressMarker: "handing_to_person" })
+					.where(
+						and(
+							eq(tickets.id, run.ticketId),
+							inArray(tickets.status, ["routing", "resolving"]),
+						),
+					)
+					.returning({ id: tickets.id })
+			)[0];
+			if (ticket)
+				await tx.insert(ticketTransitions).values({
+					id: crypto.randomUUID(),
+					ticketId: run.ticketId,
+					fromStatus:
+						activeTicket?.status === "routing" ? "routing" : "resolving",
+					toStatus: "escalated",
+					action: "fail",
+					actorType: "agent",
+					actorId: runId,
+				});
+		});
 	}
 
 	async dispatchDeviceTool(
@@ -428,7 +467,7 @@ class Gateway {
 			if (run.status !== "running") throw new Error(`run is ${run.status}`);
 			const toolName = String(request.toolName);
 			const input = JSON.parse(String(request.inputJson));
-			if (toolName.startsWith("device.")) {
+			if (toolName.startsWith("device_")) {
 				const ticket = (
 					await db
 						.select({ deviceId: tickets.deviceId })
@@ -704,15 +743,9 @@ class Gateway {
 			"terminal",
 		] as const;
 		const rawKind = Number(update.kind);
-		let toolOutput = parse(update.toolOutputJson);
-		if (!Number.isInteger(rawKind) || rawKind < 1 || rawKind > 5) {
-			toolOutput =
-				toolOutput &&
-				typeof toolOutput === "object" &&
-				!Array.isArray(toolOutput)
-					? { ...toolOutput, rawKind }
-					: { value: toolOutput, rawKind };
-		}
+		if (!Number.isInteger(rawKind) || rawKind < 1 || rawKind > 5)
+			throw new Error(`invalid run update kind: ${rawKind}`);
+		const toolOutput = parse(update.toolOutputJson);
 		await db
 			.insert(agentSteps)
 			.values({
@@ -740,7 +773,7 @@ class Gateway {
 					.where(eq(agentRuns.id, runId))
 					.limit(1)
 			)[0];
-			await db
+			const finished = await db
 				.update(agentRuns)
 				.set({
 					status: status as "resolved" | "escalated" | "failed" | "exhausted",
@@ -750,8 +783,9 @@ class Gateway {
 					...(update.model ? { model: String(update.model) } : {}),
 					endedAt: new Date(),
 				})
-				.where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")));
-			if (run) {
+				.where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+				.returning({ id: agentRuns.id });
+			if (run && finished[0]) {
 				const resolved = status === "resolved";
 				const toStatus = resolved ? "resolved" : "escalated";
 				const currentTicket = (
@@ -791,7 +825,14 @@ class Gateway {
 						ticketId: run.ticketId,
 						fromStatus: fromStatus ?? "resolving",
 						toStatus,
-						action: resolved ? "resolve" : status,
+						action:
+							status === "failed"
+								? "fail"
+								: status === "exhausted"
+									? "exhaust"
+									: resolved
+										? "resolve"
+										: "escalate",
 						actorType: "agent",
 						actorId: runId,
 					});

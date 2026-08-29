@@ -68,6 +68,7 @@ export const tickets = pgTable(
 		index("tickets_status_idx").on(t.status, t.createdAt),
 		index("tickets_priority_idx").on(t.priority, t.createdAt),
 		index("tickets_type_idx").on(t.recordType, t.status),
+		index("tickets_device_idx").on(t.deviceId),
 	],
 );
 

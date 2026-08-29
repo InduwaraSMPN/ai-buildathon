@@ -64,6 +64,7 @@ message StartRun {
   string record_type = 8;
   string impact = 9;
   string urgency = 10;
+  string priority = 11;
 }
 
 message CancelRun {

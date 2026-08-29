@@ -196,6 +196,7 @@ async function startTicketRun(ticketId: string) {
 			recordType: ticket.recordType,
 			impact: ticket.impact,
 			urgency: ticket.urgency,
+			priority: ticket.priority,
 		});
 	} catch (error) {
 		await db.transaction(async (tx) => {

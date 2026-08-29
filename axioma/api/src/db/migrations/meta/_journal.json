@@ -43,6 +43,20 @@
 			"when": 1787987000000,
 			"tag": "0005_unify_tool_names",
 			"breakpoints": true
+		},
+		{
+			"idx": 6,
+			"version": "7",
+			"when": 1787988653362,
+			"tag": "0006_ticket_device_index",
+			"breakpoints": true
+		},
+		{
+			"idx": 7,
+			"version": "7",
+			"when": 1787989000000,
+			"tag": "0007_normalize_transition_actions",
+			"breakpoints": true
 		}
 	]
 }

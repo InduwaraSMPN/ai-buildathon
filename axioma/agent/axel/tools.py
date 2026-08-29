@@ -15,7 +15,7 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class StrictToolInput(BaseModel):
@@ -65,6 +65,12 @@ class DeviceReadState(StrictToolInput):
     ] = Field(min_length=1)
     target: str | None = Field(default=None, min_length=1, max_length=253)
 
+    @model_validator(mode="after")
+    def require_reachability_target(self) -> DeviceReadState:
+        if "reachability" in self.facets and not self.target:
+            raise ValueError("target is required for the reachability facet")
+        return self
+
 
 class DeviceRunAction(StrictToolInput):
     """Tier one: a named action the device implements. No command string."""
@@ -78,6 +84,12 @@ class DeviceRunAction(StrictToolInput):
         "restart_user_process",
     ]
     parameters: dict[str, str] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def require_action_parameters(self) -> DeviceRunAction:
+        if self.action == "restart_user_process" and not self.parameters.get("process_name"):
+            raise ValueError("process_name is required for restart_user_process")
+        return self
 
 
 class DeviceComputerUse(StrictToolInput):
@@ -168,7 +180,7 @@ REGISTRY: dict[str, Tool] = {
             effect=Effect.WRITE,
             description=(
                 "Drive the device GUI toward an objective. Use only when no typed action "
-                "exists. Not available on every device_"
+                "exists. Not available on every device."
             ),
             schema_model=DeviceComputerUse,
             verified_by="device_read_state",

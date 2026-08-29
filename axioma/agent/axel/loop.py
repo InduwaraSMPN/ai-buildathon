@@ -236,7 +236,7 @@ async def run(ctx: RunContext) -> RunResult:
                 )
             continue
 
-        payload = parsed.model_dump(mode="json")
+        payload = parsed.model_dump(mode="json", exclude_none=True)
         source_step_ordinal = await ctx.report(
             Step(
                 kind=StepKind.TOOL_CALL,

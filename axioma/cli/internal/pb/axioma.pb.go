@@ -390,6 +390,7 @@ type StartRun struct {
 	RecordType    string `protobuf:"bytes,8,opt,name=record_type,json=recordType,proto3" json:"record_type,omitempty"`
 	Impact        string `protobuf:"bytes,9,opt,name=impact,proto3" json:"impact,omitempty"`
 	Urgency       string `protobuf:"bytes,10,opt,name=urgency,proto3" json:"urgency,omitempty"`
+	Priority      string `protobuf:"bytes,11,opt,name=priority,proto3" json:"priority,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -490,6 +491,13 @@ func (x *StartRun) GetImpact() string {
 func (x *StartRun) GetUrgency() string {
 	if x != nil {
 		return x.Urgency
+	}
+	return ""
+}
+
+func (x *StartRun) GetPriority() string {
+	if x != nil {
+		return x.Priority
 	}
 	return ""
 }
@@ -1448,7 +1456,7 @@ const file_axioma_proto_rawDesc = "" +
 	"\vmodel_label\x18\x02 \x01(\tR\n" +
 	"modelLabel\x12\"\n" +
 	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\x12\x1b\n" +
-	"\tworker_id\x18\x04 \x01(\tR\bworkerId\"\x9c\x02\n" +
+	"\tworker_id\x18\x04 \x01(\tR\bworkerId\"\xb8\x02\n" +
 	"\bStartRun\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1b\n" +
 	"\tticket_id\x18\x02 \x01(\tR\bticketId\x12\x14\n" +
@@ -1462,7 +1470,8 @@ const file_axioma_proto_rawDesc = "" +
 	"recordType\x12\x16\n" +
 	"\x06impact\x18\t \x01(\tR\x06impact\x12\x18\n" +
 	"\aurgency\x18\n" +
-	" \x01(\tR\aurgency\":\n" +
+	" \x01(\tR\aurgency\x12\x1a\n" +
+	"\bpriority\x18\v \x01(\tR\bpriority\":\n" +
 	"\tCancelRun\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x16\n" +
 	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xc2\x04\n" +
