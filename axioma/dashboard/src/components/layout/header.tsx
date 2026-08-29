@@ -13,9 +13,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
+import { NotificationCenter } from "./notification-center";
 import { UserNav } from "./user-nav";
 
-export function Header({ onSearch }: { onSearch: () => void }) {
+export function Header({
+	onSearch,
+	showTier3,
+}: {
+	onSearch: () => void;
+	showTier3: boolean;
+}) {
 	const crumbs = useBreadcrumbs();
 	return (
 		<header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-md">
@@ -51,16 +58,21 @@ export function Header({ onSearch }: { onSearch: () => void }) {
 				</Breadcrumb>
 			</div>
 			<div className="flex items-center gap-2">
-				<Button
-					variant="outline"
-					size="sm"
-					onClick={onSearch}
-					aria-label="Search views, tickets, and devices"
-				>
-					<Search />
-					<span className="hidden sm:inline">Search</span>
-					<kbd className="hidden text-muted-foreground md:inline">⌘K</kbd>
-				</Button>
+				{showTier3 ? (
+					<>
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={onSearch}
+							aria-label="Search records"
+						>
+							<Search />
+							<span className="hidden sm:inline">Search</span>
+							<kbd className="hidden text-muted-foreground md:inline">⌘K</kbd>
+						</Button>
+						<NotificationCenter />
+					</>
+				) : null}
 				<ModeToggle />
 				<UserNav />
 			</div>

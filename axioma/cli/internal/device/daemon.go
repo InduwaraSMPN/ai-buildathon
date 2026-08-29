@@ -16,6 +16,7 @@ import (
 
 const (
 	heartbeatInterval     = 20 * time.Second
+	inventoryInterval     = 24 * time.Hour
 	livenessTimeout       = 60 * time.Second
 	stablePeriod          = 30 * time.Second
 	baseBackoff           = time.Second
@@ -26,11 +27,17 @@ const (
 
 type daemonTimings struct {
 	heartbeat time.Duration
+	inventory time.Duration
 	liveness  time.Duration
 	stable    time.Duration
 }
 
-var productionTimings = daemonTimings{heartbeatInterval, livenessTimeout, stablePeriod}
+var productionTimings = daemonTimings{
+	heartbeat: heartbeatInterval,
+	inventory: inventoryInterval,
+	liveness:  livenessTimeout,
+	stable:    stablePeriod,
+}
 
 type deviceStream interface {
 	Send(*pb.DeviceMessage) error
@@ -110,11 +117,18 @@ func connect(ctx context.Context, host string, id *Identity, timings daemonTimin
 	if err != nil {
 		return fmt.Errorf("connect device stream: %w", err)
 	}
-	return serveConnection(connCtx, cancel, stream, host, id, timings, SaveSequence, execute)
+	return serveConnection(connCtx, cancel, stream, host, id, timings, SaveSequence, execute, CollectInventory)
 }
 
-func serveConnection(ctx context.Context, cancel context.CancelFunc, stream deviceStream, host string, id *Identity, timings daemonTimings, saveSequence func(Identity, uint64) error, executeCommand func(context.Context, *pb.DeviceCommand) *pb.CommandResult) error {
+func serveConnection(ctx context.Context, cancel context.CancelFunc, stream deviceStream, host string, id *Identity, timings daemonTimings, saveSequence func(Identity, uint64) error, executeCommand func(context.Context, *pb.DeviceCommand) *pb.CommandResult, collectors ...func(context.Context) Inventory) error {
 	defer cancel()
+	collectInventory := func(context.Context) Inventory { return Inventory{} }
+	if len(collectors) > 0 {
+		collectInventory = collectors[0]
+	}
+	if timings.inventory <= 0 {
+		timings.inventory = inventoryInterval
+	}
 	if err := stream.Send(&pb.DeviceMessage{Payload: &pb.DeviceMessage_Hello{Hello: &pb.DeviceHello{
 		DeviceId: id.DeviceID, Hostname: id.Hostname, Username: id.Username,
 		Platform: id.Platform, Release: id.Release, AgentVersion: id.AgentVersion,
@@ -162,16 +176,49 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 		}
 	}()
 
+	inventoryJobs := make(chan struct{})
+	inventoryReports := make(chan *pb.InventoryReport)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-inventoryJobs:
+				collectedAt := time.Now()
+				payload, err := json.Marshal(collectInventory(ctx))
+				if err != nil {
+					continue
+				}
+				reportID, err := newID()
+				if err != nil {
+					continue
+				}
+				select {
+				case inventoryReports <- &pb.InventoryReport{ReportId: reportID, CollectedUnixMs: collectedAt.UnixMilli(), InventoryJson: string(payload)}:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}
+	}()
+
 	heartbeats := time.NewTicker(timings.heartbeat)
 	defer heartbeats.Stop()
+	inventories := time.NewTicker(timings.inventory)
+	defer inventories.Stop()
 	liveness := time.NewTimer(timings.liveness)
 	defer liveness.Stop()
 	var pending []*pb.DeviceCommand
+	inventoryPending := true
 	for {
 		var jobOut chan *pb.DeviceCommand
 		var next *pb.DeviceCommand
 		if len(pending) > 0 {
 			jobOut, next = jobs, pending[0]
+		}
+		var inventoryOut chan struct{}
+		if inventoryPending {
+			inventoryOut = inventoryJobs
 		}
 		var outbound *pb.DeviceMessage
 		select {
@@ -183,6 +230,14 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 			return fmt.Errorf("gateway silent for %s", timings.liveness)
 		case <-heartbeats.C:
 			outbound = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Heartbeat{Heartbeat: &pb.Heartbeat{UnixMs: time.Now().UnixMilli()}}}
+		case <-inventories.C:
+			inventoryPending = true
+			continue
+		case inventoryOut <- struct{}{}:
+			inventoryPending = false
+			continue
+		case report := <-inventoryReports:
+			outbound = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Inventory{Inventory: report}}
 		case jobOut <- next:
 			pending = pending[1:]
 			continue

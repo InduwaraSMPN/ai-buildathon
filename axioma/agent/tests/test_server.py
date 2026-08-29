@@ -22,7 +22,7 @@ async def test_hello_reports_worker_and_registry_capabilities() -> None:
 
 async def test_terminal_reports_provider_model(monkeypatch: pytest.MonkeyPatch) -> None:
     async def finished(_ctx):
-        return RunResult(RunStatus.RESOLVED, "fixed", 7, 3, "provider/model")
+        return RunResult(RunStatus.RESOLVED, "fixed", 7, 3, "provider/model", "fixed")
 
     monkeypatch.setattr(server, "run", finished)
     connection = server.Connection("worker-1")
@@ -31,7 +31,32 @@ async def test_terminal_reports_provider_model(monkeypatch: pytest.MonkeyPatch) 
     terminal = await connection.outbound.get()
     assert terminal is not None
     assert terminal.run_update.model == "provider/model"
+    assert terminal.run_update.resolution_code == "fixed"
     assert (terminal.run_update.prompt_tokens, terminal.run_update.completion_tokens) == (7, 3)
+
+
+async def test_origin_reaches_run_context_and_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = None
+
+    async def finished(ctx):
+        nonlocal captured
+        captured = ctx
+        return RunResult(RunStatus.RESOLVED, "fixed")
+
+    monkeypatch.setattr(server, "run", finished)
+    connection = server.Connection("worker-1")
+    await connection.execute(
+        pb.StartRun(
+            run_id="run-1",
+            ticket_id="ticket-1",
+            title="Alert",
+            body="CPU saturated",
+            origin="monitoring",
+        )
+    )
+
+    assert captured.origin == "monitoring"
+    assert "Origin: monitoring" in captured.transcript[1]["content"]
 
 
 async def test_gateway_heartbeat_is_not_echoed() -> None:

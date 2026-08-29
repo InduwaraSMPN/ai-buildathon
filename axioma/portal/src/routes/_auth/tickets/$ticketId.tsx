@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, CircleDot, Monitor, Plus } from "lucide-react";
 import { useState } from "react";
@@ -28,10 +28,17 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { env } from "@/env";
 import { updateMyTicketMutationOptions } from "@/features/tickets/api/mutations";
 import { myTicketQueryOptions } from "@/features/tickets/api/queries";
+import {
+	ConversationCard,
+	CsatCard,
+} from "@/features/tickets/components/conversation-card";
 import { ProgressTimeline } from "@/features/tickets/components/progress-timeline";
 import { ResolutionCard } from "@/features/tickets/components/resolution-card";
+import { approvalStatusCopy, attachmentCopy } from "@/features/tickets/copy";
+import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/tickets/$ticketId")({
 	component: RouteComponent,
@@ -40,9 +47,26 @@ export const Route = createFileRoute("/_auth/tickets/$ticketId")({
 
 function RouteComponent() {
 	const { ticketId } = Route.useParams();
+	const queryClient = useQueryClient();
 	const [detailHelpOpen, setDetailHelpOpen] = useState(false);
 	const [detailNote, setDetailNote] = useState("");
 	const ticket = useQuery(myTicketQueryOptions(ticketId));
+	const approval = useQuery(
+		orpc.getMyApprovalStatus.queryOptions({ input: { ticketId } }),
+	);
+	const documentInput = { targetType: "ticket" as const, targetId: ticketId };
+	const documents = useQuery(
+		orpc.listDocuments.queryOptions({ input: documentInput }),
+	);
+	const addLink = useMutation(
+		orpc.createLinkDocument.mutationOptions({
+			onSuccess: () =>
+				queryClient.invalidateQueries({
+					queryKey: orpc.listDocuments.key({ input: documentInput }),
+				}),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 	const updateTicket = useMutation({
 		...updateMyTicketMutationOptions(),
 		onSuccess: async (...args) => {
@@ -96,10 +120,14 @@ function RouteComponent() {
 
 	const data = ticket.data;
 	const progress = getStatus(data.status);
+	const approvalCopy = approval.data
+		? approvalStatusCopy[approval.data.status]
+		: undefined;
 	const active =
 		data.status === "open" ||
 		data.status === "routing" ||
-		data.status === "resolving";
+		data.status === "resolving" ||
+		data.status === "pending";
 
 	return (
 		<PageShell>
@@ -117,7 +145,7 @@ function RouteComponent() {
 			<header className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
 				<div className="min-w-0 max-w-3xl">
 					<div className="mb-3 flex flex-wrap items-center gap-3">
-						<StatusBadge status={data.status} />
+						<StatusBadge status={data.status} label={data.statusLabel} />
 						<span className="text-muted-foreground text-xs">
 							Opened {formatDate(data.createdAt)}
 						</span>
@@ -125,8 +153,8 @@ function RouteComponent() {
 					<h1 className="wrap-break-word font-semibold text-2xl tracking-tight sm:text-4xl">
 						{data.title}
 					</h1>
-					<p className="mt-3 text-muted-foreground text-sm">
-						Request #{data.id.slice(0, 8)}
+					<p className="mt-3 font-mono text-muted-foreground text-sm">
+						Request {data.number ?? data.id}
 					</p>
 				</div>
 				{active ? (
@@ -162,14 +190,32 @@ function RouteComponent() {
 						</CardContent>
 					</Card>
 
+					<ConversationCard ticketId={data.id} messages={data.messages} />
+
 					<ResolutionCard
 						ticket={data}
 						pending={updateTicket.isPending}
 						onAction={(input) => updateTicket.mutate(input)}
 					/>
+					{data.status === "closed" && data.csat ? (
+						<CsatCard csat={data.csat} />
+					) : null}
 				</div>
 
 				<aside className="space-y-4" aria-label="Request information">
+					{approvalCopy ? (
+						<Card className="rounded-xl">
+							<CardHeader className="border-b">
+								<CardTitle>Approval</CardTitle>
+							</CardHeader>
+							<CardContent>
+								<p className="font-medium text-sm">{approvalCopy.label}</p>
+								<p className="mt-1 text-muted-foreground text-sm">
+									{approvalCopy.detail}
+								</p>
+							</CardContent>
+						</Card>
+					) : null}
 					<Card className="rounded-xl">
 						<CardHeader className="border-b">
 							<CardTitle>Request information</CardTitle>
@@ -204,6 +250,102 @@ function RouteComponent() {
 								<p className="mt-1 font-medium text-sm">
 									{formatDate(data.updatedAt)}
 								</p>
+							</div>
+						</CardContent>
+					</Card>
+					<Card className="rounded-xl">
+						<CardHeader className="border-b">
+							<CardTitle>{attachmentCopy.title}</CardTitle>
+						</CardHeader>
+						<CardContent className="space-y-3">
+							{documents.isPending ? (
+								<p role="status" className="text-muted-foreground text-sm">
+									{attachmentCopy.loading}
+								</p>
+							) : documents.isError ? (
+								<button
+									type="button"
+									className="text-destructive text-sm underline"
+									onClick={() => documents.refetch()}
+								>
+									{attachmentCopy.loadError}
+								</button>
+							) : documents.data.length ? (
+								documents.data.map((item) => (
+									<a
+										key={item.id}
+										className="block text-sm underline underline-offset-4"
+										href={
+											item.kind === "link"
+												? item.url
+												: new URL(
+														item.downloadUrl,
+														`${env.VITE_SERVER_URL.replace(/\/$/, "")}/`,
+													).toString()
+										}
+									>
+										{item.displayName}
+									</a>
+								))
+							) : (
+								<p className="text-muted-foreground text-sm">
+									{attachmentCopy.empty}
+								</p>
+							)}
+							<div className="flex flex-wrap gap-2">
+								<Button
+									variant="outline"
+									size="sm"
+									disabled={addLink.isPending}
+									onClick={() => {
+										const url = window.prompt(attachmentCopy.linkUrlPrompt);
+										if (!url) return;
+										addLink.mutate({
+											...documentInput,
+											url,
+											displayName:
+												window.prompt(attachmentCopy.linkNamePrompt, url) ??
+												url,
+										});
+									}}
+								>
+									{attachmentCopy.addLink}
+								</Button>
+								<label className="inline-flex cursor-pointer items-center rounded-md border px-3 text-sm">
+									<input
+										className="sr-only"
+										type="file"
+										multiple
+										onChange={async (event) => {
+											try {
+												for (const file of event.target.files ?? []) {
+													const body = new FormData();
+													body.set("file", file);
+													body.set("targetType", "ticket");
+													body.set("targetId", ticketId);
+													const response = await fetch(
+														new URL(
+															"api/documents",
+															`${env.VITE_SERVER_URL.replace(/\/$/, "")}/`,
+														),
+														{ method: "POST", body, credentials: "include" },
+													);
+													if (!response.ok)
+														throw new Error(await response.text());
+												}
+												await queryClient.invalidateQueries({
+													queryKey: orpc.listDocuments.key({
+														input: documentInput,
+													}),
+												});
+												toast.success(attachmentCopy.uploaded);
+											} catch {
+												toast.error(attachmentCopy.uploadFailed);
+											}
+										}}
+									/>
+									{attachmentCopy.attachFiles}
+								</label>
 							</div>
 						</CardContent>
 					</Card>

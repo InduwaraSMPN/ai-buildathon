@@ -1,6 +1,8 @@
 import { Link } from "@tanstack/react-router";
 import { LifeBuoy, Plus } from "lucide-react";
+import { statusCopy } from "@/features/status/copy";
 import { ModeToggle } from "./mode-toggle";
+import { NotificationCenter } from "./notification-center";
 import { buttonVariants } from "./ui/button";
 import UserMenu from "./user-menu";
 
@@ -18,13 +20,27 @@ export default function Header() {
 						</span>
 						<span>Axioma</span>
 					</Link>
-					<nav aria-label="Primary navigation" className="hidden sm:block">
+					<nav aria-label="Primary navigation" className="hidden gap-5 sm:flex">
 						<Link
 							to="/home"
 							className="text-muted-foreground text-sm transition-colors hover:text-foreground"
 							activeProps={{ className: "text-foreground font-medium" }}
 						>
 							My requests
+						</Link>
+						<Link
+							to="/knowledge"
+							className="text-muted-foreground text-sm transition-colors hover:text-foreground"
+							activeProps={{ className: "text-foreground font-medium" }}
+						>
+							Help articles
+						</Link>
+						<Link
+							to="/status"
+							className="text-muted-foreground text-sm transition-colors hover:text-foreground"
+							activeProps={{ className: "text-foreground font-medium" }}
+						>
+							{statusCopy.viewStatus}
 						</Link>
 					</nav>
 				</div>
@@ -38,6 +54,7 @@ export default function Header() {
 					>
 						<Plus aria-hidden="true" /> New request
 					</Link>
+					<NotificationCenter />
 					<ModeToggle />
 					<UserMenu />
 				</div>

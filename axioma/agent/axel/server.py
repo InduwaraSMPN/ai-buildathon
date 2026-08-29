@@ -173,6 +173,7 @@ class Connection:
             or _metadata(metadata, "priority")
             or _priority(impact, urgency)
         )
+        origin = _proto_value(start, "origin") or _metadata(metadata, "origin", default="portal")
         ctx = RunContext(
             run_id=start.run_id,
             ticket_id=start.ticket_id,
@@ -187,6 +188,7 @@ class Connection:
             impact=impact,
             urgency=urgency,
             priority=priority,
+            origin=origin,
             transcript=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {
@@ -200,6 +202,7 @@ class Connection:
                         impact=impact,
                         urgency=urgency,
                         priority=priority,
+                        origin=origin,
                     ),
                 }
             ],
@@ -223,6 +226,7 @@ class Connection:
             status=status,
             outcome=outcome,
             error=error,
+            resolution_code=getattr(result, "resolution_code", ""),
         )
         _set_if_present(
             update,

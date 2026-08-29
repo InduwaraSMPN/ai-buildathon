@@ -1,25 +1,57 @@
 import { implement, ORPCError } from "@orpc/server";
 
 import { appContract } from "@/contracts";
+import type { Capability } from "@/shared";
 
+import { hasEveryCapability } from "./authorization";
 import type { Context } from "./context";
 
-/**
- * Server-side procedure builders, bound to the contract.
- *
- * `implement` ties handlers to `appContract`, so a handler whose output stops
- * matching the declared schema fails to typecheck here rather than at runtime in
- * a frontend that mirrored a contract the server no longer honours.
- */
-export const os = implement(appContract).$context<Context>();
-
-export const publicProcedure = os;
+const os = implement(appContract).$context<Context>();
+export const healthProcedure = { healthCheck: os.healthCheck };
+export const publicProcedure = {
+	readStatus: os.readStatus,
+	listAuthProviders: os.listAuthProviders,
+};
 
 const requireAuth = os.middleware(async ({ context, next }) => {
-	if (!context.session?.user) {
-		throw new ORPCError("UNAUTHORIZED");
-	}
-	return next({ context: { session: context.session } });
+	if (!context.userId) throw new ORPCError("UNAUTHORIZED");
+	return next({ context: { ...context, userId: context.userId } });
 });
 
-export const protectedProcedure = os.use(requireAuth);
+export function assertCapabilities(
+	context: { capabilities: ReadonlySet<Capability> },
+	...required: Capability[]
+): void {
+	if (!hasEveryCapability(context.capabilities, required))
+		throw new ORPCError("FORBIDDEN");
+}
+
+export const requireCapability = (capability: Capability) =>
+	os.middleware(async ({ context, next }) => {
+		assertCapabilities(context, capability);
+		return next();
+	});
+
+const requireAnyCapability = (capabilities: readonly Capability[]) =>
+	os.middleware(async ({ context, next }) => {
+		if (
+			!capabilities.some((capability) => context.capabilities.has(capability))
+		)
+			throw new ORPCError("FORBIDDEN");
+		return next();
+	});
+
+const authenticatedProcedure = os.use(requireAuth);
+export const privateDataProcedure = {
+	privateData: authenticatedProcedure.privateData,
+};
+export const capabilityProcedure = (capability: Capability) =>
+	authenticatedProcedure.use(requireCapability(capability));
+export const anyCapabilityProcedure = (...capabilities: Capability[]) =>
+	authenticatedProcedure.use(requireAnyCapability(capabilities));
+export const reporterProcedure = {
+	listMyDevices: authenticatedProcedure.listMyDevices,
+	listPublicKnowledge: authenticatedProcedure.listPublicKnowledge,
+	getPublicKnowledgeArticle: authenticatedProcedure.getPublicKnowledgeArticle,
+	getMyApprovalStatus: authenticatedProcedure.getMyApprovalStatus,
+};

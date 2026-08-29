@@ -10,6 +10,9 @@ const normalized = normalizeTicketQueueSearch({
 	recordType: "incident",
 	category: ["infrastructure", "unclassified"],
 	route: "unassigned",
+	assigneeId: "user-7",
+	teamId: "team-2",
+	myQueue: "true",
 	deviceId: "device-7",
 	search: "  printer  ",
 	sortBy: "updatedAt",
@@ -25,6 +28,9 @@ assert.deepEqual(normalized.status, ["open"]);
 assert.deepEqual(normalized.priority, ["P1", "P2"]);
 assert.deepEqual(normalized.category, ["infrastructure", null]);
 assert.equal(normalized.deviceId, "device-7");
+assert.equal(normalized.assigneeId, "user-7");
+assert.equal(normalized.teamId, "team-2");
+assert.equal(normalized.myQueue, true);
 assert.equal(normalized.density, "comfortable");
 assert.deepEqual(toTicketListInput(normalized).priority, ["P1", "P2"]);
 assert.equal(toTicketListInput(normalized).deviceId, "device-7");

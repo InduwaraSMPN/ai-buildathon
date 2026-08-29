@@ -66,5 +66,5 @@ async def test_two_refused_verifications_escalate() -> None:
 
     assert result.status is RunStatus.ESCALATED
     assert "device_run_action requires device_read_state" in result.outcome
-    assert [name for name, _ in bus.calls] == ["device_run_action"]
+    assert [name for name, _ in bus.calls] == ["knowledge_search", "device_run_action"]
     assert sum("verification pending" in (step.error or "") for step in recorder.steps) == 2

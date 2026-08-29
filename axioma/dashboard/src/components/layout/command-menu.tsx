@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { MonitorCog, Ticket } from "lucide-react";
+import { FileSearch } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
 	Command,
@@ -12,9 +12,19 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
-import { deviceQueries } from "@/features/devices/api/queries";
-import { ticketQueries } from "@/features/tickets/api/queries";
+import { orpc } from "@/utils/orpc";
 import { navigation } from "./app-sidebar";
+
+const labels: Record<string, string> = {
+	ticket: "Tickets",
+	device: "Devices",
+	cmdb_item: "CMDB",
+	knowledge_article: "Knowledge",
+	service: "Services",
+	service_family: "Service families",
+	form: "Forms",
+	approval: "Approvals",
+};
 
 export function CommandMenu({
 	open,
@@ -25,15 +35,11 @@ export function CommandMenu({
 }) {
 	const navigate = useNavigate();
 	const [search, setSearch] = useState("");
-	const tickets = useQuery({
-		...ticketQueries.list({
-			scope: "all",
-			limit: 50,
-			search: search.trim() || undefined,
-		}),
-		enabled: open,
+	const query = search.trim();
+	const results = useQuery({
+		...orpc.search.queryOptions({ input: { query, limit: 40, offset: 0 } }),
+		enabled: open && query.length > 0,
 	});
-	const devices = useQuery({ ...deviceQueries.all(), enabled: open });
 	useEffect(() => {
 		const shortcut = (event: KeyboardEvent) => {
 			if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
@@ -48,89 +54,72 @@ export function CommandMenu({
 		onOpenChange(false);
 		void navigate({ to });
 	};
-	const goToDevice = (deviceId: string) => {
-		onOpenChange(false);
-		void navigate({ to: "/devices", search: { deviceId } });
-	};
+	const groups = Object.groupBy(
+		results.data ?? [],
+		(result) => result.objectType,
+	);
+
 	return (
 		<CommandDialog
 			open={open}
 			onOpenChange={onOpenChange}
 			title="Search Axiōma"
-			description="Search views, tickets, and devices"
+			description="Search across Axiōma records"
 		>
-			<Command>
+			<Command shouldFilter={false}>
 				<CommandInput
 					autoFocus
 					value={search}
 					onValueChange={setSearch}
-					placeholder="Search views, tickets, or devices…"
+					placeholder="Search tickets, devices, CMDB, knowledge…"
 				/>
-				<div className="flex flex-wrap gap-3 border-b px-3 py-2 text-muted-foreground text-xs">
+				<div className="flex gap-3 border-b px-3 py-2 text-muted-foreground text-xs">
 					<span>
-						<Kbd>j</Kbd>/<Kbd>k</Kbd> rows
+						<Kbd>↑</Kbd>/<Kbd>↓</Kbd> select
 					</span>
 					<span>
 						<Kbd>Enter</Kbd> open
 					</span>
-					<span>
-						<Kbd>e</Kbd> escalate
-					</span>
-					<span>
-						<Kbd>r</Kbd> resolve
-					</span>
-					<span>
-						<Kbd>?</Kbd> help
-					</span>
 				</div>
 				<CommandList>
 					<CommandEmpty>
-						{tickets.isPending || devices.isPending
-							? "Loading…"
-							: "No results found."}
+						{results.isFetching
+							? "Searching…"
+							: query
+								? "No results found."
+								: "Type to search records."}
 					</CommandEmpty>
-					<CommandGroup heading="Views">
-						{navigation.map(({ to, label, icon: Icon }) => (
-							<CommandItem
-								key={to}
-								value={`${label} ${to}`}
-								onSelect={() => go(to)}
-							>
-								<Icon />
-								{label}
-							</CommandItem>
-						))}
-					</CommandGroup>
-					<CommandGroup heading="Tickets">
-						{tickets.data?.items.map((ticket) => (
-							<CommandItem
-								key={ticket.id}
-								value={`${ticket.id} ${ticket.title}`}
-								onSelect={() => go(`/tickets/${ticket.id}`)}
-							>
-								<Ticket />
-								<span className="truncate">{ticket.title}</span>
-								<span className="ml-auto font-mono text-muted-foreground">
-									{ticket.id}
-								</span>
-							</CommandItem>
-						))}
-					</CommandGroup>
-					<CommandGroup heading="Devices">
-						{devices.data?.map((device) => (
-							<CommandItem
-								key={device.id}
-								value={`${device.id} ${device.hostname} ${device.ownerName ?? ""} ${device.username ?? ""}`}
-								onSelect={() => goToDevice(device.id)}
-							>
-								<MonitorCog />
-								<span className="truncate">{device.hostname}</span>
-								<span className="ml-auto font-mono text-muted-foreground">
-									{device.id}
-								</span>
-							</CommandItem>
-						))}
-					</CommandGroup>
+					{!query ? (
+						<CommandGroup heading="Views">
+							{navigation.map(({ to, label, icon: Icon }) => (
+								<CommandItem key={to} value={to} onSelect={() => go(to)}>
+									<Icon />
+									{label}
+								</CommandItem>
+							))}
+						</CommandGroup>
+					) : null}
+					{Object.entries(groups).map(([type, items]) => (
+						<CommandGroup
+							key={type}
+							heading={labels[type] ?? type.replaceAll("_", " ")}
+						>
+							{items?.map((item) => (
+								<CommandItem
+									key={`${type}:${item.objectId}`}
+									value={`${type}:${item.objectId}`}
+									onSelect={() => item.url && go(item.url)}
+									disabled={!item.url}
+								>
+									<FileSearch />
+									<span className="min-w-0 flex-1 truncate">{item.title}</span>
+									<span className="truncate text-muted-foreground">
+										{item.body}
+									</span>
+								</CommandItem>
+							))}
+						</CommandGroup>
+					))}
 				</CommandList>
 			</Command>
 		</CommandDialog>

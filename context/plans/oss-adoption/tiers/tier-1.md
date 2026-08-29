@@ -10,6 +10,19 @@ of who changed what.
 
 ---
 
+> ### Where the current truth lives
+>
+> **The current-state section below is a snapshot taken before this tier was built.** It is kept as
+> written because the milestones, decisions and definition of done are argued from it. It no longer
+> describes the tree.
+>
+> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
+> the running API. **7 of 12 milestones complete** — T1.B, T1.G, T1.H, T1.I, T1.J, T1.K and T1.L. T1.A is half converted; `grpc.ts` and both frontends still key behaviour off status names. T1.C, T1.D, T1.E and T1.F are complete in the database and invisible in the product.
+>
+> The remaining work is in [../execution/chat-b-tier1.md](../execution/chat-b-tier1.md), with the confirmed
+> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
+> against and is still current.
+
 ## 1. Current state
 
 ### What the MVP already delivered against this tier

@@ -57,6 +57,62 @@
 			"when": 1787989000000,
 			"tag": "0007_normalize_transition_actions",
 			"breakpoints": true
+		},
+		{
+			"idx": 8,
+			"version": "7",
+			"when": 1787990000000,
+			"tag": "0008_tier1_core",
+			"breakpoints": true
+		},
+		{
+			"idx": 9,
+			"version": "7",
+			"when": 1787991822288,
+			"tag": "0009_tier0_identity_rbac",
+			"breakpoints": true
+		},
+		{
+			"idx": 10,
+			"version": "7",
+			"when": 1787993000000,
+			"tag": "0010_inventory",
+			"breakpoints": true
+		},
+		{
+			"idx": 11,
+			"version": "7",
+			"when": 1787994000000,
+			"tag": "0011_tier2_service_management",
+			"breakpoints": true
+		},
+		{
+			"idx": 12,
+			"version": "7",
+			"when": 1787995000000,
+			"tag": "0012_tier3_extensible_platform",
+			"breakpoints": true
+		},
+		{
+			"idx": 13,
+			"version": "7",
+			"when": 1787996000000,
+			"tag": "0013_tier4_operations",
+			"breakpoints": true
+		},
+		{
+			"idx": 14,
+			"version": "7",
+			"when": 1787997000000,
+			"tag": "0014_tier1_integrity",
+			"breakpoints": true
+		},
+		{
+			"idx": 15,
+			"version": "7",
+			"when": 1787998000000,
+			"tag": "0015_ticket_update_capability",
+			"breakpoints": true
 		}
 	]
 }

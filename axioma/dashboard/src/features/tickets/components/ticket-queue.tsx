@@ -44,6 +44,7 @@ import { SavedViews } from "./saved-view";
 export function TicketQueue({
 	result,
 	search,
+	capabilities,
 	isPending,
 	isFetching,
 	error,
@@ -58,6 +59,7 @@ export function TicketQueue({
 }: {
 	result?: TicketListResult;
 	search: TicketQueueSearch;
+	capabilities: readonly string[];
 	isPending: boolean;
 	isFetching: boolean;
 	error: Error | null;
@@ -120,7 +122,8 @@ export function TicketQueue({
 	};
 	const shortcutAction = (action: "escalate" | "resolve") => {
 		const ticket = tickets[selected];
-		if (!ticket || !allowedActions(ticket).includes(action)) return;
+		if (!ticket || !allowedActions(ticket, capabilities).includes(action))
+			return;
 		const note = window
 			.prompt(action === "escalate" ? "Escalation reason" : "Resolution note")
 			?.trim();
@@ -128,7 +131,7 @@ export function TicketQueue({
 		onShortcutAction(
 			action === "escalate"
 				? { id: ticket.id, action, note, route: "human_triage" }
-				: { id: ticket.id, action, resolution: note },
+				: { id: ticket.id, action, resolution: note, resolutionCode: "fixed" },
 		);
 	};
 	const shortcuts = useKeyboardShortcuts({
@@ -146,7 +149,13 @@ export function TicketQueue({
 			{
 				id: "actions",
 				header: () => <span className="sr-only">Actions</span>,
-				cell: ({ row }) => <RowActions ticket={row.original} onOpen={open} />,
+				cell: ({ row }) => (
+					<RowActions
+						ticket={row.original}
+						capabilities={capabilities}
+						onOpen={open}
+					/>
+				),
 			},
 		],
 		getCoreRowModel: getCoreRowModel(),
@@ -179,6 +188,15 @@ export function TicketQueue({
 					<SavedViews active={search} onSelect={onViewSelect} />
 				</div>
 				<div className="flex flex-wrap gap-2">
+					<Button
+						variant={search.myQueue ? "default" : "outline"}
+						size="sm"
+						onClick={() =>
+							onSearchChange({ myQueue: search.myQueue ? undefined : true })
+						}
+					>
+						My queue
+					</Button>
 					<label className="relative min-w-56 flex-1" htmlFor="ticket-search">
 						<span className="sr-only">Search tickets</span>
 						<Search className="absolute top-2 left-2.5 size-3.5 text-muted-foreground" />
@@ -207,6 +225,28 @@ export function TicketQueue({
 							onSearchChange({
 								priority: priority as TicketQueueSearch["priority"],
 							})
+						}
+					/>
+					<QueueFacet
+						label="Assignee"
+						value={search.assigneeId ? [search.assigneeId] : undefined}
+						items={(result?.facets.assignee ?? []).map(
+							({ id, name, count }) => ({ value: id, label: name, count }),
+						)}
+						onChange={(assignee) =>
+							onSearchChange({ assigneeId: assignee?.[0] ?? undefined })
+						}
+					/>
+					<QueueFacet
+						label="Team"
+						value={search.teamId ? [search.teamId] : undefined}
+						items={(result?.facets.team ?? []).map(({ id, name, count }) => ({
+							value: id,
+							label: name,
+							count,
+						}))}
+						onChange={(team) =>
+							onSearchChange({ teamId: team?.[0] ?? undefined })
 						}
 					/>
 					<QueueFacet
@@ -386,12 +426,14 @@ export function TicketQueue({
 
 function RowActions({
 	ticket,
+	capabilities,
 	onOpen,
 }: {
 	ticket: Ticket;
+	capabilities: readonly string[];
 	onOpen: (ticket: Ticket, action?: "assign" | "reclassify") => void;
 }) {
-	const actions = allowedActions(ticket);
+	const actions = allowedActions(ticket, capabilities);
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger

@@ -2,6 +2,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Info, Send } from "lucide-react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -11,34 +12,45 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import {
+	DynamicRequestForm,
+	type RequestFormField,
+	type RequestFormValues,
+} from "@/features/request-catalogue/components";
+import {
 	affectedPeopleOptions,
 	affectedPeopleValues,
+	requestFormCopy,
 	requestTypeOptions,
-	requestTypeValues,
 	timingOptions,
 	timingValues,
 } from "@/features/tickets/copy";
 import { orpc, queryClient } from "@/utils/orpc";
+import { DynamicFields, serializeDynamicFields } from "./dynamic-fields";
 
-const requestSchema = z.object({
+const requestDetailsSchema = z.object({
 	title: z
 		.string()
 		.trim()
-		.min(3, "Please add a short summary so we know what you need.")
-		.max(160, "Please keep the summary to 160 characters or fewer."),
+		.min(3, requestFormCopy.summaryTooShort)
+		.max(160, requestFormCopy.summaryTooLong),
 	body: z
 		.string()
 		.trim()
-		.min(10, "Please add a few more details so we can help.")
-		.max(10_000, "Please shorten the details to 10,000 characters or fewer."),
-	requestType: z.enum(["not_working", "setup"]),
+		.min(10, requestFormCopy.detailsTooShort)
+		.max(10_000, requestFormCopy.detailsTooLong),
+});
+
+const incidentSchema = requestDetailsSchema.extend({
 	affectedPeople: z.enum(["me", "team", "company"]),
 	timing: z.enum(["whenever", "today", "blocked"]),
 	deviceId: z.string(),
+	customFields: z.record(z.string(), z.unknown()),
 });
 
-type RequestValues = z.input<typeof requestSchema>;
+type IncidentValues = z.input<typeof incidentSchema>;
 type Option = { value: string; label: string };
+type Catalogue = Awaited<ReturnType<typeof orpc.listRequestCatalogue.call>>;
+type CatalogueItem = Catalogue[number];
 
 function Question({
 	legend,
@@ -92,6 +104,16 @@ function FieldError({
 	) : null;
 }
 
+function PrivacyNotice() {
+	return (
+		<Alert className="rounded-md">
+			<Info aria-hidden="true" />
+			<AlertTitle>{requestFormCopy.privacyTitle}</AlertTitle>
+			<AlertDescription>{requestFormCopy.privacyDescription}</AlertDescription>
+		</Alert>
+	);
+}
+
 function lastSeen(date: Date) {
 	return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
 		-Math.max(1, Math.round((Date.now() - date.getTime()) / 60_000)),
@@ -99,43 +121,49 @@ function lastSeen(date: Date) {
 	);
 }
 
-export function RequestForm() {
+function IncidentRequestForm({ onSetup }: { onSetup: () => void }) {
 	const navigate = useNavigate();
 	const devices = useQuery(orpc.listMyDevices.queryOptions());
+	const fieldDefinitions = useQuery(
+		orpc.listFieldDefinitions.queryOptions({ input: { objectType: "ticket" } }),
+	);
 	const createTicket = useMutation(
 		orpc.createTicket.mutationOptions({
 			onSuccess: async (ticket) => {
 				await queryClient.invalidateQueries({
 					queryKey: orpc.listTickets.key(),
 				});
-				toast.success("Request sent");
+				toast.success(requestFormCopy.sent);
 				await navigate({
 					to: "/tickets/$ticketId",
 					params: { ticketId: ticket.id },
 				});
 			},
-			onError: () =>
-				toast.error("We couldn’t send your request. Please try again."),
+			onError: () => toast.error(requestFormCopy.sendError),
 		}),
 	);
 	const form = useForm({
 		defaultValues: {
 			title: "",
 			body: "",
-			requestType: "not_working",
 			affectedPeople: "me",
 			timing: "today",
 			deviceId: "",
-		} as RequestValues,
-		validators: { onSubmit: requestSchema },
+			customFields: {},
+		} as IncidentValues,
+		validators: { onSubmit: incidentSchema },
 		onSubmit: ({ value }) =>
 			createTicket.mutateAsync({
 				title: value.title.trim(),
 				body: value.body.trim(),
-				recordType: requestTypeValues[value.requestType],
+				recordType: "incident",
 				impact: affectedPeopleValues[value.affectedPeople],
 				urgency: timingValues[value.timing],
 				...(value.deviceId ? { deviceId: value.deviceId } : {}),
+				customFields: serializeDynamicFields(
+					fieldDefinitions.data ?? [],
+					value.customFields,
+				),
 			}),
 	});
 
@@ -151,7 +179,7 @@ export function RequestForm() {
 			<form.Field name="title">
 				{(field) => (
 					<div className="space-y-2">
-						<Label htmlFor={field.name}>Short summary</Label>
+						<Label htmlFor={field.name}>{requestFormCopy.summaryLabel}</Label>
 						<Input
 							id={field.name}
 							name={field.name}
@@ -159,7 +187,7 @@ export function RequestForm() {
 							onBlur={field.handleBlur}
 							onChange={(event) => field.handleChange(event.target.value)}
 							maxLength={160}
-							placeholder="Example: I can’t connect to the office Wi-Fi"
+							placeholder={requestFormCopy.incidentSummaryPlaceholder}
 							className="h-10 rounded-md text-sm"
 							aria-invalid={field.state.meta.errors.length > 0}
 						/>
@@ -171,7 +199,9 @@ export function RequestForm() {
 			<form.Field name="body">
 				{(field) => (
 					<div className="space-y-2">
-						<Label htmlFor={field.name}>What’s happening?</Label>
+						<Label htmlFor={field.name}>
+							{requestFormCopy.incidentDetailsLabel}
+						</Label>
 						<Textarea
 							id={field.name}
 							name={field.name}
@@ -179,7 +209,7 @@ export function RequestForm() {
 							onBlur={field.handleBlur}
 							onChange={(event) => field.handleChange(event.target.value)}
 							maxLength={10_000}
-							placeholder="Tell us what you expected, what happened instead, and when it started."
+							placeholder={requestFormCopy.incidentDetailsPlaceholder}
 							className="min-h-40 rounded-md text-sm"
 							aria-invalid={field.state.meta.errors.length > 0}
 						/>
@@ -188,32 +218,18 @@ export function RequestForm() {
 				)}
 			</form.Field>
 
-			<Alert className="rounded-md">
-				<Info aria-hidden="true" />
-				<AlertTitle>Keep sensitive information private</AlertTitle>
-				<AlertDescription>
-					Please don’t include passwords, access codes, or other sensitive
-					information.
-				</AlertDescription>
-			</Alert>
-
-			<form.Field name="requestType">
-				{(field) => (
-					<Question
-						legend="What kind of help do you need?"
-						name={field.name}
-						value={field.state.value}
-						options={requestTypeOptions}
-						onChange={(value) =>
-							field.handleChange(value as typeof field.state.value)
-						}
-					/>
-				)}
-			</form.Field>
+			<PrivacyNotice />
+			<Question
+				legend={requestFormCopy.requestTypeLegend}
+				name="requestType"
+				value="not_working"
+				options={requestTypeOptions}
+				onChange={(value) => value === "setup" && onSetup()}
+			/>
 			<form.Field name="affectedPeople">
 				{(field) => (
 					<Question
-						legend="Who else is affected?"
+						legend={requestFormCopy.affectedPeopleLegend}
 						name={field.name}
 						value={field.state.value}
 						options={affectedPeopleOptions}
@@ -226,7 +242,7 @@ export function RequestForm() {
 			<form.Field name="timing">
 				{(field) => (
 					<Question
-						legend="How soon do you need this?"
+						legend={requestFormCopy.timingLegend}
 						name={field.name}
 						value={field.state.value}
 						options={timingOptions}
@@ -239,29 +255,59 @@ export function RequestForm() {
 
 			{devices.isPending ? (
 				<p className="text-muted-foreground text-sm" role="status">
-					Checking for your computers…
+					{requestFormCopy.devicesLoading}
 				</p>
 			) : null}
 			{devices.isError ? (
 				<div className="flex flex-wrap items-center gap-3 text-sm" role="alert">
-					<span>We couldn’t check your computers right now.</span>
+					<span>{requestFormCopy.devicesError}</span>
 					<Button
 						type="button"
 						variant="outline"
 						size="sm"
 						onClick={() => devices.refetch()}
 					>
-						Try again
+						{requestFormCopy.tryAgain}
 					</Button>
 				</div>
 			) : null}
+			{fieldDefinitions.isPending ? (
+				<p className="text-muted-foreground text-sm" role="status">
+					{requestFormCopy.extraDetailsLoading}
+				</p>
+			) : null}
+			{fieldDefinitions.isError ? (
+				<div className="flex flex-wrap items-center gap-3 text-sm" role="alert">
+					<span>{requestFormCopy.extraDetailsError}</span>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => fieldDefinitions.refetch()}
+					>
+						{requestFormCopy.tryAgain}
+					</Button>
+				</div>
+			) : null}
+			{fieldDefinitions.data?.length ? (
+				<form.Field name="customFields">
+					{(field) => (
+						<div className="space-y-5">
+							<DynamicFields
+								definitions={fieldDefinitions.data}
+								values={field.state.value}
+								onChange={field.handleChange}
+							/>
+						</div>
+					)}
+				</form.Field>
+			) : null}
+
 			{devices.data?.length ? (
 				<form.Field name="deviceId">
 					{(field) => (
 						<div className="space-y-2">
-							<Label htmlFor={field.name}>
-								Is this about one of your computers?
-							</Label>
+							<Label htmlFor={field.name}>{requestFormCopy.deviceLabel}</Label>
 							<select
 								id={field.name}
 								name={field.name}
@@ -269,10 +315,11 @@ export function RequestForm() {
 								onChange={(event) => field.handleChange(event.target.value)}
 								className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
 							>
-								<option value="">Use my most recently seen computer</option>
+								<option value="">{requestFormCopy.recentDevice}</option>
 								{devices.data.map((device) => (
 									<option key={device.id} value={device.id}>
-										{device.hostname}, last seen {lastSeen(device.lastSeenAt)}
+										{device.hostname}, {requestFormCopy.lastSeen}{" "}
+										{lastSeen(device.lastSeenAt)}
 									</option>
 								))}
 							</select>
@@ -286,7 +333,7 @@ export function RequestForm() {
 					to="/home"
 					className={buttonVariants({ variant: "outline", size: "lg" })}
 				>
-					Cancel
+					{requestFormCopy.cancel}
 				</Link>
 				<form.Subscribe
 					selector={(state) => [state.canSubmit, state.isSubmitting]}
@@ -298,11 +345,228 @@ export function RequestForm() {
 							disabled={!canSubmit || isSubmitting}
 						>
 							<Send aria-hidden="true" />{" "}
-							{isSubmitting ? "Sending…" : "Send request"}
+							{isSubmitting ? requestFormCopy.sending : requestFormCopy.send}
 						</Button>
 					)}
 				</form.Subscribe>
 			</div>
 		</form>
+	);
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+	return value !== null && typeof value === "object" && !Array.isArray(value)
+		? (value as Record<string, unknown>)
+		: {};
+}
+
+function catalogueFields(item: CatalogueItem): RequestFormField[] {
+	return (item.form?.fields ?? [])
+		.filter((field) => !field.isHidden && field.predefinedValue === null)
+		.map((field) => {
+			const validation = objectValue(field.validation);
+			const options = Array.isArray(field.options)
+				? field.options.filter(
+						(option): option is string | { label: string; value: string } =>
+							typeof option === "string" ||
+							(option !== null &&
+								typeof option === "object" &&
+								typeof (option as Record<string, unknown>).label === "string" &&
+								typeof (option as Record<string, unknown>).value === "string"),
+					)
+				: undefined;
+			return {
+				key: field.key,
+				label: field.label,
+				type: field.type === "boolean" ? "checkbox" : field.type,
+				description: field.description,
+				required: field.isMandatory,
+				readOnly: field.isReadonly,
+				condition: field.condition,
+				options,
+				min: typeof validation.min === "number" ? validation.min : undefined,
+				max: typeof validation.max === "number" ? validation.max : undefined,
+				step: validation.integer === true ? 1 : undefined,
+				minLength:
+					typeof validation.minLength === "number"
+						? validation.minLength
+						: undefined,
+				maxLength:
+					typeof validation.maxLength === "number"
+						? validation.maxLength
+						: undefined,
+			} satisfies RequestFormField;
+		});
+}
+
+function CatalogueRequestForm({ onIncident }: { onIncident: () => void }) {
+	const navigate = useNavigate();
+	const catalogue = useQuery(orpc.listRequestCatalogue.queryOptions());
+	const [selectedId, setSelectedId] = useState("");
+	const [title, setTitle] = useState("");
+	const [body, setBody] = useState("");
+	const [values, setValues] = useState<RequestFormValues>({});
+	const [detailsError, setDetailsError] = useState<string | null>(null);
+	const selected = catalogue.data?.find(
+		(item) => item.subcategory.id === selectedId,
+	);
+	const fields = useMemo(
+		() => (selected ? catalogueFields(selected) : []),
+		[selected],
+	);
+	const createRequest = useMutation(
+		orpc.createCatalogueRequest.mutationOptions({
+			onSuccess: async ({ ticketId }) => {
+				await queryClient.invalidateQueries({
+					queryKey: orpc.listTickets.key(),
+				});
+				toast.success(requestFormCopy.sent);
+				await navigate({ to: "/tickets/$ticketId", params: { ticketId } });
+			},
+			onError: () => toast.error(requestFormCopy.sendError),
+		}),
+	);
+
+	return (
+		<div className="space-y-7">
+			<div className="space-y-2">
+				<Label htmlFor="catalogue-title">{requestFormCopy.summaryLabel}</Label>
+				<Input
+					id="catalogue-title"
+					value={title}
+					onChange={(event) => setTitle(event.target.value)}
+					maxLength={160}
+					placeholder={requestFormCopy.setupSummaryPlaceholder}
+					aria-invalid={detailsError !== null}
+				/>
+			</div>
+			<div className="space-y-2">
+				<Label htmlFor="catalogue-body">
+					{requestFormCopy.setupDetailsLabel}
+				</Label>
+				<Textarea
+					id="catalogue-body"
+					value={body}
+					onChange={(event) => setBody(event.target.value)}
+					maxLength={10_000}
+					placeholder={requestFormCopy.setupDetailsPlaceholder}
+					className="min-h-40 rounded-md text-sm"
+					aria-invalid={detailsError !== null}
+				/>
+				{detailsError ? (
+					<p className="text-destructive text-sm" role="alert">
+						{detailsError}
+					</p>
+				) : null}
+			</div>
+			<PrivacyNotice />
+			<Question
+				legend={requestFormCopy.requestTypeLegend}
+				name="requestType"
+				value="setup"
+				options={requestTypeOptions}
+				onChange={(value) => value === "not_working" && onIncident()}
+			/>
+
+			{catalogue.isPending ? (
+				<p className="text-muted-foreground text-sm" role="status">
+					{requestFormCopy.catalogueLoading}
+				</p>
+			) : null}
+			{catalogue.isError ? (
+				<div className="flex flex-wrap items-center gap-3 text-sm" role="alert">
+					<span>{requestFormCopy.catalogueError}</span>
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => catalogue.refetch()}
+					>
+						{requestFormCopy.tryAgain}
+					</Button>
+				</div>
+			) : null}
+			{catalogue.data ? (
+				<div className="space-y-2">
+					<Label htmlFor="catalogue-item">
+						{requestFormCopy.catalogueLabel}
+					</Label>
+					<select
+						id="catalogue-item"
+						value={selectedId}
+						onChange={(event) => {
+							setSelectedId(event.target.value);
+							setValues({});
+							setDetailsError(null);
+						}}
+						className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+					>
+						<option value="">{requestFormCopy.cataloguePlaceholder}</option>
+						{catalogue.data.map((item) => (
+							<option key={item.subcategory.id} value={item.subcategory.id}>
+								{item.subcategory.name}
+							</option>
+						))}
+					</select>
+					{catalogue.data.length === 0 ? (
+						<p className="text-muted-foreground text-sm">
+							{requestFormCopy.catalogueEmpty}
+						</p>
+					) : null}
+				</div>
+			) : null}
+
+			{selected?.form ? (
+				<DynamicRequestForm
+					fields={fields}
+					values={values}
+					onChange={setValues}
+					submitting={createRequest.isPending}
+					error={createRequest.isError ? requestFormCopy.sendError : null}
+					submitLabel={requestFormCopy.send}
+					onSubmit={async (submittedValues) => {
+						const form = selected.form;
+						if (!form) return;
+						const details = requestDetailsSchema.safeParse({ title, body });
+						if (!details.success) {
+							setDetailsError(
+								details.error.issues[0]?.message ??
+									requestFormCopy.detailsError,
+							);
+							return;
+						}
+						setDetailsError(null);
+						await createRequest.mutateAsync({
+							subcategoryId: selected.subcategory.id,
+							formId: form.id,
+							values: submittedValues,
+							title: details.data.title,
+							body: details.data.body,
+						});
+					}}
+				/>
+			) : selected ? (
+				<p className="text-muted-foreground text-sm" role="status">
+					{requestFormCopy.catalogueUnavailable}
+				</p>
+			) : null}
+			<Link
+				to="/home"
+				className={buttonVariants({ variant: "outline", size: "lg" })}
+			>
+				{requestFormCopy.cancel}
+			</Link>
+		</div>
+	);
+}
+
+export function RequestForm() {
+	const [requestType, setRequestType] = useState<"not_working" | "setup">(
+		"not_working",
+	);
+	return requestType === "not_working" ? (
+		<IncidentRequestForm onSetup={() => setRequestType("setup")} />
+	) : (
+		<CatalogueRequestForm onIncident={() => setRequestType("not_working")} />
 	);
 }

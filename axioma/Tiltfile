@@ -13,7 +13,7 @@ dc_resource(
 
 local_resource(
     'api',
-    cmd='pnpm install --frozen-lockfile && pnpm db:push',
+    cmd='pnpm install --frozen-lockfile && pnpm db:migrate',
     serve_cmd='pnpm dev',
     dir='api',
     serve_dir='api',

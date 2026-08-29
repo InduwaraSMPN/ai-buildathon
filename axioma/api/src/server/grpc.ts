@@ -13,8 +13,15 @@ import {
 	tickets,
 	ticketTransitions,
 } from "@/db/schema";
+import { RESOLUTION_CODES } from "@/shared";
+import { ingestInventoryReport } from "./inventory";
+import { sweepPending } from "./pending";
+import { reconcileCoreSearchDocuments } from "./search/projections";
+import { transitionTicketStopwatches } from "./sla/runtime";
+import { sweepPresence, sweepSla } from "./sla/sweep";
 import { executeTool } from "./tools";
 import { readContextForTicket } from "./tools/cmdb";
+import { sweepWebhookDeliveries } from "./workflows/webhooks";
 
 type Message = Record<string, unknown>;
 type Duplex = grpc.ServerDuplexStream<Message, Message>;
@@ -135,6 +142,7 @@ class Gateway {
 		impact?: string;
 		urgency?: string;
 		priority?: string;
+		origin?: string;
 	}) {
 		const selected = this.selectAgent();
 		if (!selected) throw new Error("Axel is not connected");
@@ -167,6 +175,7 @@ class Gateway {
 					impact: input.impact ?? "medium",
 					urgency: input.urgency ?? "medium",
 					priority: input.priority ?? "P3",
+					origin: input.origin ?? "portal",
 				},
 			});
 		} catch (error) {
@@ -193,6 +202,7 @@ class Gateway {
 		const agent = workerId ? this.agents.get(workerId) : undefined;
 		if (agent) agent.stream.write({ cancelRun: { runId, reason } });
 		this.runAgents.delete(runId);
+		let transitionedTicketId: string | undefined;
 		await db.transaction(async (tx) => {
 			const activeTicket = (
 				await tx
@@ -222,7 +232,8 @@ class Gateway {
 					)
 					.returning({ id: tickets.id })
 			)[0];
-			if (ticket)
+			if (ticket) {
+				transitionedTicketId = run.ticketId;
 				await tx.insert(ticketTransitions).values({
 					id: crypto.randomUUID(),
 					ticketId: run.ticketId,
@@ -233,7 +244,10 @@ class Gateway {
 					actorType: "agent",
 					actorId: runId,
 				});
+			}
 		});
+		if (transitionedTicketId)
+			await transitionTicketStopwatches(transitionedTicketId, "escalated");
 	}
 
 	async dispatchDeviceTool(
@@ -484,7 +498,7 @@ class Gateway {
 				.set({ status: "resolving" })
 				.where(and(eq(tickets.id, run.ticketId), eq(tickets.status, "routing")))
 				.returning({ id: tickets.id });
-			if (beganResolving[0])
+			if (beganResolving[0]) {
 				await db.insert(ticketTransitions).values({
 					id: crypto.randomUUID(),
 					ticketId: run.ticketId,
@@ -494,6 +508,8 @@ class Gateway {
 					actorType: "agent",
 					actorId: runId,
 				});
+				await transitionTicketStopwatches(run.ticketId, "resolving");
+			}
 			const output = await executeTool(toolName, input, {
 				runId,
 				ticketId: run.ticketId,
@@ -544,6 +560,11 @@ class Gateway {
 						await this.completeCommand(
 							deviceId,
 							message.result as Record<string, unknown>,
+						);
+					} else if (message.inventory && deviceId) {
+						await ingestInventoryReport(
+							deviceId,
+							message.inventory as Record<string, unknown>,
 						);
 					}
 				})
@@ -765,6 +786,14 @@ class Gateway {
 			const status = String(update.status);
 			if (!["resolved", "escalated", "failed", "exhausted"].includes(status))
 				throw new Error(`invalid terminal run status: ${status}`);
+			const resolutionCode = String(update.resolutionCode || "");
+			if (
+				status === "resolved" &&
+				!RESOLUTION_CODES.includes(
+					resolutionCode as (typeof RESOLUTION_CODES)[number],
+				)
+			)
+				throw new Error(`invalid resolution code: ${resolutionCode}`);
 			this.runAgents.delete(runId);
 			const run = (
 				await db
@@ -806,6 +835,9 @@ class Gateway {
 							.set({
 								status: toStatus,
 								resolution: String(update.outcome || "") || null,
+								resolutionCode: resolved
+									? (resolutionCode as (typeof RESOLUTION_CODES)[number])
+									: undefined,
 								resolvedAt: resolved ? new Date() : undefined,
 								progressMarker: resolved
 									? "verifying_fix"
@@ -819,7 +851,7 @@ class Gateway {
 							)
 							.returning({ id: tickets.id })
 					: [];
-				if (changed[0])
+				if (changed[0]) {
 					await db.insert(ticketTransitions).values({
 						id: crypto.randomUUID(),
 						ticketId: run.ticketId,
@@ -836,6 +868,8 @@ class Gateway {
 						actorType: "agent",
 						actorId: runId,
 					});
+					await transitionTicketStopwatches(run.ticketId, toStatus);
+				}
 			}
 		}
 	}
@@ -953,6 +987,13 @@ class Gateway {
 
 	private async sweep() {
 		const now = Date.now();
+		await Promise.all([
+			sweepSla(new Date(now)),
+			sweepPending(new Date(now)),
+			sweepPresence(new Date(now)),
+			sweepWebhookDeliveries(db, 25, fetch, new Date(now)),
+			reconcileCoreSearchDocuments(db, new Date(now - HEARTBEAT_MS * 2)),
+		]);
 		for (const { stream } of this.agents.values()) {
 			try {
 				stream.write({ heartbeat: { unixMs: String(now) } });

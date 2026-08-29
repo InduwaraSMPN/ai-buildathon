@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
 import {
 	AlertTriangle,
 	CheckCircle2,
@@ -34,6 +35,7 @@ import {
 	SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { orpc } from "@/utils/orpc";
 import type {
 	TicketActionInput,
 	TicketDetail,
@@ -54,17 +56,27 @@ const routes = [
 	"identity",
 	"human_triage",
 ] satisfies Route[];
+const resolutionCodes = [
+	["fixed", "Fixed"],
+	["workaround", "Workaround"],
+	["not_reproducible", "Not reproducible"],
+	["duplicate", "Duplicate"],
+	["no_action_required", "No action required"],
+	["rejected", "Rejected"],
+] as const;
 
 export function TicketActions({
 	ticket,
+	capabilities,
 	pending,
 	onAction,
 }: {
 	ticket: TicketDetail;
+	capabilities: readonly string[];
 	pending: boolean;
 	onAction: (input: ActionInput) => Promise<unknown>;
 }) {
-	const actions = allowedActions(ticket);
+	const actions = allowedActions(ticket, capabilities);
 	const has = (action: TicketOperatorAction) => actions.includes(action);
 	const canAssign = has("assign");
 	const canReclassify = has("reclassify");
@@ -106,11 +118,7 @@ export function TicketActions({
 				<EscalateForm pending={pending} onAction={onAction} />
 			)}
 			{has("assign") && (
-				<AssignForm
-					route={ticket.route ?? "unassigned"}
-					pending={pending}
-					onAction={onAction}
-				/>
+				<AssignForm ticket={ticket} pending={pending} onAction={onAction} />
 			)}
 			{has("reopen") && (
 				<SimpleAction
@@ -171,9 +179,13 @@ function NoteForm({
 	onAction: (input: ActionInput) => Promise<unknown>;
 }) {
 	const form = useForm({
-		defaultValues: { note: "" },
+		defaultValues: { note: "", resolutionCode: "fixed" as const },
 		onSubmit: ({ value }) =>
-			onAction({ action, resolution: value.note.trim() }),
+			onAction({
+				action,
+				resolution: value.note.trim(),
+				resolutionCode: value.resolutionCode,
+			}),
 		validators: {
 			onSubmit: ({ value }) =>
 				value.note.trim() ? undefined : `${label} is required`,
@@ -187,6 +199,33 @@ function NoteForm({
 				form.handleSubmit();
 			}}
 		>
+			<form.Field name="resolutionCode">
+				{(field) => (
+					<Field>
+						<FieldLabel htmlFor="ticket-resolution-code">
+							Resolution code
+						</FieldLabel>
+						<Select
+							value={field.state.value}
+							onValueChange={(value) =>
+								field.handleChange(value as typeof field.state.value)
+							}
+							disabled={pending}
+						>
+							<SelectTrigger id="ticket-resolution-code" className="w-full">
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								{resolutionCodes.map(([value, text]) => (
+									<SelectItem key={value} value={value}>
+										{text}
+									</SelectItem>
+								))}
+							</SelectContent>
+						</Select>
+					</Field>
+				)}
+			</form.Field>
 			<form.Field
 				name="note"
 				validators={{
@@ -335,17 +374,30 @@ function EscalateForm({
 }
 
 function AssignForm({
-	route,
+	ticket,
 	pending,
 	onAction,
 }: {
-	route: Route;
+	ticket: TicketDetail;
 	pending: boolean;
 	onAction: (input: ActionInput) => Promise<unknown>;
 }) {
+	const options = useQuery(orpc.listTicketAssignmentOptions.queryOptions());
 	const form = useForm({
-		defaultValues: { route },
-		onSubmit: ({ value }) => onAction({ action: "assign", route: value.route }),
+		defaultValues: {
+			route: (ticket.route ?? "unassigned") as Route,
+			assigneeId: ticket.assigneeId ?? "none",
+			ownerId: ticket.ownerId ?? "none",
+			teamId: ticket.teamId ?? "none",
+		},
+		onSubmit: ({ value }) =>
+			onAction({
+				action: "assign",
+				route: value.route,
+				assigneeId: value.assigneeId === "none" ? null : value.assigneeId,
+				ownerId: value.ownerId === "none" ? null : value.ownerId,
+				teamId: value.teamId === "none" ? null : value.teamId,
+			}),
 	});
 	return (
 		<form
@@ -372,11 +424,46 @@ function AssignForm({
 					</Field>
 				)}
 			</form.Field>
+			{(["assigneeId", "ownerId", "teamId"] as const).map((name) => (
+				<form.Field key={name} name={name}>
+					{(field) => (
+						<Field>
+							<FieldLabel>
+								{name === "teamId"
+									? "Team"
+									: name === "ownerId"
+										? "Owner"
+										: "Assignee"}
+							</FieldLabel>
+							<Select
+								value={field.state.value}
+								onValueChange={(value) => value && field.handleChange(value)}
+								disabled={pending || options.isPending}
+							>
+								<SelectTrigger className="w-full">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectItem value="none">Unassigned</SelectItem>
+									{(name === "teamId"
+										? options.data?.teams
+										: options.data?.users
+									)?.map((option) => (
+										<SelectItem key={option.id} value={option.id}>
+											{option.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</Field>
+					)}
+				</form.Field>
+			))}
 			<Button
 				type="submit"
 				variant="outline"
 				className="w-full"
-				disabled={pending}
+				disabled={pending || options.isPending}
 			>
 				<UserRoundCheck /> Assign
 			</Button>

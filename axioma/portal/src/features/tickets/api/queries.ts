@@ -5,7 +5,8 @@ export const myTicketQueryOptions = (id: string) =>
 		input: { id },
 		refetchInterval: (query) =>
 			query.state.data?.status === "routing" ||
-			query.state.data?.status === "resolving"
+			query.state.data?.status === "resolving" ||
+			query.state.data?.status === "pending"
 				? 5_000
 				: false,
 		refetchIntervalInBackground: false,

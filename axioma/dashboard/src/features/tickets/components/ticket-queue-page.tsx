@@ -12,6 +12,7 @@ import { TicketQueue } from "./ticket-queue";
 
 export function TicketQueuePage() {
 	const search = Route.useSearch();
+	const { capabilities } = Route.useRouteContext();
 	const navigate = useNavigate({ from: Route.fullPath });
 	const queryClient = useQueryClient();
 	const query = useQuery(ticketQueries.list(toTicketListInput(search)));
@@ -53,6 +54,7 @@ export function TicketQueuePage() {
 			<TicketQueue
 				result={query.data}
 				search={search}
+				capabilities={capabilities}
 				isPending={query.isPending}
 				isFetching={query.isFetching}
 				error={query.error}

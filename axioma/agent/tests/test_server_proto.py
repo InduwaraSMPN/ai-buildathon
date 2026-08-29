@@ -14,18 +14,26 @@ def test_additive_proto_fields_and_priority() -> None:
     assert pb.DeviceHello(enrolment_code="code").enrolment_code == "code"
     assert pb.ToolRequest(source_step_ordinal=2).source_step_ordinal == 2
     update = pb.RunUpdate(
-        evidence="observed", prompt_tokens=3, completion_tokens=2, model="provider/model"
+        evidence="observed",
+        prompt_tokens=3,
+        completion_tokens=2,
+        model="provider/model",
+        resolution_code="fixed",
     )
-    assert (update.evidence, update.prompt_tokens, update.completion_tokens, update.model) == (
-        "observed",
-        3,
-        2,
-        "provider/model",
+    assert (
+        update.evidence,
+        update.prompt_tokens,
+        update.completion_tokens,
+        update.model,
+        update.resolution_code,
+    ) == ("observed", 3, 2, "provider/model", "fixed")
+    start = pb.StartRun(
+        record_type="service_request", impact="high", urgency="medium", origin="monitoring"
     )
-    start = pb.StartRun(record_type="service_request", impact="high", urgency="medium")
-    assert (start.record_type, start.impact, start.urgency) == (
+    assert (start.record_type, start.impact, start.urgency, start.origin) == (
         "service_request",
         "high",
         "medium",
+        "monitoring",
     )
     assert _priority("high", "medium") == "P2"

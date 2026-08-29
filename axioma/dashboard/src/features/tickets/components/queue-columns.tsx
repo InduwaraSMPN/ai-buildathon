@@ -24,7 +24,9 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 	{
 		accessorKey: "status",
 		header: "Status",
-		cell: ({ row }) => <StatusBadge status={row.original.status} />,
+		cell: ({ row }) => (
+			<StatusBadge status={row.original.status} label={row.original.statusLabel} />
+		),
 	},
 	{
 		accessorKey: "recordType",
@@ -43,7 +45,7 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 			<div className="max-w-80 whitespace-normal">
 				<div className="font-medium text-foreground">{row.original.title}</div>
 				<div className="font-mono text-[10px] text-muted-foreground">
-					{row.original.id}
+					{row.original.number ?? row.original.id}
 				</div>
 			</div>
 		),
@@ -77,6 +79,16 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 		accessorKey: "route",
 		header: "Route",
 		cell: ({ row }) => row.original.route?.replaceAll("_", " ") ?? "Unassigned",
+	},
+	{
+		accessorKey: "assigneeName",
+		header: "Assignee",
+		cell: ({ row }) => row.original.assigneeName ?? "Unassigned",
+	},
+	{
+		accessorKey: "teamName",
+		header: "Team",
+		cell: ({ row }) => row.original.teamName ?? "Unassigned",
 	},
 	{
 		accessorKey: "deviceId",

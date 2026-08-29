@@ -70,7 +70,7 @@ function RouteComponent() {
 				<CardContent className="flex items-center justify-between gap-4 py-1 sm:gap-5">
 					<div className="min-w-0">
 						<div className="mb-3 flex flex-wrap items-center gap-2 sm:gap-3">
-							<StatusBadge status={ticket.status} />
+							<StatusBadge status={ticket.status} label={ticket.statusLabel} />
 							<span className="font-medium text-muted-foreground text-xs">
 								Stage: {getTicketStage(ticket.status)}
 							</span>
@@ -85,6 +85,9 @@ function RouteComponent() {
 							</span>
 						</div>
 						<h3 className="truncate font-semibold text-base">{ticket.title}</h3>
+						<p className="mt-1 font-mono text-[11px] text-muted-foreground">
+							{ticket.number ?? ticket.id}
+						</p>
 						<p className="mt-1 line-clamp-2 text-muted-foreground text-sm leading-relaxed">
 							{ticket.body}
 						</p>

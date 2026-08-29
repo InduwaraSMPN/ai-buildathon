@@ -11,6 +11,7 @@ const stageIndex: Record<string, number> = {
 	open: 0,
 	routing: 1,
 	resolving: 2,
+	pending: 2,
 	resolved: 3,
 	closed: 3,
 };

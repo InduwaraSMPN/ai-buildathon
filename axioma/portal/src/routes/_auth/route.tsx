@@ -9,6 +9,7 @@ import Header from "@/components/header";
 import Loader from "@/components/loader";
 import { ErrorState, PageShell } from "@/components/ticket-ui";
 import { authClient } from "@/lib/auth-client";
+import { client } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth")({
 	component: AuthLayout,
@@ -16,7 +17,8 @@ export const Route = createFileRoute("/_auth")({
 		const session = await authClient.getSession();
 		if (session.error) throw session.error;
 		if (!session.data) throw redirect({ to: "/login" });
-		return { session };
+		const privateData = await client.privateData();
+		return { session, privateData, capabilities: privateData.capabilities };
 	},
 	errorComponent: AuthError,
 	pendingComponent: Loader,

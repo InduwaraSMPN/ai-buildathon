@@ -68,6 +68,9 @@ export type TicketQueueSearch = Partial<
 		| "recordType"
 		| "category"
 		| "route"
+		| "assigneeId"
+		| "teamId"
+		| "myQueue"
 		| "deviceId"
 		| "unassigned"
 		| "escalatedSince"
@@ -96,6 +99,9 @@ export function normalizeTicketQueueSearch(
 		recordType: recordType(search.recordType),
 		category: category(search.category),
 		route: route(search.route),
+		assigneeId: text(search.assigneeId, 160),
+		teamId: text(search.teamId, 160),
+		myQueue: search.myQueue === true || search.myQueue === "true" || undefined,
 		deviceId: text(search.deviceId, 160),
 		unassigned:
 			search.unassigned === true || search.unassigned === "true" || undefined,
@@ -131,6 +137,9 @@ export function toTicketListInput(search: TicketQueueSearch): TicketListInput {
 		recordType: search.recordType,
 		category: search.category,
 		route: search.route,
+		assigneeId: search.assigneeId,
+		teamId: search.teamId,
+		myQueue: search.myQueue,
 		deviceId: search.deviceId,
 		unassigned: search.unassigned,
 		escalatedSince: search.escalatedSince,

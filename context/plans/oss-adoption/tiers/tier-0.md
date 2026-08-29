@@ -9,6 +9,19 @@ and §5 gives the reason.
 
 ---
 
+> ### Where the current truth lives
+>
+> **The current-state section below is a snapshot taken before this tier was built.** It is kept as
+> written because the milestones, decisions and definition of done are argued from it. It no longer
+> describes the tree.
+>
+> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
+> the running API. **4 of 5 milestones complete** — T0.B, T0.C, T0.D and T0.E. T0.A is partial: the schema landed but no code writes `user.kind = 'staff'`, and nobody holds `admin.roles`, so on a live database the dashboard is unreachable and the roles screen is gated behind itself.
+>
+> The remaining work is in [../execution/chat-a-identity.md](../execution/chat-a-identity.md), with the confirmed
+> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
+> against and is still current.
+
 ## 1. Current state
 
 The MVP shipped and every gate is green (`biome` and `tsc --noEmit` clean in `api`, `dashboard` and

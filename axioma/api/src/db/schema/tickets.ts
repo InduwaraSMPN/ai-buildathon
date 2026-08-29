@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import {
 	CATEGORY_NAMES,
@@ -7,12 +7,15 @@ import {
 	PRIORITIES,
 	PROGRESS_MARKERS,
 	RECORD_TYPES,
+	RESOLUTION_CODES,
 	TICKET_ROUTES,
-	TICKET_STATUSES,
 	URGENCY_LEVELS,
 } from "@/shared";
 import { user } from "./auth";
+import { serviceSubcategories, services } from "./catalogue";
 import { devices } from "./devices";
+import { teams } from "./org";
+import { ticketStatuses } from "./vocabulary";
 
 /**
  * A support request opened by an employee.
@@ -42,16 +45,49 @@ export const tickets = pgTable(
 			.notNull()
 			.default("medium"),
 		priority: text("priority", { enum: PRIORITIES }).notNull().default("P3"),
+		serviceId: text("service_id")
+			.notNull()
+			.default("svc-general")
+			.references(() => services.id, { onDelete: "restrict" }),
+		serviceSubcategoryId: text("service_subcategory_id")
+			.notNull()
+			.default("ss-general")
+			.references(() => serviceSubcategories.id, { onDelete: "restrict" }),
+		// Compatibility-only until all existing rows are backfilled by the Tier 2 migration.
 		category: text("category", { enum: CATEGORY_NAMES }),
 		subcategory: text("subcategory"),
 
-		// open -> routing -> resolving -> resolved | escalated | closed
-		status: text("status", { enum: TICKET_STATUSES }).notNull().default("open"),
+		status: text("status")
+			.notNull()
+			.default("open")
+			.references(() => ticketStatuses.key),
 		route: text("route", { enum: TICKET_ROUTES }),
 		resolution: text("resolution"),
+		resolutionCode: text("resolution_code", { enum: RESOLUTION_CODES }),
 		escalationNote: text("escalation_note"),
-		reporterNote: text("reporter_note"),
 		progressMarker: text("progress_marker", { enum: PROGRESS_MARKERS }),
+		assigneeId: text("assignee_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		ownerId: text("owner_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		teamId: text("team_id").references(() => teams.id, {
+			onDelete: "set null",
+		}),
+		mergedIntoId: text("merged_into_id"),
+		number: text("number").unique(),
+		pendingReasonId: text("pending_reason_id"),
+		pendingUntil: timestamp("pending_until"),
+		lastPendingAt: timestamp("last_pending_at"),
+		pendingFollowups: integer("pending_followups").notNull().default(0),
+		escalationFlag: text("escalation_flag", {
+			enum: ["none", "warning", "breach"],
+		})
+			.notNull()
+			.default("none"),
+		escalationReason: text("escalation_reason"),
+		version: integer("version").notNull().default(1),
 
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
@@ -69,6 +105,7 @@ export const tickets = pgTable(
 		index("tickets_priority_idx").on(t.priority, t.createdAt),
 		index("tickets_type_idx").on(t.recordType, t.status),
 		index("tickets_device_idx").on(t.deviceId),
+		index("tickets_service_idx").on(t.serviceId, t.serviceSubcategoryId),
 	],
 );
 
@@ -79,8 +116,8 @@ export const ticketTransitions = pgTable(
 		ticketId: text("ticket_id")
 			.notNull()
 			.references(() => tickets.id, { onDelete: "cascade" }),
-		fromStatus: text("from_status", { enum: TICKET_STATUSES }).notNull(),
-		toStatus: text("to_status", { enum: TICKET_STATUSES }).notNull(),
+		fromStatus: text("from_status").notNull(),
+		toStatus: text("to_status").notNull(),
 		action: text("action").notNull(),
 		actorType: text("actor_type", { enum: ["human", "agent"] }).notNull(),
 		actorId: text("actor_id"),

@@ -9,6 +9,19 @@ ticket system with an agent and becomes a service management system.
 
 ---
 
+> ### Where the current truth lives
+>
+> **The current-state section below is a snapshot taken before this tier was built.** It is kept as
+> written because the milestones, decisions and definition of done are argued from it. It no longer
+> describes the tree.
+>
+> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
+> the running API. **1 of 7 milestones complete** — T2.C. The API and schema are largely done and the human surfaces are not: the dashboard is read-only across problems, changes and knowledge, and no form exists or can be created.
+>
+> The remaining work is in [../execution/chat-c-tier2.md](../execution/chat-c-tier2.md), with the confirmed
+> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
+> against and is still current.
+
 ## 1. Current state
 
 ### What exists

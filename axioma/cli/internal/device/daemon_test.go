@@ -285,14 +285,19 @@ func TestServeConnectionHeartbeatsDuringActionAndCancels(t *testing.T) {
 	<-stream.sent // hello
 	stream.recv <- gatewayCommand(1)
 	<-started
-	select {
-	case msg := <-stream.sent:
-		if msg.GetHeartbeat() == nil {
-			t.Fatalf("expected heartbeat while action ran, got %v", msg)
+	deadline := time.After(200 * time.Millisecond)
+	for {
+		select {
+		case msg := <-stream.sent:
+			if msg.GetHeartbeat() != nil {
+				goto heartbeatReceived
+			}
+		case <-deadline:
+			t.Fatal("heartbeat starved by action")
 		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("heartbeat starved by action")
 	}
+
+heartbeatReceived:
 	cancel()
 	stream.close()
 	select {
@@ -303,6 +308,32 @@ func TestServeConnectionHeartbeatsDuringActionAndCancels(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("cancellation did not stop connection")
 	}
+}
+
+func TestServeConnectionSendsScheduledInventory(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	stream := newFakeDeviceStream()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		done <- serveConnection(ctx, cancel, stream, "test", &Identity{DeviceID: "device"},
+			daemonTimings{heartbeat: time.Hour, inventory: time.Hour, liveness: time.Hour},
+			func(Identity, uint64) error { return nil }, execute,
+			func(context.Context) Inventory { return Inventory{Hardware: InventoryResult{OK: true}} })
+	}()
+	<-stream.sent // hello
+	select {
+	case msg := <-stream.sent:
+		report := msg.GetInventory()
+		if report == nil || report.ReportId == "" || report.CollectedUnixMs == 0 || !strings.Contains(report.InventoryJson, `"hardware":{"ok":true`) {
+			t.Fatalf("unexpected inventory report: %+v", report)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for inventory")
+	}
+	cancel()
+	stream.close()
+	<-done
 }
 
 func waitForResult(t *testing.T, sent <-chan *pb.DeviceMessage) *pb.CommandResult {

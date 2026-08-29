@@ -1,21 +1,27 @@
 import { eq } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
-import { tickets } from "@/db/schema";
+import { changes, tickets } from "@/db/schema";
+import { patchImageWithChange } from "./change";
 import {
-	patchImage,
 	patchImageInput,
 	readDeployment,
 	readDeploymentInput,
 	readPods,
 	readPodsInput,
 } from "./cluster";
-import { recordObservation, recordObservationInput } from "./cmdb";
+import {
+	cmdbImpact,
+	impactInput,
+	recordObservation,
+	recordObservationInput,
+} from "./cmdb";
 import {
 	deviceActionInput,
 	deviceComputerUseInput,
 	deviceReadInput,
 } from "./device";
+import { knowledgeSearch, knowledgeSearchInput } from "./knowledge";
 
 export type ToolContext = {
 	runId: string;
@@ -36,9 +42,13 @@ const device = (input: z.ZodType, verifiedBy?: string): ToolHandler => ({
 	run: (value, ctx) => ctx.dispatchDevice("", value),
 });
 
-const pendingVerification = new Map<string, string>();
+const pendingVerification = new Map<
+	string,
+	{ tool: string; changeId?: string }
+>();
 
 export const tools: Record<string, ToolHandler> = {
+	knowledge_search: { input: knowledgeSearchInput, run: knowledgeSearch },
 	cluster_read_pods: { input: readPodsInput, run: readPods },
 	cluster_read_deployment: {
 		input: readDeploymentInput,
@@ -47,7 +57,7 @@ export const tools: Record<string, ToolHandler> = {
 	cluster_patch_image: {
 		input: patchImageInput,
 		verifiedBy: "cluster_read_deployment",
-		run: patchImage,
+		run: patchImageWithChange,
 	},
 	device_read_state: device(deviceReadInput),
 	device_run_action: device(deviceActionInput, "device_read_state"),
@@ -56,6 +66,7 @@ export const tools: Record<string, ToolHandler> = {
 		input: recordObservationInput,
 		run: recordObservation,
 	},
+	cmdb_impact: { input: impactInput, run: cmdbImpact },
 };
 
 export async function executeTool(
@@ -69,7 +80,8 @@ export async function executeTool(
 			`Unknown tool ${name}. Registered tools: ${Object.keys(tools).join(", ")}`,
 		);
 	const input = handler.input.parse(raw);
-	const verifies = pendingVerification.get(ctx.runId) === name;
+	const pending = pendingVerification.get(ctx.runId);
+	const verifies = pending?.tool === name;
 	const marker = verifies
 		? "verifying_fix"
 		: name === "cluster_patch_image" ||
@@ -90,8 +102,29 @@ export async function executeTool(
 		...ctx,
 		dispatchDevice: (_ignored, value) => ctx.dispatchDevice(name, value),
 	});
-	if (verifies) pendingVerification.delete(ctx.runId);
-	if (handler.verifiedBy)
-		pendingVerification.set(ctx.runId, handler.verifiedBy);
+	if (verifies) {
+		pendingVerification.delete(ctx.runId);
+		if (pending?.changeId) {
+			const completedAt = new Date();
+			await db
+				.update(changes)
+				.set({
+					status: "completed",
+					workEndAt: completedAt,
+					pirWasSuccessful: true,
+					pirActualEndAt: completedAt,
+					pirReview: JSON.stringify(output),
+					pirLessonsLearned: "Explicit post-change verification succeeded.",
+				})
+				.where(eq(changes.id, pending.changeId));
+		}
+	}
+	if (handler.verifiedBy) {
+		const changeId =
+			output && typeof output === "object" && "changeId" in output
+				? String(output.changeId)
+				: undefined;
+		pendingVerification.set(ctx.runId, { tool: handler.verifiedBy, changeId });
+	}
 	return output;
 }

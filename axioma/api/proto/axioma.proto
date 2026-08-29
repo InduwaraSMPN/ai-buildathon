@@ -65,6 +65,8 @@ message StartRun {
   string impact = 9;
   string urgency = 10;
   string priority = 11;
+  // Ticket ingestion provenance (for example portal, employee_email, monitoring).
+  string origin = 12;
 }
 
 message CancelRun {
@@ -101,6 +103,7 @@ message RunUpdate {
   uint32 prompt_tokens = 12;
   uint32 completion_tokens = 13;
   string model = 14;
+  string resolution_code = 15; // resolved terminals only
 }
 
 // The agent asks the API to execute a tool. The agent never touches the
@@ -141,7 +144,14 @@ message DeviceMessage {
     DeviceHello hello = 1;
     CommandResult result = 2;
     Heartbeat heartbeat = 3;
+    InventoryReport inventory = 4;
   }
+}
+
+message InventoryReport {
+  string report_id = 1;
+  int64 collected_unix_ms = 2;
+  string inventory_json = 3;
 }
 
 message GatewayMessage {

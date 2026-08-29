@@ -78,6 +78,7 @@ class RunResult:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     model: str = ""
+    resolution_code: str = ""
 
 
 @dataclass(slots=True)
@@ -112,6 +113,7 @@ class RunContext:
     impact: str = "medium"
     urgency: str = "medium"
     priority: str = "P3"
+    origin: str = "portal"
     clock: Callable[[], float] = time.monotonic
     transcript: list[Message] = field(default_factory=list)
     prompt_tokens: int = 0
@@ -131,6 +133,52 @@ async def run(ctx: RunContext) -> RunResult:
     model_turns = tool_calls = consecutive_failures = verification_rejections = 0
     pending: list[PendingVerification] = []
     last_evidence: str | None = None
+
+    # Knowledge retrieval is deliberately a real first tool call so its query and
+    # evidence remain replayable in the transcript rather than hidden in the prompt.
+    knowledge_input = {"query": f"{ctx.title}\n{ctx.body}"[:500], "limit": 5}
+    knowledge_call_id = uuid.uuid4().hex
+    _append_call(
+        ctx,
+        knowledge_call_id,
+        "knowledge_search",
+        {"reasoning": "Check published knowledge before diagnosis.", **knowledge_input},
+    )
+    knowledge_ordinal = await ctx.report(
+        Step(
+            kind=StepKind.TOOL_CALL,
+            reasoning="Check published knowledge before diagnosis.",
+            tool_name="knowledge_search",
+            tool_input=knowledge_input,
+        )
+    )
+    try:
+        remaining = config.run_deadline_seconds - (ctx.clock() - started)
+        knowledge = await asyncio.wait_for(
+            ctx.call_tool("knowledge_search", knowledge_input, knowledge_ordinal),
+            timeout=max(0.001, remaining),
+        )
+        tool_calls += 1
+        last_evidence = _evidence(knowledge) or last_evidence
+        await ctx.report(
+            Step(
+                kind=StepKind.OBSERVATION,
+                tool_name="knowledge_search",
+                tool_output=knowledge,
+                evidence=last_evidence,
+            )
+        )
+        ctx.transcript.append(
+            {
+                "role": "tool",
+                "tool_call_id": knowledge_call_id,
+                "content": _truncate(json.dumps(knowledge, default=str, separators=(",", ":"))),
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        await _failure(
+            ctx, knowledge_call_id, "knowledge_search", f"tool failed: {exc}", knowledge_input
+        )
 
     while model_turns < config.max_model_turns:
         remaining = config.run_deadline_seconds - (ctx.clock() - started)
@@ -183,7 +231,12 @@ async def run(ctx: RunContext) -> RunResult:
             await ctx.report(
                 Step(kind=StepKind.DECISION, reasoning=decision.reasoning, evidence=last_evidence)
             )
-            return _result(ctx, RunStatus.RESOLVED, decision.resolution)
+            return _result(
+                ctx,
+                RunStatus.RESOLVED,
+                decision.resolution,
+                resolution_code=_resolution_code(decision.resolution),
+            )
 
         if decision.kind == "escalate":
             await ctx.report(
@@ -398,5 +451,18 @@ async def _finish(
     return _result(ctx, status, outcome)
 
 
-def _result(ctx: RunContext, status: RunStatus, outcome: str) -> RunResult:
-    return RunResult(status, outcome, ctx.prompt_tokens, ctx.completion_tokens, ctx.model)
+def _resolution_code(resolution: str) -> str:
+    return "duplicate" if "duplicate" in resolution.casefold() else "fixed"
+
+
+def _result(
+    ctx: RunContext, status: RunStatus, outcome: str, *, resolution_code: str = ""
+) -> RunResult:
+    return RunResult(
+        status,
+        outcome,
+        ctx.prompt_tokens,
+        ctx.completion_tokens,
+        ctx.model,
+        resolution_code,
+    )

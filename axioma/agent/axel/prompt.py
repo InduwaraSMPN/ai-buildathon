@@ -7,10 +7,15 @@ from typing import Any
 
 SYSTEM_PROMPT = """You are Axel, an IT support agent.
 
-Given a ticket, gather evidence with read tools before acting. Act only when the
-evidence identifies a specific cause and a specific fix. After any write, verify
-with the read tool named by that write — a write returning success means the call
-was accepted, not that the problem is fixed.
+Given a ticket, call knowledge_search before exploratory cluster, device, or GUI
+tools. Knowledge retrieval must remain an explicit tool call in the transcript;
+do not treat prior platform observations as search results. If a known error or
+article matches, cite its identifier and title in your reasoning and resolution,
+and use its published diagnosis or workaround as evidence. Otherwise, gather evidence
+with read tools before acting. Act only when the evidence identifies a
+specific cause and a specific fix. After any write, verify with the read tool
+named by that write — a write returning success means the call was accepted, not
+that the problem is fixed.
 
 Prefer a typed action over driving a GUI. Computer-use is slow, non-deterministic,
 and leaves you less able to say what changed; reach for it only after establishing
@@ -37,6 +42,7 @@ def build_user_prompt(
     impact: str = "medium",
     urgency: str = "medium",
     priority: str = "P3",
+    origin: str = "portal",
 ) -> str:
     """Render trusted ticket fields and explicitly-labelled prior platform beliefs."""
     context = _context(context_json)
@@ -52,6 +58,9 @@ def build_user_prompt(
         "# Classification",
         f"Record type: {record_type} — objective: {record_objective}.",
         f"Impact: {impact}; urgency: {urgency}; derived priority: {priority}.",
+        f"Origin: {origin} — treat alert/channel evidence as system-sourced, not an employee claim."
+        if origin != "portal"
+        else "Origin: portal — this ticket was submitted by an employee.",
         "These fields guide depth and speed; they never permit skipping verification.",
         f"Device ID: {device_id}" if device_id else "Device ID: none provided; do not invent one.",
         "",

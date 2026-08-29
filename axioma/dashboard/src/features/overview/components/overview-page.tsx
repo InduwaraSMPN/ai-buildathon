@@ -32,6 +32,7 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
+import { orpc } from "@/utils/orpc";
 import { overviewQueries } from "../api/queries";
 
 const DAYS = 30;
@@ -46,7 +47,8 @@ const outcomeConfig = {
 
 export function OverviewPage() {
 	const query = useQuery(overviewQueries.stats(DAYS));
-	if (query.isPending)
+	const arrangement = useQuery(orpc.getDashboardArrangement.queryOptions());
+	if (query.isPending || arrangement.isPending)
 		return (
 			<PageContainer title="Overview">
 				<PageState
@@ -56,14 +58,19 @@ export function OverviewPage() {
 				/>
 			</PageContainer>
 		);
-	if (query.isError)
+	if (query.isError || arrangement.isError)
 		return (
 			<PageContainer title="Overview">
 				<PageState
 					kind="error"
 					title="Overview unavailable"
-					description={query.error.message}
-					onRetry={() => query.refetch()}
+					description={
+						(query.error ?? arrangement.error)?.message ?? "Try again shortly."
+					}
+					onRetry={() => {
+						void query.refetch();
+						void arrangement.refetch();
+					}}
 				/>
 			</PageContainer>
 		);
@@ -87,39 +94,66 @@ export function OverviewPage() {
 			description="Service desk demand and outcomes from one aggregate view."
 		>
 			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-				<PriorityStat values={stats.openByPriority} />
-				<Stat
-					label="Awaiting confirmation"
-					value={stats.awaitingConfirmation}
-					detail="Resolved tickets"
-					icon={CircleCheckBig}
-					search={{ status: ["resolved"] }}
-				/>
-				<Stat
-					label="Escalated 24h"
-					value={stats.escalatedLast24h}
-					detail="Escalated in the last 24 hours"
-					icon={ShieldAlert}
-					search={{ escalatedSince: stats.escalatedSince }}
-					alert={stats.escalatedLast24h > 0}
-				/>
-				<Stat
-					label="Autonomous resolution rate"
-					value={formatPercent(stats.autonomousResolutionRate)}
-					detail={`${stats.autonomousResolutionNumerator} of ${stats.autonomousResolutionDenominator} closed`}
-					icon={Sparkles}
-					search={{ status: ["closed"], autonomous: true }}
-				/>
-				<Stat
-					label="Median TTR"
-					value={formatDuration(stats.medianTimeToResolutionMs)}
-					detail="All resolved tickets"
-					icon={Clock3}
-					search={{ resolvedAt: true }}
-				/>
+				{orderedOverviewWidgets(arrangement.data).map(({ key, width }) => (
+					<div key={key} className={width === 2 ? "xl:col-span-2" : undefined}>
+						{key === "priority" ? (
+							<PriorityStat values={stats.openByPriority} />
+						) : null}
+						{key === "confirmation" ? (
+							<Stat
+								label="Awaiting confirmation"
+								value={stats.awaitingConfirmation}
+								detail="Resolved tickets"
+								icon={CircleCheckBig}
+								search={{ status: ["resolved"] }}
+							/>
+						) : null}
+						{key === "escalations" ? (
+							<Stat
+								label="Escalated 24h"
+								value={stats.escalatedLast24h}
+								detail="Escalated in the last 24 hours"
+								icon={ShieldAlert}
+								search={{ escalatedSince: stats.escalatedSince }}
+								alert={stats.escalatedLast24h > 0}
+							/>
+						) : null}
+						{key === "resolution-rate" ? (
+							<Stat
+								label="Autonomous resolution rate"
+								value={formatPercent(stats.autonomousResolutionRate)}
+								detail={`${stats.autonomousResolutionNumerator} of ${stats.autonomousResolutionDenominator} closed`}
+								icon={Sparkles}
+								search={{ status: ["closed"], autonomous: true }}
+							/>
+						) : null}
+						{key === "median-ttr" ? (
+							<Stat
+								label="Median TTR"
+								value={formatDuration(stats.medianTimeToResolutionMs)}
+								detail="All resolved tickets"
+								icon={Clock3}
+								search={{ resolvedAt: true }}
+							/>
+						) : null}
+					</div>
+				))}
 			</div>
 
 			<div className="mt-4 grid gap-4 lg:grid-cols-2">
+				<ChartCard
+					title="Resolution code mix"
+					description="All coded resolutions"
+				>
+					<ul className="grid gap-2 text-sm">
+						{Object.entries(stats.byResolutionCode).map(([code, count]) => (
+							<li key={code} className="flex justify-between gap-4">
+								<span>{code.replaceAll("_", " ")}</span>
+								<span className="font-medium tabular-nums">{count}</span>
+							</li>
+						))}
+					</ul>
+				</ChartCard>
 				<ChartCard
 					title="Ticket volume"
 					description={`Daily intake · last ${DAYS} days`}
@@ -226,6 +260,22 @@ export function OverviewPage() {
 			</div>
 		</PageContainer>
 	);
+}
+
+export function orderedOverviewWidgets(
+	saved: readonly { widgetKey: string; width: 1 | 2 }[],
+) {
+	const defaults = [
+		{ widgetKey: "priority", width: 2 as const },
+		{ widgetKey: "confirmation", width: 1 as const },
+		{ widgetKey: "escalations", width: 1 as const },
+		{ widgetKey: "resolution-rate", width: 1 as const },
+		{ widgetKey: "median-ttr", width: 1 as const },
+	];
+	return (saved.length ? saved : defaults).map(({ widgetKey, width }) => ({
+		key: widgetKey,
+		width,
+	}));
 }
 
 function PriorityStat({

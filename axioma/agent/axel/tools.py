@@ -33,6 +33,15 @@ class Surface(StrEnum):
     CLUSTER = "cluster"
     DEVICE = "device"
     CMDB = "cmdb"
+    KNOWLEDGE = "knowledge"
+
+
+# --- knowledge ---------------------------------------------------------------
+
+
+class KnowledgeSearch(StrictToolInput):
+    query: str = Field(min_length=1, max_length=500)
+    limit: int = Field(default=5, ge=1, le=10)
 
 
 # --- cluster -----------------------------------------------------------------
@@ -108,13 +117,23 @@ class DeviceComputerUse(StrictToolInput):
 # --- cmdb --------------------------------------------------------------------
 
 
+class CmdbRelationship(StrictToolInput):
+    type_key: str = Field(min_length=1)
+    target_object_id: str = Field(min_length=1)
+    property_key: str | None = Field(default=None, min_length=1)
+
+
 class CmdbRecordObservation(StrictToolInput):
-    kind: Literal["service", "deployment", "pod", "device", "dependency"]
+    class_key: str = Field(min_length=1)
     external_id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     attributes: dict[str, object] | None = None
-    relates_to_id: str | None = None
-    relation_kind: str | None = None
+    relationships: list[CmdbRelationship] | None = None
+
+
+class CmdbImpact(StrictToolInput):
+    object_id: str = Field(min_length=1)
+    max_depth: int = Field(default=5, ge=0, le=10)
 
 
 class Tool(BaseModel):
@@ -131,6 +150,17 @@ class Tool(BaseModel):
 REGISTRY: dict[str, Tool] = {
     t.name: t
     for t in [
+        Tool(
+            name="knowledge_search",
+            surface=Surface.KNOWLEDGE,
+            effect=Effect.READ,
+            description=(
+                "Search published known errors and knowledge articles for this ticket. "
+                "Use before exploratory cluster or device reads; cite a matching result by "
+                "identifier and title when using its diagnosis or workaround."
+            ),
+            schema_model=KnowledgeSearch,
+        ),
         Tool(
             name="cluster_read_pods",
             surface=Surface.CLUSTER,
@@ -189,8 +219,15 @@ REGISTRY: dict[str, Tool] = {
             name="cmdb_record_observation",
             surface=Surface.CMDB,
             effect=Effect.WRITE,
-            description="Record what was observed, with the run and step that observed it.",
+            description="Record a typed CI observation and link it to the current ticket.",
             schema_model=CmdbRecordObservation,
+        ),
+        Tool(
+            name="cmdb_impact",
+            surface=Surface.CMDB,
+            effect=Effect.READ,
+            description="List CIs impacted by a CI, breadth-first with a bounded depth.",
+            schema_model=CmdbImpact,
         ),
     ]
 }

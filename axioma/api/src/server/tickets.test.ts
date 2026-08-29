@@ -6,7 +6,14 @@ import {
 	nextTicketStatus,
 	preserveUndefined,
 	type TicketTransition,
+	ticketRunOrigin,
 } from "./tickets";
+
+test("ticket run origin prefers mail, then channel, then portal", () => {
+	assert.equal(ticketRunOrigin("monitoring", "customer-chat"), "monitoring");
+	assert.equal(ticketRunOrigin(null, "customer-chat"), "customer-chat");
+	assert.equal(ticketRunOrigin(), "portal");
+});
 
 test("ticket lifecycle covers every state-changing transition", () => {
 	const transitions = [
@@ -33,6 +40,13 @@ test("reruns require an escalated ticket and failed or exhausted latest run", ()
 	assert.equal(canRerun("escalated", "resolved"), false);
 	assert.equal(canRerun("open", "failed"), false);
 	assert.equal(canRerun("escalated"), false);
+});
+
+test("pending lifecycle pauses and returns to open", () => {
+	for (const status of ["open", "routing", "resolving"])
+		assert.equal(nextTicketStatus(status, "pend"), "pending");
+	assert.equal(nextTicketStatus("pending", "unpend"), "open");
+	assert.equal(nextTicketStatus("pending", "resolve"), "resolved");
 });
 
 test("employees can add details without changing active state", () => {

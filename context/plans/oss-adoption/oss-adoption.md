@@ -1,8 +1,27 @@
 # Axiōma — the ITSM adoption programme
 
 **Document role:** Gap analysis across four reference systems, and the sequencing that turns it into work
-**Related:** [tier-0.md](tiers/tier-0.md) · [tier-1.md](tiers/tier-1.md) · [tier-2.md](tiers/tier-2.md) · [tier-3.md](tiers/tier-3.md) · [tier-4.md](tiers/tier-4.md)
+**Related:** [tier-0.md](tiers/tier-0.md) · [tier-1.md](tiers/tier-1.md) · [tier-2.md](tiers/tier-2.md) · [tier-3.md](tiers/tier-3.md) · [tier-4.md](tiers/tier-4.md) · [execution/](execution/README.md)
 **Supersedes nothing:** the five component plans in `context/plans/completed/` describe the MVP, which is built.
+
+> ### Where the current truth lives
+>
+> **This document is the plan, not the status.** Sections 2 and 3 are snapshots taken before the tier work
+> began and are kept as written — they are the baseline the programme was argued from, and rewriting them
+> would erase the reasoning. They no longer describe the tree.
+>
+> A verification audit on **2026-08-29** checked every milestone against the code, the live database and
+> the running API. **20 of 40 milestones are complete:** Tier 0 4/5, Tier 1 7/12, Tier 2 1/7, Tier 3 2/7,
+> Tier 4 6/9. All five component gates pass — `api` 133 tests, `agent` 41, `cli` 41 across 5 packages,
+> `dashboard` and `portal` typecheck clean; 16 migrations applied with zero schema drift across 132 tables.
+>
+> The gap is uniform across tiers: **tables land, wiring does not.** Fifteen tables are defined, migrated
+> and never read or written by any code; most reference tables are empty with nothing to seed them; and the
+> dashboard is read-only across three practice areas.
+>
+> **[execution/](execution/README.md) carries the remaining work** — six briefs, each with the confirmed
+> `file:line` evidence, a reserved migration range and a definition of done. Read those for what is left;
+> read the tier documents below for why any of it is shaped the way it is.
 
 The MVP proved the thesis: an employee opens a ticket, Axel resolves it against Kubernetes or against a
 laptop, and it closes — or it escalates with its reasoning intact. This programme turns that into a
@@ -34,7 +53,11 @@ flag — the disagreement is the interesting part, and the choice is argued rath
 
 ## 2. Baseline: the MVP as built
 
-The five component plans have been executed. Gates, all run against the current tree:
+**Historical — this is the state the programme was planned from, not the state today.** The gate counts
+below are the MVP's. Current counts are `api` 133, `agent` 41, `cli` 41; see the status block at the top.
+
+The five component plans have been executed. Gates, all run against the tree as it stood when this
+document was written:
 
 | Component | Lint | Types | Tests |
 |---|---|---|---|
@@ -72,9 +95,14 @@ The five component plans have been executed. Gates, all run against the current 
 
 ## 3. The gap table
 
-57 capabilities. **Re-baselined against the shipped MVP** — six rows have moved since this table was
-first written, and they are marked. Rows are grouped by tier; each tier document expands its own slice
+57 capabilities. **Re-baselined against the shipped MVP** — six rows had moved when this table was
+written, and they are marked. Rows are grouped by tier; each tier document expands its own slice
 with current state, milestones and a definition of done.
+
+**Historical.** The "Axiōma today" column describes the tree before the tier work began. Most rows that
+read *Nothing* now have their schema built and, in many cases, their backend too — what they usually lack
+is the last mile. Do not read this column as current state; the per-milestone verdicts in
+[execution/](execution/README.md) are what the code was actually checked against.
 
 ### Tier 0 — Prerequisite · [tier-0.md](tiers/tier-0.md)
 
@@ -158,8 +186,13 @@ with current state, milestones and a definition of done.
 | 4.14 | SSO and directory sync | Better Auth email/password only | FreeITSM `auth_providers` + `sso_identities`, `directory_sync_runs` with preview and a safety brake | `api` |
 | 4.15 | Multi-tenancy | Out of scope by decision | FreeITSM `tenants` + `tenant_id` almost everywhere | **deferred — see [tier-4.md](tiers/tier-4.md) T4.J** |
 
-**Totals: 2 prerequisite, 18 Tier 1, 9 Tier 2, 13 Tier 3, 15 Tier 4.** Six rows moved after the MVP:
-1.9, 1.12 and 1.17 are partial; 3.11 and 4.8 are mostly done; 4.6 is partial.
+**Totals: 2 prerequisite, 18 Tier 1, 9 Tier 2, 13 Tier 3, 15 Tier 4.** Six rows had moved when this was
+written: 1.9, 1.12 and 1.17 partial; 3.11 and 4.8 mostly done; 4.6 partial.
+
+Since then the tiers have been built and audited. The milestone-level verdict — which is the useful one,
+because milestones are what the tier documents define *done* against — is 20 of 40 complete: Tier 0 4/5,
+Tier 1 7/12, Tier 2 1/7, Tier 3 2/7, Tier 4 6/9. [execution/](execution/README.md) has the breakdown and
+the remaining work.
 
 ---
 
@@ -282,6 +315,7 @@ an approval gate onto an autonomous agent.
 | [tier-2.md](tiers/tier-2.md) | Service catalogue, Problem Management, known errors for Axel, Change Enablement with CAB, PIR, knowledge base, request catalogue and approvals |
 | [tier-3.md](tiers/tier-3.md) | CMDB metamodel, impact analysis, rules engine, custom fields, workflows, webhooks, notifications, persisted views, cross-record search, public API |
 | [tier-4.md](tiers/tier-4.md) | Inbound and outbound email, assets, hardware and software inventory, service status, attachments, scheduling, suppliers, SSO and directory sync, multi-tenancy deferral |
+| [execution/](execution/README.md) | **What is left.** Six briefs dividing the remaining work across parallel sessions, each carrying the audit's confirmed evidence, a reserved migration range and a definition of done |
 
 Each follows the same shape as the five component plans: Current state → Gaps → Milestones →
 Cross-component impact → Decisions taken → Risks → Definition of done. No durations, matching those

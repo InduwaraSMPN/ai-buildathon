@@ -29,7 +29,13 @@ export function getStatus(status: string) {
 	};
 }
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({
+	status,
+	label: configuredLabel,
+}: {
+	status: string;
+	label?: string;
+}) {
 	const { label } = getStatus(status);
 	return (
 		<span
@@ -40,7 +46,7 @@ export function StatusBadge({ status }: { status: string }) {
 					: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300",
 			)}
 		>
-			{label}
+			{configuredLabel ?? label}
 		</span>
 	);
 }

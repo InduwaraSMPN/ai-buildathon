@@ -10,7 +10,53 @@
  * bindings from the same source.
  */
 
-export const TICKET_STATUSES = [
+export const USER_KINDS = ["staff", "reporter"] as const;
+export type UserKind = (typeof USER_KINDS)[number];
+
+export const CAPABILITIES = [
+	"ticket.read.own",
+	"ticket.read.all",
+	"ticket.create",
+	"ticket.update",
+	"ticket.resolve",
+	"ticket.close",
+	"ticket.escalate",
+	"ticket.reclassify",
+	"ticket.assign",
+	"ticket.reopen",
+	"run.start",
+	"run.cancel",
+	"run.read",
+	"device.read",
+	"device.enroll",
+	"device.command",
+	"stats.read",
+	"problem.manage",
+	"change.manage",
+	"change.approve",
+	"knowledge.read",
+	"knowledge.manage",
+	"approval.read",
+	"approval.decide",
+	"catalogue.manage",
+	"admin.roles",
+	"admin.settings",
+] as const;
+export type Capability = (typeof CAPABILITIES)[number];
+
+export const STATE_TYPES = [
+	"new",
+	"open",
+	"pending",
+	"resolved",
+	"closed",
+	"merged",
+	"cancelled",
+] as const;
+export type StateType = (typeof STATE_TYPES)[number];
+
+/** Seed keys only. Status keys are runtime vocabulary and cross boundaries as strings. */
+export const DEFAULT_TICKET_STATUSES = [
 	"open",
 	"routing",
 	"resolving",
@@ -18,7 +64,17 @@ export const TICKET_STATUSES = [
 	"escalated",
 	"closed",
 ] as const;
-export type TicketStatus = (typeof TICKET_STATUSES)[number];
+export type TicketStatus = string;
+
+export const RESOLUTION_CODES = [
+	"fixed",
+	"workaround",
+	"not_reproducible",
+	"duplicate",
+	"no_action_required",
+	"rejected",
+] as const;
+export type ResolutionCode = (typeof RESOLUTION_CODES)[number];
 
 export const RECORD_TYPES = ["incident", "service_request"] as const;
 export type RecordType = (typeof RECORD_TYPES)[number];

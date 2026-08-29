@@ -1,35 +1,62 @@
-import { index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import {
+	boolean,
+	index,
+	jsonb,
+	pgTable,
+	text,
+	timestamp,
+	uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { agentRuns, agentSteps } from "./agent";
 import { tickets } from "./tickets";
 
-/**
- * Observed entities and relationships.
- *
- * Rows are additive observations, never overwrites. Two rows about the same
- * entity at different times are both true — of their own moment — and the
- * newest one wins on read.
- *
- * The four provenance columns are the point of this table. Recording which
- * ticket, run, and step produced a fact costs almost nothing now and is the only
- * part of a governed CMDB that is genuinely expensive to add later. Everything
- * else a governed version needs — proposals, separate ownership, approval before
- * correction, rollback — can be built on top of provenance whenever it is wanted.
- */
-export const cmdbItems = pgTable(
-	"cmdb_items",
+export const cmdbClasses = pgTable(
+	"cmdb_classes",
 	{
 		id: text("id").primaryKey(),
+		key: text("key").notNull(),
+		label: text("label").notNull(),
+		parentClassId: text("parent_class_id").references(
+			(): AnyPgColumn => cmdbClasses.id,
+			{ onDelete: "set null" },
+		),
+	},
+	(t) => [uniqueIndex("cmdb_classes_key_uidx").on(t.key)],
+);
 
-		// service | deployment | pod | device | dependency
-		kind: text("kind").notNull(),
-		// stable natural key within a kind, e.g. "deployment/demo/checkout"
+export const cmdbClassProperties = pgTable(
+	"cmdb_class_properties",
+	{
+		id: text("id").primaryKey(),
+		classId: text("class_id")
+			.notNull()
+			.references(() => cmdbClasses.id, { onDelete: "cascade" }),
+		propertyKey: text("property_key").notNull(),
+		label: text("label").notNull(),
+		propertyType: text("property_type").notNull(),
+		targetClassId: text("target_class_id").references(() => cmdbClasses.id, {
+			onDelete: "restrict",
+		}),
+		isRequired: boolean("is_required").notNull().default(false),
+		spreadsImpact: boolean("spreads_impact").notNull().default(false),
+	},
+	(t) => [
+		uniqueIndex("cmdb_class_properties_key_uidx").on(t.classId, t.propertyKey),
+		index("cmdb_class_properties_target_idx").on(t.targetClassId),
+	],
+);
+
+/** Additive CI observations. The four provenance columns remain exactly named and typed. */
+export const cmdbObjects = pgTable(
+	"cmdb_objects",
+	{
+		id: text("id").primaryKey(),
+		classId: text("class_id")
+			.notNull()
+			.references(() => cmdbClasses.id, { onDelete: "restrict" }),
 		externalId: text("external_id").notNull(),
 		name: text("name").notNull(),
-		attributes: jsonb("attributes"),
-
-		// set when this row asserts a relationship rather than an entity
-		relatesToId: text("relates_to_id"),
-		relationKind: text("relation_kind"),
 
 		// provenance
 		sourceTicketId: text("source_ticket_id").references(() => tickets.id, {
@@ -44,10 +71,85 @@ export const cmdbItems = pgTable(
 		observedAt: timestamp("observed_at").defaultNow().notNull(),
 	},
 	(t) => [
-		index("cmdb_items_lookup_idx").on(t.kind, t.externalId, t.observedAt),
-		index("cmdb_items_relation_idx").on(t.relatesToId),
-		index("cmdb_items_source_idx").on(t.sourceTicketId),
-		index("cmdb_items_run_idx").on(t.sourceRunId),
-		index("cmdb_items_step_idx").on(t.sourceStepId),
+		index("cmdb_objects_lookup_idx").on(t.classId, t.externalId, t.observedAt),
+		index("cmdb_objects_source_idx").on(t.sourceTicketId),
+		index("cmdb_objects_run_idx").on(t.sourceRunId),
+		index("cmdb_objects_step_idx").on(t.sourceStepId),
 	],
 );
+
+export const cmdbObjectProperties = pgTable(
+	"cmdb_object_properties",
+	{
+		id: text("id").primaryKey(),
+		objectId: text("object_id")
+			.notNull()
+			.references(() => cmdbObjects.id, { onDelete: "cascade" }),
+		propertyId: text("property_id")
+			.notNull()
+			.references(() => cmdbClassProperties.id, { onDelete: "restrict" }),
+		value: jsonb("value").notNull(),
+	},
+	(t) => [
+		uniqueIndex("cmdb_object_properties_uidx").on(t.objectId, t.propertyId),
+	],
+);
+
+export const cmdbRelationshipTypes = pgTable(
+	"cmdb_relationship_types",
+	{
+		id: text("id").primaryKey(),
+		key: text("key").notNull(),
+		verb: text("verb").notNull(),
+		inverseVerb: text("inverse_verb").notNull(),
+		impactDirection: text("impact_direction", {
+			enum: ["forward", "reverse", "both", "none"],
+		})
+			.notNull()
+			.default("none"),
+	},
+	(t) => [uniqueIndex("cmdb_relationship_types_key_uidx").on(t.key)],
+);
+
+export const cmdbObjectRelationships = pgTable(
+	"cmdb_object_relationships",
+	{
+		id: text("id").primaryKey(),
+		typeId: text("type_id")
+			.notNull()
+			.references(() => cmdbRelationshipTypes.id, { onDelete: "restrict" }),
+		sourceObjectId: text("source_object_id")
+			.notNull()
+			.references(() => cmdbObjects.id, { onDelete: "cascade" }),
+		targetObjectId: text("target_object_id")
+			.notNull()
+			.references(() => cmdbObjects.id, { onDelete: "cascade" }),
+		propertyId: text("property_id").references(() => cmdbClassProperties.id, {
+			onDelete: "restrict",
+		}),
+	},
+	(t) => [
+		index("cmdb_object_relationships_source_idx").on(t.sourceObjectId),
+		index("cmdb_object_relationships_target_idx").on(t.targetObjectId),
+	],
+);
+
+export const CMDB_SEED_CLASSES = [
+	"FunctionalCI",
+	"Server",
+	"PC",
+	"NetworkDevice",
+	"ApplicationSolution",
+	"BusinessProcess",
+	"Software",
+	"SoftwareInstance",
+	"Subnet",
+] as const;
+
+export const LEGACY_CMDB_CLASS_KEYS = {
+	service: "ApplicationSolution",
+	deployment: "SoftwareInstance",
+	pod: "SoftwareInstance",
+	device: "PC",
+	dependency: "FunctionalCI",
+} as const;

@@ -6,7 +6,7 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-type FacetValue = { value: string | null; count: number };
+type FacetValue = { value: string | null; label?: string; count: number };
 
 export function QueueFacet({
 	label,
@@ -37,7 +37,7 @@ export function QueueFacet({
 						}}
 					>
 						<span className="capitalize">
-							{item.value?.replaceAll("_", " ") ?? "Unclassified"}
+							{item.label ?? item.value?.replaceAll("_", " ") ?? "Unclassified"}
 						</span>
 						<span className="ml-auto text-muted-foreground tabular-nums">
 							{item.count}

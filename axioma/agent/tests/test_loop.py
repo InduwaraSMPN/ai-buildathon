@@ -9,6 +9,17 @@ from axel.loop import Decision, RunStatus, StepKind, run
 from tests.fixtures import FakeToolBus, ScriptedModel, call, context
 
 
+async def test_knowledge_search_is_always_the_first_tool_call() -> None:
+    ctx, bus, recorder = context(
+        ScriptedModel([Decision(kind="resolved", reasoning="Known fix.", resolution="Done.")]),
+        FakeToolBus({"knowledge_search": {"mode": "lexical", "items": []}}),
+    )
+    result = await run(ctx)
+    assert result.status is RunStatus.RESOLVED
+    assert bus.calls[0][0] == "knowledge_search"
+    assert recorder.steps[0].tool_name == "knowledge_search"
+
+
 async def test_unknown_invalid_and_malformed_decisions_recover() -> None:
     model = ScriptedModel(
         [
@@ -28,8 +39,10 @@ async def test_unknown_invalid_and_malformed_decisions_recover() -> None:
     result = await run(ctx)
 
     assert result.status is RunStatus.RESOLVED
-    assert [name for name, _ in bus.calls] == ["cluster_read_pods"] * 3
-    assert bus.source_step_ordinals == [4, 9, 13]
+    assert result.resolution_code == "fixed"
+    assert [name for name, _ in bus.calls] == ["knowledge_search", *(["cluster_read_pods"] * 3)]
+    assert bus.source_step_ordinals[0] == 1
+    assert bus.source_step_ordinals[1:] == [6, 11, 15]
     errors = [step.error for step in recorder.steps if step.error]
     assert any("unknown tool" in error for error in errors)
     assert any("invalid input" in error and "extra" in error for error in errors)
@@ -38,6 +51,18 @@ async def test_unknown_invalid_and_malformed_decisions_recover() -> None:
         assert assistant["role"] == "assistant"
         assert tool_message["role"] == "tool"
         assert tool_message["tool_call_id"] == assistant["tool_calls"][0]["id"]
+
+
+async def test_explicit_duplicate_resolution_is_coded() -> None:
+    ctx, _, _ = context(
+        ScriptedModel(
+            [Decision(kind="resolved", reasoning="Same incident.", resolution="Duplicate ticket.")]
+        )
+    )
+
+    result = await run(ctx)
+
+    assert result.resolution_code == "duplicate"
 
 
 async def test_consecutive_failure_ceiling(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -49,7 +74,7 @@ async def test_consecutive_failure_ceiling(monkeypatch: pytest.MonkeyPatch) -> N
 
     assert result.status is RunStatus.EXHAUSTED
     assert result.outcome == "consecutive failure ceiling reached"
-    assert bus.calls == []
+    assert [name for name, _ in bus.calls] == ["knowledge_search"]
     assert recorder.steps[-1].kind is StepKind.DECISION
     assert recorder.steps[-1].error == result.outcome
 
@@ -67,7 +92,7 @@ async def test_deadline_interrupts_hanging_tool(monkeypatch: pytest.MonkeyPatch)
     result = await run(ctx)
 
     assert result.status is RunStatus.EXHAUSTED
-    assert result.outcome == "tool timed out at run deadline: cluster_read_pods"
+    assert result.outcome == "run deadline exceeded"
     assert any(step.error == result.outcome for step in recorder.steps)
 
 
@@ -102,10 +127,20 @@ async def test_transcript_shape_truncation_and_usage(monkeypatch: pytest.MonkeyP
         8,
         "provider/model-b",
     )
-    assert [message["role"] for message in model.transcripts[1]] == ["user", "assistant", "tool"]
+    assert [message["role"] for message in model.transcripts[1]] == [
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+        "tool",
+    ]
     assistant, tool_message = model.transcripts[1][-2:]
     assert tool_message["tool_call_id"] == assistant["tool_calls"][0]["id"]
     assert "[truncated " in tool_message["content"]
-    observation = next(step for step in recorder.steps if step.kind is StepKind.OBSERVATION)
+    observation = next(
+        step
+        for step in recorder.steps
+        if step.kind is StepKind.OBSERVATION and step.tool_name == "cluster_read_pods"
+    )
     assert observation.tool_output == full_output
     assert "truncated" not in str(observation.tool_output)

@@ -1,10 +1,12 @@
 import { type ReactNode, useState } from "react";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { Route } from "@/routes/_auth/route";
 import { AppSidebar } from "./app-sidebar";
 import { CommandMenu } from "./command-menu";
 import { Header } from "./header";
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
+	const { capabilities } = Route.useRouteContext();
 	const [searchOpen, setSearchOpen] = useState(false);
 	return (
 		<SidebarProvider>
@@ -16,10 +18,15 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 			</a>
 			<AppSidebar />
 			<SidebarInset className="min-h-svh">
-				<Header onSearch={() => setSearchOpen(true)} />
+				<Header
+					onSearch={() => setSearchOpen(true)}
+					showTier3={capabilities.includes("admin.settings")}
+				/>
 				{children}
 			</SidebarInset>
-			<CommandMenu open={searchOpen} onOpenChange={setSearchOpen} />
+			{capabilities.includes("admin.settings") ? (
+				<CommandMenu open={searchOpen} onOpenChange={setSearchOpen} />
+			) : null}
 		</SidebarProvider>
 	);
 }

@@ -10,7 +10,13 @@ const connectionTone = {
 	offline: "border-border bg-muted text-muted-foreground",
 } as const;
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({
+	status,
+	label = status,
+}: {
+	status: string;
+	label?: string;
+}) {
 	const normalized = status.toLowerCase();
 	return (
 		<span
@@ -21,7 +27,7 @@ export function StatusBadge({ status }: { status: string }) {
 					connectionTone.offline,
 			)}
 		>
-			{status}
+			{label}
 		</span>
 	);
 }

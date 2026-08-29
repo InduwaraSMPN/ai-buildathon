@@ -9,10 +9,23 @@ import { logger } from "hono/logger";
 import { auth } from "@/auth";
 import { env } from "@/env";
 import { createContext } from "@/server/context";
+import { documentHttp } from "@/server/documents/http";
 import { grpcGateway } from "@/server/grpc";
+import { sweepKnowledgeGaps } from "@/server/knowledge/gaps";
+import { mailHttp } from "@/server/mail/http";
+import { createHttpMailProvider } from "@/server/mail/http-provider";
+import {
+	closeMailRuntime,
+	configureMailRuntime,
+	startMailRuntime,
+} from "@/server/mail/runtime";
 import { appRouter } from "@/server/routers/index";
+import {
+	closeRecurrenceSweep,
+	startRecurrenceSweep,
+} from "@/server/scheduling-runtime";
 
-const app = new Hono();
+export const app = new Hono();
 
 app.use(logger());
 app.use(
@@ -28,6 +41,8 @@ app.use(
 app.get("/health", (c) => c.json({ status: "ok" }));
 
 app.on(["POST", "GET"], "/api/auth/*", (c) => auth.handler(c.req.raw));
+app.route("/api", documentHttp);
+app.route("/api", mailHttp);
 
 export const apiHandler = new OpenAPIHandler(appRouter, {
 	plugins: [
@@ -51,7 +66,27 @@ export const rpcHandler = new RPCHandler(appRouter, {
 });
 
 app.use("/*", async (c, next) => {
-	const context = await createContext({ context: c });
+	let context: Awaited<ReturnType<typeof createContext>>;
+	try {
+		context = await createContext({ context: c });
+	} catch (error) {
+		if (
+			error instanceof Error &&
+			"code" in error &&
+			error.code === "TOO_MANY_REQUESTS"
+		) {
+			const retryAfterMs = Number(
+				(error as { data?: { retryAfterMs?: number } }).data?.retryAfterMs ??
+					1_000,
+			);
+			return c.json(
+				{ code: "TOO_MANY_REQUESTS", message: error.message },
+				429,
+				{ "Retry-After": String(Math.max(1, Math.ceil(retryAfterMs / 1_000))) },
+			);
+		}
+		throw error;
+	}
 
 	const rpcResult = await rpcHandler.handle(c.req.raw, {
 		prefix: "/rpc",
@@ -90,10 +125,33 @@ serve(
 	},
 );
 
-await grpcGateway.listen();
+if (env.AXIOMA_MAIL_OUTBOUND_URL)
+	configureMailRuntime({
+		outbound: createHttpMailProvider(
+			env.AXIOMA_MAIL_OUTBOUND_URL,
+			env.AXIOMA_MAIL_OUTBOUND_TOKEN,
+		),
+	});
+await Promise.all([grpcGateway.listen(), startMailRuntime()]);
+startRecurrenceSweep();
+const knowledgeGapSweep = setInterval(
+	() =>
+		sweepKnowledgeGaps().catch((error) =>
+			console.error("[knowledge] gap sweep failed", error),
+		),
+	24 * 60 * 60_000,
+);
+void sweepKnowledgeGaps().catch((error) =>
+	console.error("[knowledge] initial gap sweep failed", error),
+);
+knowledgeGapSweep.unref();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.once(signal, () => {
-		void grpcGateway.close().finally(() => process.exit(0));
+		clearInterval(knowledgeGapSweep);
+		closeRecurrenceSweep();
+		void Promise.all([grpcGateway.close(), closeMailRuntime()]).finally(() =>
+			process.exit(0),
+		);
 	});
 }

@@ -15,6 +15,10 @@ import {
 	TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AgentTranscript } from "@/features/agent-runs/components/agent-transcript";
+import { TicketImpact } from "@/features/cmdb/components/ticket-impact";
+import { TicketAttachments } from "@/features/tier4/components";
+import { Route } from "@/routes/_auth/tickets.$ticketId";
+import { orpc } from "@/utils/orpc";
 import { ticketMutations } from "../api/mutations";
 import { ticketQueries } from "../api/queries";
 import type {
@@ -22,9 +26,12 @@ import type {
 	TicketOperatorActionInput,
 	UpdateTicketInput,
 } from "../api/types";
+import { DynamicFields } from "./dynamic-fields";
 import { TicketActions } from "./ticket-actions";
+import { TicketActivity, TicketConversation } from "./ticket-collaboration";
 
 export function TicketDetailPage({ ticketId }: { ticketId: string }) {
+	const { capabilities } = Route.useRouteContext();
 	const query = useQuery(ticketQueries.detail(ticketId));
 	if (query.isPending)
 		return (
@@ -51,11 +58,23 @@ export function TicketDetailPage({ ticketId }: { ticketId: string }) {
 				description="This ticket may have been removed or the ID is incorrect."
 			/>
 		);
-	return <TicketDetail ticket={query.data} />;
+	return <TicketDetail ticket={query.data} capabilities={capabilities} />;
 }
 
-function TicketDetail({ ticket }: { ticket: TicketDetailData }) {
+function TicketDetail({
+	ticket,
+	capabilities,
+}: {
+	ticket: TicketDetailData;
+	capabilities: readonly string[];
+}) {
 	const queryClient = useQueryClient();
+	const fieldDefinitions = useQuery(
+		orpc.listFieldDefinitions.queryOptions({ input: { objectType: "ticket" } }),
+	);
+	const serviceRecords = useQuery(
+		orpc.getTicketServiceRecords.queryOptions({ input: { ticketId: ticket.id } }),
+	);
 	const mutation = useMutation(
 		ticketMutations.update(queryClient, {
 			onSuccess: () => toast.success("Ticket updated"),
@@ -68,21 +87,30 @@ function TicketDetail({ ticket }: { ticket: TicketDetailData }) {
 	return (
 		<div className="space-y-5">
 			<PageHeader
-				eyebrow={`Ticket / ${ticket.id}`}
+				eyebrow={`Ticket / ${ticket.number ?? ticket.id}`}
 				title={ticket.title}
 				description={`Reported by ${ticket.reporterName} · ${formatDate(ticket.createdAt)}`}
-				actions={<StatusBadge status={ticket.status} />}
+				actions={
+					<StatusBadge status={ticket.status} label={ticket.statusLabel} />
+				}
 			/>
 			<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
 				<Tabs
-					defaultValue="transcript"
+					defaultValue="conversation"
 					className="min-w-0 rounded-xl border bg-card p-4 shadow-sm"
 				>
 					<TabsList variant="line" aria-label="Ticket details">
+						<TabsTrigger value="conversation">Conversation</TabsTrigger>
 						<TabsTrigger value="transcript">Transcript</TabsTrigger>
 						<TabsTrigger value="request">Request</TabsTrigger>
 						<TabsTrigger value="activity">Activity</TabsTrigger>
 					</TabsList>
+					<TabsContent value="conversation" className="pt-4">
+						<TicketConversation
+							ticket={ticket}
+							canAttach={capabilities.includes("ticket.update")}
+						/>
+					</TabsContent>
 					<TabsContent value="transcript" className="pt-4">
 						<AgentTranscript
 							runs={ticket.runs}
@@ -96,13 +124,49 @@ function TicketDetail({ ticket }: { ticket: TicketDetailData }) {
 						</p>
 					</TabsContent>
 					<TabsContent value="activity" className="pt-4">
-						<Activity ticket={ticket} />
+						<TicketActivity
+							ticket={ticket}
+							canEdit={capabilities.includes("ticket.reclassify")}
+						/>
 					</TabsContent>
 				</Tabs>
 				<aside className="space-y-4">
 					<Metadata ticket={ticket} />
+					<DynamicFields
+						definitions={fieldDefinitions.data ?? []}
+						values={ticket.customFields}
+					/>
+					<TicketImpact ticketId={ticket.id} />
+					<section className="rounded-xl border bg-card p-4 shadow-sm">
+						<h2 className="mb-3 font-semibold text-xs uppercase tracking-wider">
+							Related service records
+						</h2>
+						<div className="space-y-2 text-sm">
+							{serviceRecords.data?.problems.map((problem) => (
+								<Link key={problem.id} to="/problems/$problemId" params={{ problemId: problem.id }} className="block underline underline-offset-2">
+									{problem.problemNumber}: {problem.title}{problem.workaround ? ` — ${problem.workaround}` : ""}
+								</Link>
+							))}
+							{serviceRecords.data?.changes.map((change) => (
+								<Link key={change.id} to="/changes/$changeId" params={{ changeId: change.id }} className="block underline underline-offset-2">
+									{change.changeNumber}: {change.title}
+								</Link>
+							))}
+							{serviceRecords.data && !serviceRecords.data.problems.length && !serviceRecords.data.changes.length ? "None linked" : null}
+						</div>
+					</section>
+					<section className="rounded-xl border bg-card p-4 shadow-sm">
+						<h2 className="mb-3 font-semibold text-xs uppercase tracking-wider">
+							Attachments
+						</h2>
+						<TicketAttachments
+							targetId={ticket.id}
+							canEdit={capabilities.includes("ticket.update")}
+						/>
+					</section>
 					<TicketActions
 						ticket={ticket}
+						capabilities={capabilities}
 						pending={mutation.isPending}
 						onAction={update}
 					/>
@@ -119,8 +183,9 @@ function Metadata({ ticket }: { ticket: TicketDetailData }) {
 				Metadata
 			</h2>
 			<dl className="mt-3 divide-y text-xs">
+				<Meta label="Reference">{ticket.number ?? ticket.id}</Meta>
 				<Meta label="Status">
-					<StatusBadge status={ticket.status} />
+					<StatusBadge status={ticket.status} label={ticket.statusLabel} />
 				</Meta>
 				<Meta label="Type">{label(ticket.recordType)}</Meta>
 				<Meta label="Priority">
@@ -181,7 +246,6 @@ function Metadata({ ticket }: { ticket: TicketDetailData }) {
 				</Meta>
 				<Meta label="Resolution">{ticket.resolution ?? "Pending"}</Meta>
 				<Meta label="Escalation">{ticket.escalationNote ?? "None"}</Meta>
-				<Meta label="Reporter note">{ticket.reporterNote ?? "None"}</Meta>
 				<Meta label="Reopened">
 					<span className="tabular-nums">
 						{ticket.reopenedAt ? formatDate(ticket.reopenedAt) : "—"}
@@ -189,32 +253,6 @@ function Metadata({ ticket }: { ticket: TicketDetailData }) {
 				</Meta>
 			</dl>
 		</section>
-	);
-}
-
-function Activity({ ticket }: { ticket: TicketDetailData }) {
-	const events = [
-		{ label: "Created", at: ticket.createdAt },
-		...(ticket.resolvedAt
-			? [{ label: "Resolved", at: ticket.resolvedAt }]
-			: []),
-		...(ticket.closedAt ? [{ label: "Closed", at: ticket.closedAt }] : []),
-		...(ticket.reopenedAt
-			? [{ label: "Reopened", at: ticket.reopenedAt }]
-			: []),
-		{ label: "Last updated", at: ticket.updatedAt },
-	];
-	return (
-		<ol className="divide-y">
-			{events.map(({ label: event, at }) => (
-				<li key={event} className="flex justify-between gap-4 py-3">
-					<span className="font-medium">{event}</span>
-					<time className="text-muted-foreground tabular-nums">
-						{formatDate(at)}
-					</time>
-				</li>
-			))}
-		</ol>
 	);
 }
 

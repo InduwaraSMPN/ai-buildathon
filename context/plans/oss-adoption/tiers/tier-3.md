@@ -10,6 +10,19 @@ everything, and an API other systems can call.
 
 ---
 
+> ### Where the current truth lives
+>
+> **The current-state section below is a snapshot taken before this tier was built.** It is kept as
+> written because the milestones, decisions and definition of done are argued from it. It no longer
+> describes the tree.
+>
+> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
+> the running API. **2 of 7 milestones complete** — T3.A and T3.G. The data model is the best-made layer in the programme, but the tier's own thesis is unwired: rules run before the model in ordering yet never stop it, and the shared action vocabulary was never extracted.
+>
+> The remaining work is in [../execution/chat-d-tier3.md](../execution/chat-d-tier3.md), with the confirmed
+> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
+> against and is still current.
+
 ## 1. Current state
 
 ### What the MVP already delivered against this tier

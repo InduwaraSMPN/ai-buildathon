@@ -2,7 +2,7 @@ name: axioma
 
 services:
   postgres:
-    image: postgres:18
+    image: pgvector/pgvector:pg18
     container_name: axioma-postgres
     environment:
       POSTGRES_DB: axioma

@@ -10,6 +10,19 @@ can be dropped without invalidating Tiers 0–3.
 
 ---
 
+> ### Where the current truth lives
+>
+> **The current-state section below is a snapshot taken before this tier was built.** It is kept as
+> written because the milestones, decisions and definition of done are argued from it. It no longer
+> describes the tree.
+>
+> A verification audit on 2026-08-29 checked every milestone against the code, the live database and
+> the running API. **6 of 9 milestones complete** — T4.C, T4.E, T4.F, T4.G, T4.H and T4.I, and all four high-risk invariants hold. T4.A, T4.B and T4.D each stop one step short.
+>
+> The remaining work is in [../execution/chat-e-tier4.md](../execution/chat-e-tier4.md), with the confirmed
+> `file:line` evidence for each gap. Section 7's definition of done is what that brief verifies
+> against and is still current.
+
 ## 1. Current state
 
 ### What the MVP already delivered against this tier

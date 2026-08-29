@@ -38,11 +38,14 @@ async def test_scenario_1_repairs_image_then_verifies() -> None:
 
     assert result.status is RunStatus.RESOLVED
     assert [name for name, _ in bus.calls] == [
+        "knowledge_search",
         "cluster_read_pods",
         "cluster_patch_image",
         "cluster_read_deployment",
     ]
     assert [step.kind for step in recorder.steps] == [
+        StepKind.TOOL_CALL,
+        StepKind.OBSERVATION,
         StepKind.THINK,
         StepKind.TOOL_CALL,
         StepKind.OBSERVATION,
@@ -86,6 +89,7 @@ async def test_scenario_2_uses_typed_device_action_and_verifies() -> None:
 
     assert result.status is RunStatus.RESOLVED
     assert [name for name, _ in bus.calls] == [
+        "knowledge_search",
         "device_read_state",
         "device_run_action",
         "device_read_state",

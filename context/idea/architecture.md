@@ -173,11 +173,11 @@ The frontends are SPAs rather than a server-rendered framework. The API is a sep
 
 Stated because the gaps are deliberate and someone reading the component map will look for them.
 
-- **Nothing checks authorization.** Any authenticated user can call any procedure.
+- **Human access is capability-gated.** oRPC procedures deny by default and resolve direct and team role capabilities once per request; reporter-owned ticket views retain their narrower response shapes as defence in depth.
 - **Nothing constrains blast radius.** A cluster write can patch any deployment the service account reaches; a device action runs with the logged-in user's rights.
 - **No action is approved before it runs.** Axel acts on its own judgment.
 - **Nothing is idempotent.** Retrying a dispatched action can apply it twice.
 - **Command dispatch is not durable.** If the API restarts, in-flight device commands are lost.
 - **The device connection is not authenticated.** The stream is plaintext and the device ID in the hello is client-asserted — any process that can reach the gateway can impersonate any device — and the binary is unsigned.
 
-Each is out of scope by decision rather than oversight. The two worth addressing first, if this moves past a demo, are authorization and idempotency — the first because axel-cli executes on employee machines, the second because "did that action already run" becomes unanswerable after the first timeout.
+The remaining gaps are out of scope by decision rather than oversight. Authorization was addressed first because later approvals and restricted records are meaningless without an enforceable human identity; idempotency remains the next priority because "did that action already run" becomes unanswerable after the first timeout.

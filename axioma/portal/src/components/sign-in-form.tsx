@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
@@ -6,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { ssoCopy } from "@/features/auth/copy";
 import { authClient } from "@/lib/auth-client";
+import { orpc } from "@/utils/orpc";
 
 import Loader from "./loader";
 
@@ -19,6 +22,7 @@ export default function SignInForm({
 		from: "/login",
 	});
 	const { isPending } = authClient.useSession();
+	const providers = useQuery(orpc.listAuthProviders.queryOptions());
 
 	const form = useForm({
 		defaultValues: {
@@ -138,6 +142,32 @@ export default function SignInForm({
 					)}
 				</form.Subscribe>
 			</form>
+
+			{providers.data?.length ? (
+				<div className="mt-6 space-y-3">
+					<div className="flex items-center gap-3 text-muted-foreground text-sm">
+						<span className="h-px flex-1 bg-border" />
+						{ssoCopy.divider}
+						<span className="h-px flex-1 bg-border" />
+					</div>
+					{providers.data.map((provider) => (
+						<Button
+							key={provider.providerId}
+							variant="outline"
+							className="w-full"
+							onClick={async () => {
+								const result = await authClient.signIn.social({
+									provider: provider.providerId,
+									callbackURL: "/home",
+								});
+								if (result.error) toast.error(ssoCopy.failure);
+							}}
+						>
+							{ssoCopy.signIn(provider.name)}
+						</Button>
+					))}
+				</div>
+			) : null}
 
 			<div className="mt-4 text-center">
 				<Button variant="link" onClick={onSwitchToSignUp}>

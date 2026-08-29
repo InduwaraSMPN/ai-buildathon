@@ -21,6 +21,7 @@ def test_prompt_contains_ticket_classification_device_and_prior_observation() ->
         impact="low",
         urgency="medium",
         priority="P4",
+        origin="monitoring",
     )
 
     for expected in (
@@ -29,6 +30,8 @@ def test_prompt_contains_ticket_classification_device_and_prior_observation() ->
         "service_request",
         "fulfil a pre-defined low-risk ask",
         "Impact: low; urgency: medium; derived priority: P4",
+        "Origin: monitoring",
+        "system-sourced, not an employee claim",
         "Device ID: laptop-7",
         "2026-08-28T12:00:00Z",
         "Resolver health was degraded",
@@ -55,6 +58,7 @@ def test_prompt_renders_actual_cmdb_row_attributes() -> None:
 def test_prompt_states_missing_device_and_system_rules() -> None:
     prompt = build_user_prompt(title="Capacity", body="Pods pending", device_id=None)
     assert "Device ID: none provided; do not invent one." in prompt
+    assert "Origin: portal — this ticket was submitted by an employee." in prompt
     for rule in (
         "gather evidence",
         "typed action",
@@ -71,6 +75,16 @@ def test_every_llm_tool_schema_is_strict_and_requires_reasoning() -> None:
         assert parameters["additionalProperties"] is False
         assert "reasoning" in parameters["properties"]
         assert set(parameters["required"]) == set(parameters["properties"])
+
+
+def test_knowledge_search_is_a_read_tool_and_prompt_requires_explicit_citation() -> None:
+    tool = tools.resolve("knowledge_search")
+    assert tool is not None
+    assert tool.effect is tools.Effect.READ
+    assert tool.schema_model.model_validate({"query": "VPN DNS failure"}).limit == 5
+    assert "call knowledge_search before exploratory" in SYSTEM_PROMPT
+    assert "explicit tool call in the transcript" in SYSTEM_PROMPT
+    assert "cite its identifier and title" in SYSTEM_PROMPT
 
 
 def test_marketrix_defaults_and_completion_options(monkeypatch) -> None:
