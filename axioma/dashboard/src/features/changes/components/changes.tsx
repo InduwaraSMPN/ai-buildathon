@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import {
 	Table,
 	TableBody,
@@ -52,17 +54,69 @@ export type ChangeDetail = ChangeSummary & {
 export function ChangesPage({
 	changes,
 	onSelect,
+	action,
 }: {
 	changes: readonly ChangeSummary[];
 	onSelect?: (change: ChangeSummary) => void;
+	action?: ReactNode;
 }) {
 	return (
 		<PageContainer
 			title="Changes"
 			description="Plan, approve, schedule, and review service changes."
+			action={action}
 		>
 			<ChangeList changes={changes} onSelect={onSelect} />
 		</PageContainer>
+	);
+}
+
+export function ChangeEditor({
+	pending = false,
+	cabMemberId,
+	onSubmit,
+}: {
+	pending?: boolean;
+	cabMemberId?: string;
+	onSubmit: (value: {
+		title: string;
+		description?: string;
+		reasonForChange: string;
+		changeType: "normal" | "emergency";
+		testPlan: string;
+		rollbackPlan: string;
+		cabMemberIds: string[];
+	}) => void;
+}) {
+	return (
+		<form
+			className="grid gap-2 sm:grid-cols-2"
+			onSubmit={(event) => {
+				event.preventDefault();
+				const data = new FormData(event.currentTarget);
+				onSubmit({
+					title: String(data.get("title")),
+					description: String(data.get("description")) || undefined,
+					reasonForChange: String(data.get("reasonForChange")),
+					changeType: String(data.get("changeType")) as "normal" | "emergency",
+					testPlan: String(data.get("testPlan")),
+					rollbackPlan: String(data.get("rollbackPlan")),
+					cabMemberIds: [String(data.get("cabMemberIds"))].filter(Boolean),
+				});
+			}}
+		>
+			<Input name="title" placeholder="Change title" required minLength={3} />
+			<select name="changeType" className="h-9 border bg-background px-2">
+				<option value="normal">Normal</option>
+				<option value="emergency">Emergency</option>
+			</select>
+			<Input name="description" placeholder="Description" />
+			<Input name="reasonForChange" placeholder="Reason for change" required />
+			<Input name="testPlan" placeholder="Test plan" required />
+			<Input name="rollbackPlan" placeholder="Rollback plan" required />
+			<input type="hidden" name="cabMemberIds" value={cabMemberId ?? ""} />
+			<Button disabled={pending}>Create change</Button>
+		</form>
 	);
 }
 

@@ -16,6 +16,7 @@ const authenticatedProcedures = new Set([
 	"listPublicKnowledge",
 	"getPublicKnowledgeArticle",
 	"getMyApprovalStatus",
+	"listTicketFieldDefinitions",
 ]);
 const context = (userId: string | null, capabilities: Capability[] = []) =>
 	({

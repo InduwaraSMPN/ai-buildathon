@@ -19,7 +19,7 @@ import { sweepPending } from "./pending";
 import { reconcileCoreSearchDocuments } from "./search/projections";
 import { transitionTicketStopwatches } from "./sla/runtime";
 import { sweepPresence, sweepSla } from "./sla/sweep";
-import { resolveTicketStatus } from "./tickets";
+import { findTicketTransition, resolveTicketStatus } from "./tickets";
 import { executeTool } from "./tools";
 import { readContextForTicket } from "./tools/cmdb";
 import { sweepWebhookDeliveries } from "./workflows/webhooks";
@@ -511,31 +511,33 @@ class Gateway {
 					.limit(1)
 			)[0];
 			if (!currentTicket) throw new Error(`ticket not found: ${run.ticketId}`);
-			const resolvingStatus = await resolveTicketStatus(
+			const resolvingStatus = await findTicketTransition(
 				currentTicket.status,
 				"firstTool",
 			);
-			const beganResolving = await db
-				.update(tickets)
-				.set({ status: resolvingStatus })
-				.where(
-					and(
-						eq(tickets.id, run.ticketId),
-						eq(tickets.status, currentTicket.status),
-					),
-				)
-				.returning({ id: tickets.id });
-			if (beganResolving[0]) {
-				await db.insert(ticketTransitions).values({
-					id: crypto.randomUUID(),
-					ticketId: run.ticketId,
-					fromStatus: currentTicket.status,
-					toStatus: resolvingStatus,
-					action: "firstTool",
-					actorType: "agent",
-					actorId: runId,
-				});
-				await transitionTicketStopwatches(run.ticketId, resolvingStatus);
+			if (resolvingStatus) {
+				const beganResolving = await db
+					.update(tickets)
+					.set({ status: resolvingStatus })
+					.where(
+						and(
+							eq(tickets.id, run.ticketId),
+							eq(tickets.status, currentTicket.status),
+						),
+					)
+					.returning({ id: tickets.id });
+				if (beganResolving[0]) {
+					await db.insert(ticketTransitions).values({
+						id: crypto.randomUUID(),
+						ticketId: run.ticketId,
+						fromStatus: currentTicket.status,
+						toStatus: resolvingStatus,
+						action: "firstTool",
+						actorType: "agent",
+						actorId: runId,
+					});
+					await transitionTicketStopwatches(run.ticketId, resolvingStatus);
+				}
 			}
 			const output = await executeTool(toolName, input, {
 				runId,

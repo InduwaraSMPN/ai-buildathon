@@ -116,6 +116,9 @@ export const catalogueContract = {
 	createForm: oc.input(formInput).output(formSchema),
 	updateForm: oc.input(formInput.extend({ id })).output(formSchema),
 	publishForm: oc.input(z.object({ id })).output(formSchema),
+	setSubcategoryForm: oc
+		.input(z.object({ subcategoryId: id, formId: nullableId }))
+		.output(serviceSubcategorySchema),
 	listCatalogue: oc.output(catalogueSchema),
 	listRequestCatalogue: oc.output(
 		z.array(

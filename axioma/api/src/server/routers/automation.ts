@@ -19,7 +19,11 @@ import {
 	reactivateFieldDefinition,
 	retireFieldDefinition,
 } from "../dynamic-fields";
-import { anyCapabilityProcedure, capabilityProcedure } from "../orpc";
+import {
+	anyCapabilityProcedure,
+	capabilityProcedure,
+	reporterProcedure,
+} from "../orpc";
 import type { RuleAction, RuleCriterion } from "../rules";
 import { search as searchDocuments } from "../search";
 import { reconcileCoreSearchDocuments } from "../search/projections";
@@ -45,6 +49,10 @@ export const automationRouter = {
 	).listFieldDefinitions.handler(({ input }) =>
 		listActiveFieldDefinitions(db, input.objectType),
 	),
+	listTicketFieldDefinitions:
+		reporterProcedure.listTicketFieldDefinitions.handler(() =>
+			listActiveFieldDefinitions(db, "ticket"),
+		),
 	createFieldDefinition: capabilityProcedure(
 		"admin.settings",
 	).createFieldDefinition.handler(async ({ input }) => {

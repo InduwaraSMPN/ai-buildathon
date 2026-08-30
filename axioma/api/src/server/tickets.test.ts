@@ -3,6 +3,7 @@ import test from "node:test";
 import { ORPCError } from "@orpc/server";
 import {
 	canRerun,
+	findTicketTransition,
 	preserveUndefined,
 	resolveTicketStatus,
 	type TicketTransition,
@@ -28,6 +29,11 @@ test("ticket lifecycle table has the expected 31 edges", async () => {
 				row.toStatus === "routing",
 		),
 	);
+});
+
+test("firstTool is offered once and skipped after resolving starts", async () => {
+	assert.equal(await findTicketTransition("routing", "firstTool"), "resolving");
+	assert.equal(await findTicketTransition("resolving", "firstTool"), undefined);
 });
 
 test("ticket lifecycle covers every state-changing transition", async () => {

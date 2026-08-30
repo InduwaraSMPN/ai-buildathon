@@ -125,7 +125,7 @@ function IncidentRequestForm({ onSetup }: { onSetup: () => void }) {
 	const navigate = useNavigate();
 	const devices = useQuery(orpc.listMyDevices.queryOptions());
 	const fieldDefinitions = useQuery(
-		orpc.listFieldDefinitions.queryOptions({ input: { objectType: "ticket" } }),
+		orpc.listTicketFieldDefinitions.queryOptions(),
 	);
 	const createTicket = useMutation(
 		orpc.createTicket.mutationOptions({

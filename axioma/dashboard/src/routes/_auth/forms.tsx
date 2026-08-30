@@ -12,6 +12,7 @@ export const Route = createFileRoute("/_auth/forms")({
 function FormsRoute() {
 	const client = useQueryClient();
 	const query = useQuery(orpc.listForms.queryOptions());
+	const catalogue = useQuery(orpc.listCatalogue.queryOptions());
 	const create = useMutation(
 		orpc.createForm.mutationOptions({
 			onSuccess: () =>
@@ -22,6 +23,12 @@ function FormsRoute() {
 		orpc.publishForm.mutationOptions({
 			onSuccess: () =>
 				client.invalidateQueries({ queryKey: orpc.listForms.key() }),
+		}),
+	);
+	const attach = useMutation(
+		orpc.setSubcategoryForm.mutationOptions({
+			onSuccess: () =>
+				client.invalidateQueries({ queryKey: orpc.listCatalogue.key() }),
 		}),
 	);
 	return (
@@ -55,7 +62,7 @@ function FormsRoute() {
 			<div className="space-y-2">
 				{(query.data ?? []).map((form) => (
 					<div
-						className="flex items-center justify-between border p-3"
+						className="flex items-center justify-between gap-3 border p-3"
 						key={form.id}
 					>
 						<span>
@@ -65,7 +72,36 @@ function FormsRoute() {
 							<Button size="sm" onClick={() => publish.mutate({ id: form.id })}>
 								Publish
 							</Button>
-						) : null}
+						) : (
+							<select
+								aria-label={`Subcategory for ${form.name}`}
+								className="h-9 border bg-background px-2"
+								value={
+									catalogue.data?.subcategories.find(
+										(subcategory) => subcategory.formId === form.id,
+									)?.id ?? ""
+								}
+								disabled={attach.isPending}
+								onChange={(event) => {
+									const currentId = catalogue.data?.subcategories.find(
+										(subcategory) => subcategory.formId === form.id,
+									)?.id;
+									const subcategoryId = event.target.value || currentId;
+									if (subcategoryId)
+										attach.mutate({
+											subcategoryId,
+											formId: event.target.value ? form.id : null,
+										});
+								}}
+							>
+								<option value="">Not attached</option>
+								{catalogue.data?.subcategories.map((subcategory) => (
+									<option key={subcategory.id} value={subcategory.id}>
+										{subcategory.name}
+									</option>
+								))}
+							</select>
+						)}
 					</div>
 				))}
 			</div>

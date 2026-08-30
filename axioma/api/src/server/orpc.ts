@@ -81,4 +81,5 @@ export const reporterProcedure = {
 	listPublicKnowledge: authenticatedProcedure.listPublicKnowledge,
 	getPublicKnowledgeArticle: authenticatedProcedure.getPublicKnowledgeArticle,
 	getMyApprovalStatus: authenticatedProcedure.getMyApprovalStatus,
+	listTicketFieldDefinitions: authenticatedProcedure.listTicketFieldDefinitions,
 };

@@ -4,7 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { client } from "@/utils/orpc";
 
 type Definition = Awaited<
-	ReturnType<typeof client.listFieldDefinitions>
+	ReturnType<typeof client.listTicketFieldDefinitions>
 >[number];
 type Values = Record<string, unknown>;
 type Config = {

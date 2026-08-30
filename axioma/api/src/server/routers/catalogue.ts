@@ -123,6 +123,32 @@ export const catalogueRouter = {
 			return getForm(input.id);
 		},
 	),
+	setSubcategoryForm: capabilityProcedure(
+		"catalogue.manage",
+	).setSubcategoryForm.handler(async ({ input }) => {
+		if (input.formId) {
+			const form = (
+				await db
+					.select({ id: forms.id })
+					.from(forms)
+					.where(and(eq(forms.id, input.formId), eq(forms.status, "published")))
+					.limit(1)
+			)[0];
+			if (!form)
+				throw new ORPCError("BAD_REQUEST", {
+					message: "Only published forms can be attached",
+				});
+		}
+		const subcategory = (
+			await db
+				.update(serviceSubcategories)
+				.set({ formId: input.formId, updatedAt: new Date() })
+				.where(eq(serviceSubcategories.id, input.subcategoryId))
+				.returning()
+		)[0];
+		if (!subcategory) throw new ORPCError("NOT_FOUND");
+		return subcategory;
+	}),
 	listCatalogue: anyCapabilityProcedure(
 		"catalogue.manage",
 		"ticket.reclassify",

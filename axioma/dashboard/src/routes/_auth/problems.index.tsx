@@ -6,7 +6,7 @@ import {
 } from "@/features/problems/components/problems";
 import { orpc } from "@/utils/orpc";
 
-export const Route = createFileRoute("/_auth/problems")({
+export const Route = createFileRoute("/_auth/problems/")({
 	component: ProblemsRoute,
 	beforeLoad: () => ({ breadcrumb: "Problems" }),
 });

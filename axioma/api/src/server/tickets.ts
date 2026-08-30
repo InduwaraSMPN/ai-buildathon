@@ -52,12 +52,12 @@ export async function canRerun(
 	);
 }
 
-/** Runtime resolver for configurable status-transition rows. */
-export async function resolveTicketStatus(
+/** Looks up a configurable status transition without requiring one to exist. */
+export async function findTicketTransition(
 	status: TicketStatus,
 	action: TicketTransition,
-): Promise<TicketStatus> {
-	const row = (
+): Promise<TicketStatus | undefined> {
+	return (
 		await db
 			.select({ toStatus: ticketStatusTransitions.toStatus })
 			.from(ticketStatusTransitions)
@@ -68,9 +68,18 @@ export async function resolveTicketStatus(
 				),
 			)
 			.limit(1)
-	)[0];
-	if (!row) throwInvalidTransition(status, action);
-	return row.toStatus;
+	)[0]?.toStatus;
+}
+
+/** Runtime resolver for configurable status-transition rows. */
+export async function resolveTicketStatus(
+	status: TicketStatus,
+	action: TicketTransition,
+): Promise<TicketStatus> {
+	return (
+		(await findTicketTransition(status, action)) ??
+		throwInvalidTransition(status, action)
+	);
 }
 
 function throwInvalidTransition(

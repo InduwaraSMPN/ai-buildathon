@@ -6,7 +6,7 @@ import {
 } from "@/features/knowledge/components/knowledge";
 import { orpc } from "@/utils/orpc";
 
-export const Route = createFileRoute("/_auth/knowledge")({
+export const Route = createFileRoute("/_auth/knowledge/")({
 	component: KnowledgeRoute,
 	beforeLoad: () => ({ breadcrumb: "Knowledge" }),
 });

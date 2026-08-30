@@ -133,6 +133,7 @@ export const automationContract = {
 	listFieldDefinitions: oc
 		.input(z.object({ objectType: z.string().min(1) }))
 		.output(z.array(dynamicFieldDefinition)),
+	listTicketFieldDefinitions: oc.output(z.array(dynamicFieldDefinition)),
 	createFieldDefinition: oc
 		.input(
 			dynamicFieldDefinition
