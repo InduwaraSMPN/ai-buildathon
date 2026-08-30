@@ -4,6 +4,7 @@ import { AxiomaWordmark } from "./brand";
 
 const nav = [
 	{ to: "/product", label: "Product" },
+	{ to: "/pricing", label: "Pricing" },
 	{ to: "/about", label: "About" },
 	{ to: "/contact", label: "Contact" },
 ] as const;
@@ -16,6 +17,7 @@ const footerColumns = [
 		links: [
 			{ href: "/", label: "Home" },
 			{ href: "/product", label: "Product" },
+			{ href: "/pricing", label: "Pricing" },
 			{ href: "/about", label: "About" },
 			{ href: "/contact", label: "Contact" },
 		],
