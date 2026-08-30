@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { AxiomaWordmark } from "./brand";
 
 const nav = [
@@ -7,6 +7,73 @@ const nav = [
 	{ to: "/about", label: "About" },
 	{ to: "/contact", label: "Contact" },
 ] as const;
+
+const CONTACT_EMAIL = "hello@axioma.dev";
+
+const footerColumns = [
+	{
+		heading: "Sitemap",
+		links: [
+			{ href: "/", label: "Home" },
+			{ href: "/product", label: "Product" },
+			{ href: "/about", label: "About" },
+			{ href: "/contact", label: "Contact" },
+		],
+	},
+	{
+		heading: "The loop",
+		links: [
+			{ href: "/product#ticket-flow", label: "Ticket flow" },
+			{ href: "/product#decisions", label: "Tool order" },
+			{ href: "/product#roles", label: "Roles" },
+		],
+	},
+	{
+		heading: "Contact",
+		links: [
+			{ href: "/contact", label: "Start a conversation", accent: true },
+			{ href: `mailto:${CONTACT_EMAIL}`, label: CONTACT_EMAIL },
+		],
+	},
+] as const;
+
+/**
+ * The site stores nothing, so "subscribe" hands the address to the visitor's
+ * own mail client rather than posting it anywhere. Swap the handler out once a
+ * real list endpoint exists.
+ */
+function SubscribeForm() {
+	const [email, setEmail] = useState("");
+
+	return (
+		<form
+			className="subscribe-field"
+			onSubmit={(event) => {
+				event.preventDefault();
+				const subject = encodeURIComponent("Axiōma updates");
+				const body = encodeURIComponent(
+					`Please add ${email} to the Axiōma updates list.`,
+				);
+				window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+			}}
+		>
+			<label className="sr-only" htmlFor="subscribe-email">
+				Email address
+			</label>
+			<input
+				id="subscribe-email"
+				name="email"
+				type="email"
+				required
+				autoComplete="email"
+				placeholder="Enter your email"
+				value={email}
+				onChange={(event) => setEmail(event.target.value)}
+			/>
+			<button type="submit">Subscribe</button>
+		</form>
+	);
+}
 
 export function Wordmark() {
 	return (
@@ -59,19 +126,48 @@ export function SiteHeader() {
 export function SiteFooter() {
 	return (
 		<footer className="site-footer">
-			<div className="shell footer-grid">
-				<div>
-					<Wordmark />
-					<p>IT support, from ticket to action.</p>
+			<div className="footer-panel">
+				<div className="footer-top">
+					<div className="footer-subscribe">
+						<h2>
+							Occasional notes on carrying an IT ticket from report to a checked
+							outcome.
+						</h2>
+						<SubscribeForm />
+						<p className="subscribe-note">
+							Subscribing opens your email client. Nothing is submitted to or
+							stored by this website.
+						</p>
+						<a className="contact-chip" href={`mailto:${CONTACT_EMAIL}`}>
+							{CONTACT_EMAIL} <Arrow />
+						</a>
+					</div>
+					<nav className="footer-columns" aria-label="Footer navigation">
+						{footerColumns.map((column) => (
+							<div key={column.heading}>
+								<h3>{column.heading}</h3>
+								<ul>
+									{column.links.map((link) => (
+										<li key={link.href}>
+											<a
+												className={
+													"accent" in link && link.accent ? "accent" : undefined
+												}
+												href={link.href}
+											>
+												{link.label}
+											</a>
+										</li>
+									))}
+								</ul>
+							</div>
+						))}
+					</nav>
 				</div>
-				<nav aria-label="Footer navigation">
-					{nav.map((item) => (
-						<Link key={item.to} to={item.to}>
-							{item.label}
-						</Link>
-					))}
-				</nav>
-				<p className="copyright">© {new Date().getFullYear()} Axiōma</p>
+				<p className="footer-legal">© {new Date().getFullYear()} Axiōma</p>
+				<Link className="footer-logo" to="/" aria-label="Axiōma home">
+					<AxiomaWordmark />
+				</Link>
 			</div>
 		</footer>
 	);

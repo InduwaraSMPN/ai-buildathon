@@ -56,7 +56,11 @@ function ProductPage() {
 				</p>
 			</PageIntro>
 
-			<section className="flow-section shell" aria-labelledby="flow-heading">
+			<section
+				id="ticket-flow"
+				className="flow-section shell"
+				aria-labelledby="flow-heading"
+			>
 				<h2 id="flow-heading" className="sr-only">
 					Ticket flow
 				</h2>
@@ -74,7 +78,7 @@ function ProductPage() {
 				</ol>
 			</section>
 
-			<section className="decision-section dark-section">
+			<section id="decisions" className="decision-section dark-section">
 				<div className="shell">
 					<div className="section-heading split-heading">
 						<div>
@@ -115,7 +119,7 @@ function ProductPage() {
 				</div>
 			</section>
 
-			<section className="roles shell">
+			<section id="roles" className="roles shell">
 				<div className="section-heading">
 					<p className="eyebrow">One system / three views</p>
 					<h2>Clear work for every person in the loop.</h2>

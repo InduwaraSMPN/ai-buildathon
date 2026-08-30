@@ -21,7 +21,7 @@ export const Route = createRootRoute({
 				content:
 					"Axiōma is an AI IT-support platform that carries tickets from employee report to diagnosis, action, and a reasoned outcome.",
 			},
-			{ name: "theme-color", content: "#0B0E12" },
+			{ name: "theme-color", content: "#008236" },
 			{ property: "og:site_name", content: "Axiōma" },
 			{ property: "og:type", content: "website" },
 		],
@@ -34,7 +34,7 @@ export const Route = createRootRoute({
 			},
 			{
 				rel: "stylesheet",
-				href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,SOFT,WONK,wght@0,9..144,0..100,0..1,100..900;1,9..144,0..100,0..1,100..900&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Fragment+Mono:ital@0;1&display=swap",
+				href: "https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Fragment+Mono:ital@0;1&display=swap",
 			},
 			{ rel: "stylesheet", href: styles },
 			{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
