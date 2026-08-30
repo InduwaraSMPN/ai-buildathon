@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
-import { LifeBuoy, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
+import { AxiomaWordmark } from "@/components/brand";
 import { statusCopy } from "@/features/status/copy";
 import { ModeToggle } from "./mode-toggle";
 import { NotificationCenter } from "./notification-center";
@@ -11,14 +12,11 @@ export default function Header() {
 		<header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
 			<div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
 				<div className="flex items-center gap-7">
-					<Link
-						to="/home"
-						className="flex items-center gap-2 font-semibold tracking-tight"
-					>
-						<span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-							<LifeBuoy className="size-4" aria-hidden="true" />
-						</span>
-						<span>Axioma</span>
+					<Link to="/home" className="flex items-center">
+						<AxiomaWordmark
+							className="h-7 w-auto text-primary"
+							title="Axiōma"
+						/>
 					</Link>
 					<nav aria-label="Primary navigation" className="hidden gap-5 sm:flex">
 						<Link

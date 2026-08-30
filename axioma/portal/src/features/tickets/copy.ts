@@ -201,7 +201,7 @@ export const resolutionCopy = {
 } as const;
 
 export const homeCopy = {
-	pageTitle: "My requests · Axioma",
+	pageTitle: "My requests · Axiōma",
 	eyebrow: "Employee support",
 	welcome: (name: string) => `Good to see you, ${name}`,
 	title: "Your support requests",
@@ -239,7 +239,7 @@ export const ticketUiCopy = {
 export const ticketDetailCopy = {
 	updated: "Request updated",
 	updateError: "We couldn’t update this request. Please try again.",
-	pageTitle: "Request details · Axioma",
+	pageTitle: "Request details · Axiōma",
 	loading: "Loading request",
 	notFound: "Request not found",
 	notFoundDescription:

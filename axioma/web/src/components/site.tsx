@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { AxiomaWordmark } from "./brand";
 
 const nav = [
 	{ to: "/product", label: "Product" },
@@ -10,10 +11,7 @@ const nav = [
 export function Wordmark() {
 	return (
 		<Link className="wordmark" to="/" aria-label="Axiōma home">
-			<span className="mark" aria-hidden="true">
-				A
-			</span>
-			<span>Axiōma</span>
+			<AxiomaWordmark className="wordmark-logo" />
 		</Link>
 	);
 }

@@ -1,0 +1,39 @@
+{
+	"version": "0.0.1",
+	"configurations": [
+		{
+			"name": "web",
+			"runtimeExecutable": "pnpm",
+			"runtimeArgs": [
+				"--dir",
+				"axioma/web",
+				"exec",
+				"vite",
+				"dev",
+				"--port",
+				"3010"
+			],
+			"port": 3010
+		},
+		{
+			"name": "dashboard",
+			"runtimeExecutable": "pnpm",
+			"runtimeArgs": [
+				"--dir",
+				"axioma/dashboard",
+				"dev"
+			],
+			"port": 3002
+		},
+		{
+			"name": "portal",
+			"runtimeExecutable": "pnpm",
+			"runtimeArgs": [
+				"--dir",
+				"axioma/portal",
+				"dev"
+			],
+			"port": 3001
+		}
+	]
+}

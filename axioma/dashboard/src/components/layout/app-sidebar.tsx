@@ -1,6 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
-	Activity,
 	BookOpen,
 	Boxes,
 	CalendarDays,
@@ -18,6 +17,7 @@ import {
 	ThumbsUp,
 	Workflow,
 } from "lucide-react";
+import { AxiomaMark, AxiomaWordmark } from "@/components/brand";
 import {
 	Sidebar,
 	SidebarContent,
@@ -59,24 +59,18 @@ export function AppSidebar() {
 	const { setOpenMobile } = useSidebar();
 	return (
 		<Sidebar collapsible="icon">
-			<SidebarHeader className="border-b">
-				<SidebarMenu>
-					<SidebarMenuItem>
-						<SidebarMenuButton
-							size="lg"
-							tooltip="Axiōma"
-							render={<Link to="/home" onClick={() => setOpenMobile(false)} />}
-						>
-							<span className="grid size-8 shrink-0 place-items-center bg-primary text-primary-foreground">
-								<Activity className="size-4" />
-							</span>
-							<span className="grid text-left leading-tight">
-								<strong>Axiōma</strong>
-								<span className="text-muted-foreground">IT operations</span>
-							</span>
-						</SidebarMenuButton>
-					</SidebarMenuItem>
-				</SidebarMenu>
+			<SidebarHeader className="h-14 shrink-0 border-b p-0">
+				<Link
+					to="/home"
+					onClick={() => setOpenMobile(false)}
+					className="flex size-full items-center justify-center px-2"
+				>
+					<AxiomaMark className="hidden size-5 shrink-0 text-primary group-data-[collapsible=icon]:block" />
+					<AxiomaWordmark
+						className="h-7 w-auto text-primary group-data-[collapsible=icon]:hidden"
+						title="Axiōma"
+					/>
+				</Link>
 			</SidebarHeader>
 			<SidebarContent>
 				<SidebarGroup>

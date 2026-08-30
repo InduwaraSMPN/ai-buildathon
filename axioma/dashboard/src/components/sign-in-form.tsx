@@ -1,6 +1,7 @@
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import z from "zod";
+import { AxiomaWordmark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,7 +55,11 @@ export default function SignInForm({
 
 	return (
 		<div className="mx-auto mt-10 w-full max-w-md p-6">
-			<h1 className="mb-6 text-center font-bold text-3xl">Welcome Back</h1>
+			<div className="mb-6 flex flex-col items-center gap-3">
+				<AxiomaWordmark className="h-8 w-auto text-primary" title="Axiōma" />
+				<h1 className="text-center font-bold text-3xl">Welcome Back</h1>
+				<p className="text-center text-muted-foreground text-sm">Sign in to the Axiōma console.</p>
+			</div>
 
 			<form
 				onSubmit={(e) => {

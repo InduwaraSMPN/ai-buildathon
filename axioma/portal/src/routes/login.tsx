@@ -1,7 +1,7 @@
 import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
-import { LifeBuoy } from "lucide-react";
 import { useState } from "react";
 
+import { AxiomaWordmark } from "@/components/brand";
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 import { ErrorState, PageShell } from "@/components/ticket-ui";
@@ -32,11 +32,8 @@ function RouteComponent() {
 	return (
 		<div className="min-h-full bg-muted/20">
 			<header className="border-b bg-background">
-				<div className="mx-auto flex h-16 max-w-6xl items-center gap-2 px-4 font-semibold tracking-tight sm:px-6 lg:px-8">
-					<span className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-						<LifeBuoy className="size-4" aria-hidden="true" />
-					</span>
-					Axioma
+				<div className="mx-auto flex h-16 max-w-6xl items-center px-4 sm:px-6 lg:px-8">
+					<AxiomaWordmark className="h-7 w-auto text-primary" title="Axiōma" />
 				</div>
 			</header>
 			{showSignIn ? (
