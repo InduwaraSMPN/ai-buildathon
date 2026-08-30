@@ -9,8 +9,14 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 
 export type KnowledgeArticle = {
@@ -59,17 +65,32 @@ export function KnowledgeList({
 }) {
 	if (articles.length === 0)
 		return (
-			<p className="py-12 text-center text-muted-foreground text-sm">
-				No knowledge articles found.
-			</p>
+			<Empty>
+				<EmptyHeader>
+					<EmptyTitle>No knowledge articles found</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
 		);
 	return (
 		<div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
 			{articles.map((article) => (
 				<Card
 					key={article.id}
-					className={onSelect ? "cursor-pointer hover:bg-muted/30" : undefined}
+					role={onSelect ? "button" : undefined}
+					tabIndex={onSelect ? 0 : undefined}
+					className={
+						onSelect
+							? "cursor-pointer hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+							: undefined
+					}
 					onClick={() => onSelect?.(article)}
+					onKeyDown={(event) => {
+						if (onSelect && (event.key === "Enter" || event.key === " ")) {
+							event.preventDefault();
+							onSelect(article);
+						}
+					}}
+					aria-label={onSelect ? `View ${article.title} article` : undefined}
 				>
 					<CardHeader>
 						<CardTitle>{article.title}</CardTitle>
@@ -136,7 +157,7 @@ export function KnowledgeArticleEditor({
 }) {
 	return (
 		<form
-			className="mx-auto w-full max-w-4xl space-y-4"
+			className="mx-auto w-full max-w-4xl"
 			onSubmit={(event: FormEvent<HTMLFormElement>) => {
 				event.preventDefault();
 				const data = new FormData(event.currentTarget);
@@ -151,60 +172,60 @@ export function KnowledgeArticleEditor({
 				});
 			}}
 		>
-			<div className="space-y-1.5">
-				<Label htmlFor="knowledge-title">Title</Label>
-				<Input
-					id="knowledge-title"
-					name="title"
-					defaultValue={initial?.title}
-					minLength={3}
-					required
-				/>
-			</div>
-			<div className="space-y-1.5">
-				<Label htmlFor="knowledge-summary">Summary</Label>
-				<Textarea
-					id="knowledge-summary"
-					name="summary"
-					defaultValue={initial?.summary ?? ""}
-					rows={3}
-				/>
-			</div>
-			<div className="space-y-1.5">
-				<Label htmlFor="knowledge-body">Article</Label>
-				<Textarea
-					id="knowledge-body"
-					name="body"
-					defaultValue={initial?.body}
-					rows={18}
-					required
-				/>
-			</div>
-			<div className="flex flex-wrap items-center gap-4">
-				<label className="flex items-center gap-2 text-sm">
-					Audience{" "}
-					<select
+			<FieldGroup>
+				<Field>
+					<FieldLabel htmlFor="knowledge-title">Title</FieldLabel>
+					<Input
+						id="knowledge-title"
+						name="title"
+						defaultValue={initial?.title}
+						minLength={3}
+						required
+					/>
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="knowledge-summary">Summary</FieldLabel>
+					<Textarea
+						id="knowledge-summary"
+						name="summary"
+						defaultValue={initial?.summary ?? ""}
+						rows={3}
+					/>
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="knowledge-body">Article</FieldLabel>
+					<Textarea
+						id="knowledge-body"
+						name="body"
+						defaultValue={initial?.body}
+						rows={18}
+						required
+					/>
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="knowledge-audience">Audience</FieldLabel>
+					<NativeSelect
+						id="knowledge-audience"
 						name="audience"
 						defaultValue={initial?.audience ?? "employees"}
-						className="h-8 border bg-background px-2"
 					>
-						<option value="public">Public</option>
-						<option value="employees">Employees</option>
-						<option value="staff">Staff</option>
-					</select>
-				</label>
-				<label className="flex items-center gap-2 text-sm">
-					<input
+						<NativeSelectOption value="public">Public</NativeSelectOption>
+						<NativeSelectOption value="employees">Employees</NativeSelectOption>
+						<NativeSelectOption value="staff">Staff</NativeSelectOption>
+					</NativeSelect>
+				</Field>
+				<Field orientation="horizontal">
+					<Checkbox
+						id="knowledge-restricted"
 						name="isRestricted"
-						type="checkbox"
 						defaultChecked={initial?.isRestricted}
 					/>
-					Restricted
-				</label>
-				<Button className="ml-auto" type="submit" disabled={pending}>
+					<FieldLabel htmlFor="knowledge-restricted">Restricted</FieldLabel>
+				</Field>
+				<Button className="self-end" type="submit" disabled={pending}>
 					{pending ? "Saving…" : "Save article"}
 				</Button>
-			</div>
+			</FieldGroup>
 		</form>
 	);
 }

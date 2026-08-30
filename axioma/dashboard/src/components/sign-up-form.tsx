@@ -3,11 +3,15 @@ import { toast } from "sonner";
 import z from "zod";
 import { AxiomaWordmark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
+import {
+	Field,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
+import { Spinner } from "@/components/ui/spinner";
 import { authClient } from "@/lib/auth-client";
-
 import Loader from "./loader";
 
 export default function SignUpForm({
@@ -18,30 +22,18 @@ export default function SignUpForm({
 	onSwitchToSignIn: () => void;
 }) {
 	const { isPending } = authClient.useSession();
-
 	const form = useForm({
-		defaultValues: {
-			email: "",
-			password: "",
-			name: "",
-		},
+		defaultValues: { email: "", password: "", name: "" },
 		onSubmit: async ({ value }) => {
-			await authClient.signUp.email(
-				{
-					email: value.email,
-					password: value.password,
-					name: value.name,
+			await authClient.signUp.email(value, {
+				onSuccess: () => {
+					window.location.assign(redirect);
+					toast.success("Sign up successful");
 				},
-				{
-					onSuccess: () => {
-						window.location.assign(redirect);
-						toast.success("Sign up successful");
-					},
-					onError: (error) => {
-						toast.error(error.error.message || error.error.statusText);
-					},
+				onError: (error) => {
+					toast.error(error.error.message || error.error.statusText);
 				},
-			);
+			});
 		},
 		validators: {
 			onSubmit: z.object({
@@ -52,118 +44,83 @@ export default function SignUpForm({
 		},
 	});
 
-	if (isPending) {
-		return <Loader />;
-	}
+	if (isPending) return <Loader />;
 
 	return (
 		<div className="mx-auto mt-10 w-full max-w-md p-6">
 			<div className="mb-6 flex flex-col items-center gap-3">
 				<AxiomaWordmark className="h-8 w-auto text-primary" title="Axiōma" />
 				<h1 className="text-center font-bold text-3xl">Create Account</h1>
-				<p className="text-center text-muted-foreground text-sm">Set up your Axiōma console access.</p>
+				<p className="text-center text-muted-foreground text-sm">
+					Set up your Axiōma console access.
+				</p>
 			</div>
-
 			<form
-				onSubmit={(e) => {
-					e.preventDefault();
-					e.stopPropagation();
+				onSubmit={(event) => {
+					event.preventDefault();
+					event.stopPropagation();
 					form.handleSubmit();
 				}}
-				className="space-y-4"
 			>
-				<div>
-					<form.Field name="name">
-						{(field) => (
-							<div className="space-y-2">
-								<Label htmlFor={field.name}>Name</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-								/>
-								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
-										{error?.message}
-									</p>
-								))}
-							</div>
+				<FieldGroup>
+					{(["name", "email", "password"] as const).map((name) => (
+						<form.Field key={name} name={name}>
+							{(field) => {
+								const invalid =
+									field.state.meta.isTouched && !field.state.meta.isValid;
+								return (
+									<Field data-invalid={invalid}>
+										<FieldLabel htmlFor={field.name}>
+											{name === "name"
+												? "Name"
+												: name === "email"
+													? "Email"
+													: "Password"}
+										</FieldLabel>
+										<Input
+											id={field.name}
+											name={field.name}
+											type={
+												name === "password"
+													? "password"
+													: name === "email"
+														? "email"
+														: "text"
+											}
+											value={field.state.value}
+											onBlur={field.handleBlur}
+											onChange={(event) =>
+												field.handleChange(event.target.value)
+											}
+											aria-invalid={invalid}
+										/>
+										<FieldError errors={field.state.meta.errors} />
+									</Field>
+								);
+							}}
+						</form.Field>
+					))}
+					<form.Subscribe
+						selector={(state) => ({
+							canSubmit: state.canSubmit,
+							isSubmitting: state.isSubmitting,
+						})}
+					>
+						{({ canSubmit, isSubmitting }) => (
+							<Button
+								type="submit"
+								className="w-full"
+								disabled={!canSubmit || isSubmitting}
+							>
+								{isSubmitting && <Spinner data-icon="inline-start" />}
+								{isSubmitting ? "Submitting..." : "Sign Up"}
+							</Button>
 						)}
-					</form.Field>
-				</div>
-
-				<div>
-					<form.Field name="email">
-						{(field) => (
-							<div className="space-y-2">
-								<Label htmlFor={field.name}>Email</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									type="email"
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-								/>
-								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
-										{error?.message}
-									</p>
-								))}
-							</div>
-						)}
-					</form.Field>
-				</div>
-
-				<div>
-					<form.Field name="password">
-						{(field) => (
-							<div className="space-y-2">
-								<Label htmlFor={field.name}>Password</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									type="password"
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-								/>
-								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-red-500">
-										{error?.message}
-									</p>
-								))}
-							</div>
-						)}
-					</form.Field>
-				</div>
-
-				<form.Subscribe
-					selector={(state) => ({
-						canSubmit: state.canSubmit,
-						isSubmitting: state.isSubmitting,
-					})}
-				>
-					{({ canSubmit, isSubmitting }) => (
-						<Button
-							type="submit"
-							className="w-full"
-							disabled={!canSubmit || isSubmitting}
-						>
-							{isSubmitting ? "Submitting..." : "Sign Up"}
-						</Button>
-					)}
-				</form.Subscribe>
+					</form.Subscribe>
+				</FieldGroup>
 			</form>
-
 			<div className="mt-4 text-center">
-				<Button
-					variant="link"
-					onClick={onSwitchToSignIn}
-					className="text-indigo-600 hover:text-indigo-800"
-				>
+				<Button variant="link" onClick={onSwitchToSignIn}>
 					Already have an account? Sign In
 				</Button>
 			</div>

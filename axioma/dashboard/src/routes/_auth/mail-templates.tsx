@@ -5,8 +5,17 @@ import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/mail-templates")({
@@ -92,58 +101,62 @@ function MailTemplates() {
 				<CardHeader>
 					<CardTitle>New template</CardTitle>
 				</CardHeader>
-				<CardContent className="grid gap-3">
-					<Input
-						aria-label="Template name"
-						placeholder="Template name"
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-					/>
-					<Input
-						aria-label="Subject"
-						placeholder="Subject"
-						value={subject}
-						onChange={(event) => setSubject(event.target.value)}
-					/>
-					<textarea
-						aria-label="Text body"
-						className="min-h-32 border bg-background p-3 text-sm"
-						placeholder="Text body"
-						value={textBody}
-						onChange={(event) => setTextBody(event.target.value)}
-					/>
-					<Button
-						disabled={
-							!name.trim() ||
-							!subject.trim() ||
-							!textBody.trim() ||
-							create.isPending
-						}
-						onClick={() =>
-							create.mutate({
-								name,
-								subject,
-								textBody,
-								htmlBody: null,
-								enabled: true,
-							})
-						}
-					>
-						Create template
-					</Button>
+				<CardContent>
+					<FieldGroup>
+						<Field>
+							<FieldLabel htmlFor="template-name">Template name</FieldLabel>
+							<Input
+								id="template-name"
+								value={name}
+								onChange={(event) => setName(event.target.value)}
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="template-subject">Subject</FieldLabel>
+							<Input
+								id="template-subject"
+								value={subject}
+								onChange={(event) => setSubject(event.target.value)}
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="template-body">Text body</FieldLabel>
+							<Textarea
+								id="template-body"
+								className="min-h-32"
+								value={textBody}
+								onChange={(event) => setTextBody(event.target.value)}
+							/>
+						</Field>
+						<Button
+							disabled={
+								!name.trim() ||
+								!subject.trim() ||
+								!textBody.trim() ||
+								create.isPending
+							}
+							onClick={() =>
+								create.mutate({
+									name,
+									subject,
+									textBody,
+									htmlBody: null,
+									enabled: true,
+								})
+							}
+						>
+							Create template
+						</Button>
+					</FieldGroup>
 				</CardContent>
 			</Card>
 			<div className="grid gap-3">
 				{templates.data.map((template) => (
 					<Card key={template.id}>
-						<CardContent className="flex items-start justify-between gap-4 p-4">
-							<div>
-								<p className="font-medium">{template.name}</p>
-								<p className="text-muted-foreground text-sm">
-									{template.subject}
-								</p>
-							</div>
-							<div className="flex gap-2">
+						<CardHeader>
+							<CardTitle>{template.name}</CardTitle>
+							<CardDescription>{template.subject}</CardDescription>
+							<CardAction className="flex gap-2">
 								<Button
 									variant="outline"
 									disabled={catchAll?.templateId === template.id}
@@ -167,8 +180,8 @@ function MailTemplates() {
 								>
 									Delete
 								</Button>
-							</div>
-						</CardContent>
+							</CardAction>
+						</CardHeader>
 					</Card>
 				))}
 			</div>

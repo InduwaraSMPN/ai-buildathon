@@ -1,4 +1,11 @@
 import type { ReactNode } from "react";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 
 export function InfoSidebar({
 	title,
@@ -8,14 +15,17 @@ export function InfoSidebar({
 	children: ReactNode;
 }) {
 	return (
-		<aside
-			className="h-fit rounded-xl border bg-card p-4 shadow-xs"
-			aria-label={title}
-		>
-			<h2 className="font-semibold text-sm">{title}</h2>
-			<div className="mt-2 text-muted-foreground text-xs leading-relaxed">
-				{children}
-			</div>
+		<aside aria-label={title} className="h-fit">
+			<Card size="sm">
+				<CardHeader>
+					<CardTitle>{title}</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<CardDescription className="text-xs leading-relaxed">
+						{children}
+					</CardDescription>
+				</CardContent>
+			</Card>
 		</aside>
 	);
 }

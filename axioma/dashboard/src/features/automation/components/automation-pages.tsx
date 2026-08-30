@@ -1,9 +1,24 @@
+import {
+	RiEditLine as Pencil,
+	RiAddLine as Plus,
+	RiDeleteBinLine as Trash2,
+} from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,9 +26,11 @@ import {
 	CardAction,
 	CardContent,
 	CardDescription,
+	CardFooter,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -22,8 +39,9 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { orpc } from "@/utils/orpc";
 
@@ -77,7 +95,7 @@ function AutomationEditor({
 				</DialogHeader>
 				<form
 					key={`${title}-${initial.name}`}
-					className="space-y-4"
+					className="flex flex-col gap-4"
 					onSubmit={(event: FormEvent<HTMLFormElement>) => {
 						event.preventDefault();
 						const data = new FormData(event.currentTarget);
@@ -86,57 +104,64 @@ function AutomationEditor({
 							secondary: String(data.get("secondary")),
 							firstJson: String(data.get("firstJson")),
 							actions: String(data.get("actions")),
-							active: data.get("active") === "on",
+							active: data.get("active") === "true",
 						});
 					}}
 				>
-					<div className="space-y-1.5">
-						<Label htmlFor="automation-name">Name</Label>
-						<Input
-							id="automation-name"
-							name="name"
-							defaultValue={initial.name}
-							required
-						/>
-					</div>
-					<div className="space-y-1.5">
-						<Label htmlFor="automation-secondary">{secondaryLabel}</Label>
-						<Input
-							id="automation-secondary"
-							name="secondary"
-							type={secondaryType}
-							defaultValue={initial.secondary}
-							required
-						/>
-					</div>
-					<div className="space-y-1.5">
-						<Label htmlFor="automation-first-json">{firstJsonLabel}</Label>
-						<Textarea
-							id="automation-first-json"
-							name="firstJson"
-							defaultValue={initial.firstJson}
-							rows={4}
-							required
-						/>
-					</div>
-					<div className="space-y-1.5">
-						<Label htmlFor="automation-actions">Actions</Label>
-						<Textarea
-							id="automation-actions"
-							name="actions"
-							defaultValue={initial.actions}
-							rows={4}
-							required
-						/>
-					</div>
-					<label className="flex items-center gap-2 text-sm">
-						<input
-							name="active"
-							type="checkbox"
-							defaultChecked={initial.active}
-						/>
-						{activeLabel}
-					</label>
+					<FieldGroup>
+						<Field>
+							<FieldLabel htmlFor="automation-name">Name</FieldLabel>
+							<Input
+								id="automation-name"
+								name="name"
+								defaultValue={initial.name}
+								required
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="automation-secondary">
+								{secondaryLabel}
+							</FieldLabel>
+							<Input
+								id="automation-secondary"
+								name="secondary"
+								type={secondaryType}
+								defaultValue={initial.secondary}
+								required
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="automation-first-json">
+								{firstJsonLabel}
+							</FieldLabel>
+							<Textarea
+								id="automation-first-json"
+								name="firstJson"
+								defaultValue={initial.firstJson}
+								rows={4}
+								required
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="automation-actions">Actions</FieldLabel>
+							<Textarea
+								id="automation-actions"
+								name="actions"
+								defaultValue={initial.actions}
+								rows={4}
+								required
+							/>
+						</Field>
+						<Field orientation="horizontal">
+							<Checkbox
+								id="automation-active"
+								name="active"
+								value="true"
+								defaultChecked={initial.active}
+							/>
+							<FieldLabel htmlFor="automation-active">{activeLabel}</FieldLabel>
+						</Field>
+					</FieldGroup>
 					<DialogFooter>
 						<Button
 							type="button"
@@ -146,12 +171,57 @@ function AutomationEditor({
 							Cancel
 						</Button>
 						<Button type="submit" disabled={pending}>
-							{pending ? "Saving…" : "Save"}
+							{pending ? <Spinner data-icon="inline-start" /> : null}
+							Save
 						</Button>
 					</DialogFooter>
 				</form>
 			</DialogContent>
 		</Dialog>
+	);
+}
+
+function DeleteButton({
+	name,
+	pending,
+	onConfirm,
+}: {
+	name: string;
+	pending: boolean;
+	onConfirm: () => void;
+}) {
+	return (
+		<AlertDialog>
+			<AlertDialogTrigger
+				render={<Button size="sm" variant="destructive" disabled={pending} />}
+			>
+				{pending ? (
+					<Spinner data-icon="inline-start" />
+				) : (
+					<Trash2 data-icon="inline-start" />
+				)}
+				Delete
+			</AlertDialogTrigger>
+			<AlertDialogContent>
+				<AlertDialogHeader>
+					<AlertDialogTitle>Delete {name}?</AlertDialogTitle>
+					<AlertDialogDescription>
+						This action cannot be undone.
+					</AlertDialogDescription>
+				</AlertDialogHeader>
+				<AlertDialogFooter>
+					<AlertDialogCancel>Cancel</AlertDialogCancel>
+					<AlertDialogAction
+						variant="destructive"
+						disabled={pending}
+						onClick={onConfirm}
+					>
+						{pending ? <Spinner data-icon="inline-start" /> : null}
+						Delete
+					</AlertDialogAction>
+				</AlertDialogFooter>
+			</AlertDialogContent>
+		</AlertDialog>
 	);
 }
 
@@ -206,7 +276,7 @@ export function TicketRulesPage() {
 			description="Ordered criteria and actions applied to tickets."
 			action={
 				<Button onClick={() => setEditingId(null)}>
-					<Plus />
+					<Plus data-icon="inline-start" />
 					New rule
 				</Button>
 			}
@@ -246,28 +316,21 @@ export function TicketRulesPage() {
 									</Badge>
 								</CardAction>
 							</CardHeader>
-							<CardContent className="flex gap-2">
+							<CardFooter className="flex gap-2">
 								<Button
 									size="sm"
 									variant="outline"
 									onClick={() => setEditingId(rule.id)}
 								>
-									<Pencil />
+									<Pencil data-icon="inline-start" />
 									Edit
 								</Button>
-								<Button
-									size="sm"
-									variant="destructive"
-									disabled={remove.isPending}
-									onClick={() =>
-										window.confirm(`Delete ${rule.name}?`) &&
-										remove.mutate({ id: rule.id })
-									}
-								>
-									<Trash2 />
-									Delete
-								</Button>
-							</CardContent>
+								<DeleteButton
+									name={rule.name}
+									pending={remove.isPending}
+									onConfirm={() => remove.mutate({ id: rule.id })}
+								/>
+							</CardFooter>
 						</Card>
 					))}
 				</div>
@@ -369,7 +432,7 @@ export function WorkflowsPage() {
 			description="Event-driven conditions and actions."
 			action={
 				<Button onClick={() => setEditingId(null)}>
-					<Plus />
+					<Plus data-icon="inline-start" />
 					New workflow
 				</Button>
 			}
@@ -409,33 +472,28 @@ export function WorkflowsPage() {
 									</Badge>
 								</CardAction>
 							</CardHeader>
-							<CardContent className="flex items-center gap-2">
+							{workflow.lastRunStatus ? (
+								<CardContent>
+									<Badge variant="outline">
+										Last run: {workflow.lastRunStatus}
+									</Badge>
+								</CardContent>
+							) : null}
+							<CardFooter className="flex gap-2">
 								<Button
 									size="sm"
 									variant="outline"
 									onClick={() => setEditingId(workflow.id)}
 								>
-									<Pencil />
+									<Pencil data-icon="inline-start" />
 									Edit
 								</Button>
-								<Button
-									size="sm"
-									variant="destructive"
-									disabled={remove.isPending}
-									onClick={() =>
-										window.confirm(`Delete ${workflow.name}?`) &&
-										remove.mutate({ id: workflow.id })
-									}
-								>
-									<Trash2 />
-									Delete
-								</Button>
-								{workflow.lastRunStatus ? (
-									<Badge variant="outline">
-										Last run: {workflow.lastRunStatus}
-									</Badge>
-								) : null}
-							</CardContent>
+								<DeleteButton
+									name={workflow.name}
+									pending={remove.isPending}
+									onConfirm={() => remove.mutate({ id: workflow.id })}
+								/>
+							</CardFooter>
 						</Card>
 					))}
 				</div>
@@ -447,7 +505,7 @@ export function WorkflowsPage() {
 						Latest webhook responses and failures.
 					</CardDescription>
 				</CardHeader>
-				<CardContent className="space-y-3">
+				<CardContent className="flex flex-col gap-3">
 					{deliveries.data?.map((delivery) => (
 						<div key={delivery.id} className="rounded-md border p-3 text-sm">
 							<div className="flex items-center justify-between gap-2">

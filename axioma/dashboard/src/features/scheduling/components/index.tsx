@@ -1,7 +1,14 @@
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 
 export type ScheduledWork = {
 	ticketId: string;
@@ -25,27 +32,25 @@ export function CalendarPage({ work }: { work: readonly ScheduledWork[] }) {
 				<div className="grid gap-3">
 					{work.map((item) => (
 						<Card key={item.ticketId}>
-							<CardContent className="flex items-start justify-between gap-4 p-4">
-								<div>
-									<p className="font-medium">
-										{item.ticketNumber ?? item.ticketId} · {item.title}
-									</p>
-									<p className="text-muted-foreground text-xs">
-										{item.priority} · {item.status}
-									</p>
-									<p className="text-muted-foreground text-sm">
-										{item.workStartAt?.toLocaleString()}
-										{item.workEndAt
-											? ` – ${item.workEndAt.toLocaleString()}`
-											: ""}
-									</p>
-								</div>
-								<Badge variant="outline">
-									{item.workAllDay ? "All day" : "Scheduled"}
-									{item.snoozedUntil
-										? ` · Snoozed until ${item.snoozedUntil.toLocaleString()}`
-										: ""}
-								</Badge>
+							<CardHeader>
+								<CardTitle>
+									{item.ticketNumber ?? item.ticketId} · {item.title}
+								</CardTitle>
+								<CardDescription>
+									{item.priority} · {item.status}
+								</CardDescription>
+								<CardAction>
+									<Badge variant="outline">
+										{item.workAllDay ? "All day" : "Scheduled"}
+									</Badge>
+								</CardAction>
+							</CardHeader>
+							<CardContent className="text-muted-foreground text-sm">
+								{item.workStartAt?.toLocaleString()}
+								{item.workEndAt ? ` – ${item.workEndAt.toLocaleString()}` : ""}
+								{item.snoozedUntil
+									? ` · Snoozed until ${item.snoozedUntil.toLocaleString()}`
+									: ""}
 							</CardContent>
 						</Card>
 					))}

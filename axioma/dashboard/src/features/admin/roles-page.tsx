@@ -5,7 +5,12 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from "@/components/ui/native-select";
 import {
 	Table,
 	TableBody,
@@ -206,9 +211,10 @@ export function RolesPage() {
 										</div>
 									</TableCell>
 									<TableCell>
-										<select
-											className="h-8 border bg-background px-2 text-xs"
+										<NativeSelect
+											size="sm"
 											value={person.kind}
+											disabled={setKind.isPending}
 											onChange={(event) =>
 												setKind.mutate({
 													userId: person.id,
@@ -216,9 +222,13 @@ export function RolesPage() {
 												})
 											}
 										>
-											<option value="reporter">Reporter</option>
-											<option value="staff">Staff</option>
-										</select>
+											<NativeSelectOption value="reporter">
+												Reporter
+											</NativeSelectOption>
+											<NativeSelectOption value="staff">
+												Staff
+											</NativeSelectOption>
+										</NativeSelect>
 									</TableCell>
 									{roleRows.map((role) => (
 										<TableCell key={role.id}>
@@ -245,19 +255,25 @@ export function RolesPage() {
 			<section className="space-y-3">
 				<h2 className="font-semibold">Departments</h2>
 				<form
-					className="flex gap-2"
 					onSubmit={(event) => {
 						event.preventDefault();
 						createDepartment.mutate();
 					}}
 				>
-					<Input
-						aria-label="Department name"
-						value={departmentName}
-						onChange={(event) => setDepartmentName(event.target.value)}
-						required
-					/>
-					<Button type="submit">Create department</Button>
+					<FieldGroup className="sm:flex-row sm:items-end">
+						<Field>
+							<FieldLabel htmlFor="department-name">Department name</FieldLabel>
+							<Input
+								id="department-name"
+								value={departmentName}
+								onChange={(event) => setDepartmentName(event.target.value)}
+								required
+							/>
+						</Field>
+						<Button type="submit" disabled={createDepartment.isPending}>
+							Create department
+						</Button>
+					</FieldGroup>
 				</form>
 				<div className="text-sm">
 					{departmentRows.map((department) => department.name).join(", ") ||
@@ -267,19 +283,25 @@ export function RolesPage() {
 			<section className="space-y-3">
 				<h2 className="font-semibold">Teams</h2>
 				<form
-					className="flex gap-2"
 					onSubmit={(event) => {
 						event.preventDefault();
 						createTeam.mutate();
 					}}
 				>
-					<Input
-						aria-label="Team name"
-						value={teamName}
-						onChange={(event) => setTeamName(event.target.value)}
-						required
-					/>
-					<Button type="submit">Create team</Button>
+					<FieldGroup className="sm:flex-row sm:items-end">
+						<Field>
+							<FieldLabel htmlFor="team-name">Team name</FieldLabel>
+							<Input
+								id="team-name"
+								value={teamName}
+								onChange={(event) => setTeamName(event.target.value)}
+								required
+							/>
+						</Field>
+						<Button type="submit" disabled={createTeam.isPending}>
+							Create team
+						</Button>
+					</FieldGroup>
 				</form>
 				<div className="overflow-auto border">
 					<Table>
@@ -300,9 +322,10 @@ export function RolesPage() {
 								<TableRow key={team.id}>
 									<TableCell>{team.name}</TableCell>
 									<TableCell>
-										<select
-											className="h-8 border bg-background px-2 text-xs"
+										<NativeSelect
+											size="sm"
 											value={team.departmentId ?? ""}
+											disabled={updateTeam.isPending}
 											onChange={(event) =>
 												updateTeam.mutate({
 													...team,
@@ -310,13 +333,16 @@ export function RolesPage() {
 												})
 											}
 										>
-											<option value="">None</option>
+											<NativeSelectOption value="">None</NativeSelectOption>
 											{departmentRows.map((department) => (
-												<option key={department.id} value={department.id}>
+												<NativeSelectOption
+													key={department.id}
+													value={department.id}
+												>
 													{department.name}
-												</option>
+												</NativeSelectOption>
 											))}
-										</select>
+										</NativeSelect>
 									</TableCell>
 									{peopleRows.map((person) => (
 										<TableCell key={person.id}>

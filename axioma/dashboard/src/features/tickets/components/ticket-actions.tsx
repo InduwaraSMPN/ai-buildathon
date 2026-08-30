@@ -1,12 +1,12 @@
+import {
+	RiAlarmWarningLine as AlertTriangle,
+	RiCheckboxCircleLine as CheckCircle2,
+	RiRestartLine as RotateCcw,
+	RiUserFollowLine as UserRoundCheck,
+} from "@remixicon/react";
 import { useForm } from "@tanstack/react-form";
 import { useQuery } from "@tanstack/react-query";
-import {
-	AlertTriangle,
-	CheckCircle2,
-	RotateCcw,
-	UserRoundCheck,
-} from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import z from "zod";
 import {
 	AlertDialog,
@@ -20,10 +20,12 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
@@ -78,128 +80,141 @@ export function TicketActions({
 	onAction: (input: ActionInput) => Promise<unknown>;
 }) {
 	const actions = allowedActions(ticket, capabilities);
-	const has = useCallback(
-		(action: TicketOperatorAction) => actions.includes(action),
-		[actions],
-	);
+	const has = (action: TicketOperatorAction) => actions.includes(action);
+	const canResolve = has("resolve");
 	const canAssign = has("assign");
 	const canReclassify = has("reclassify");
 	const canPend = has("pend");
 	const canUnpend = has("unpend");
 	const [classificationOpen, setClassificationOpen] = useState(false);
+	const handledHash = useRef({ ticketId: ticket.id, handled: false });
 	const pendingReasons = useQuery(orpc.listPendingReasons.queryOptions());
 	const catalogue = useQuery(orpc.listCatalogue.queryOptions());
 
 	useEffect(() => {
+		if (handledHash.current.ticketId !== ticket.id)
+			handledHash.current = { ticketId: ticket.id, handled: false };
+		if (handledHash.current.handled) return;
 		const target = window.location.hash.slice(1);
-		if (target === "operator-resolve" && has("resolve"))
+		if (target === "operator-resolve" && canResolve)
 			document.getElementById(target)?.focus();
 		else if (target === "operator-reclassify" && canReclassify)
 			setClassificationOpen(true);
 		else if (target === "operator-assign" && canAssign)
 			document.getElementById(target)?.focus();
-	}, [canAssign, canReclassify, has]);
+		else return;
+		handledHash.current.handled = true;
+		history.replaceState(
+			history.state,
+			"",
+			`${location.pathname}${location.search}`,
+		);
+	}, [canAssign, canReclassify, canResolve, ticket.id]);
 
 	return (
-		<section className="space-y-4 rounded-xl border bg-card p-4 shadow-sm">
-			<h2 className="font-semibold text-xs uppercase tracking-wider">
-				Operator actions
-			</h2>
-			{has("resolve") && (
-				<NoteForm
-					action="resolve"
-					label="Resolution note"
-					button="Resolve ticket"
-					maxLength={10_000}
-					pending={pending}
-					onAction={onAction}
-				/>
-			)}
-			{has("close") && (
-				<SimpleAction
-					action="close"
-					label="Close ticket"
-					icon={<CheckCircle2 />}
-					pending={pending}
-					onAction={onAction}
-				/>
-			)}
-			{has("escalate") && (
-				<EscalateForm pending={pending} onAction={onAction} />
-			)}
-			{canPend && pendingReasons.data?.length ? (
-				<Select
-					value=""
-					onValueChange={(reasonId) => {
-						if (reasonId) void onAction({ action: "pend", reasonId });
-					}}
-				>
-					<SelectTrigger disabled={pending}>
-						<SelectValue placeholder="Put on hold" />
-					</SelectTrigger>
-					<SelectContent>
-						{pendingReasons.data.map((reason) => (
-							<SelectItem key={reason.id} value={reason.id}>
-								{reason.name}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			) : null}
-			{canUnpend ? (
-				<Button
-					type="button"
-					variant="outline"
-					disabled={pending}
-					onClick={() => void onAction({ action: "unpend" })}
-				>
-					Resume ticket
-				</Button>
-			) : null}
-			{has("assign") && (
-				<AssignForm ticket={ticket} pending={pending} onAction={onAction} />
-			)}
-			{has("reopen") && (
-				<SimpleAction
-					action="reopen"
-					label="Reopen ticket"
-					icon={<RotateCcw />}
-					pending={pending}
-					onAction={onAction}
-				/>
-			)}
-			{has("reclassify") && (
-				<Sheet open={classificationOpen} onOpenChange={setClassificationOpen}>
+		<Card>
+			<CardHeader>
+				<CardTitle>Operator actions</CardTitle>
+			</CardHeader>
+			<CardContent className="flex flex-col gap-4">
+				{has("resolve") && (
+					<NoteForm
+						action="resolve"
+						label="Resolution note"
+						button="Resolve ticket"
+						maxLength={10_000}
+						pending={pending}
+						onAction={onAction}
+					/>
+				)}
+				{has("close") && (
+					<SimpleAction
+						action="close"
+						label="Close ticket"
+						icon={<CheckCircle2 />}
+						pending={pending}
+						onAction={onAction}
+					/>
+				)}
+				{has("escalate") && (
+					<EscalateForm pending={pending} onAction={onAction} />
+				)}
+				{canPend && pendingReasons.data?.length ? (
+					<Select
+						value=""
+						onValueChange={(reasonId) => {
+							if (reasonId) void onAction({ action: "pend", reasonId });
+						}}
+					>
+						<SelectTrigger disabled={pending}>
+							<SelectValue placeholder="Put on hold" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectGroup>
+								{pendingReasons.data.map((reason) => (
+									<SelectItem key={reason.id} value={reason.id}>
+										{reason.name}
+									</SelectItem>
+								))}
+							</SelectGroup>
+						</SelectContent>
+					</Select>
+				) : null}
+				{canUnpend ? (
 					<Button
-						id="operator-reclassify"
 						type="button"
 						variant="outline"
-						className="w-full"
 						disabled={pending}
-						onClick={() => setClassificationOpen(true)}
+						onClick={() => void onAction({ action: "unpend" })}
 					>
-						Reclassify
+						Resume ticket
 					</Button>
-					<SheetContent className="w-full sm:max-w-md">
-						<SheetHeader className="border-b pr-12">
-							<SheetTitle>Reclassify ticket</SheetTitle>
-							<SheetDescription>
-								Priority is derived from impact and urgency.
-							</SheetDescription>
-						</SheetHeader>
-						<TicketClassificationForm
-							ticket={ticket}
-							catalogue={catalogue.data}
-							disabled={pending || catalogue.isPending}
-							onSubmit={async (input) => {
-								await onAction(input);
-								setClassificationOpen(false);
-							}}
-						/>
-					</SheetContent>
-				</Sheet>
-			)}
-		</section>
+				) : null}
+				{has("assign") && (
+					<AssignForm ticket={ticket} pending={pending} onAction={onAction} />
+				)}
+				{has("reopen") && (
+					<SimpleAction
+						action="reopen"
+						label="Reopen ticket"
+						icon={<RotateCcw />}
+						pending={pending}
+						onAction={onAction}
+					/>
+				)}
+				{has("reclassify") && (
+					<Sheet open={classificationOpen} onOpenChange={setClassificationOpen}>
+						<Button
+							id="operator-reclassify"
+							type="button"
+							variant="outline"
+							className="w-full"
+							disabled={pending}
+							onClick={() => setClassificationOpen(true)}
+						>
+							Reclassify
+						</Button>
+						<SheetContent className="w-full sm:max-w-md">
+							<SheetHeader className="border-b pr-12">
+								<SheetTitle>Reclassify ticket</SheetTitle>
+								<SheetDescription>
+									Priority is derived from impact and urgency.
+								</SheetDescription>
+							</SheetHeader>
+							<TicketClassificationForm
+								ticket={ticket}
+								catalogue={catalogue.data}
+								disabled={pending || catalogue.isPending}
+								onSubmit={async (input) => {
+									await onAction(input);
+									setClassificationOpen(false);
+								}}
+							/>
+						</SheetContent>
+					</Sheet>
+				)}
+			</CardContent>
+		</Card>
 	);
 }
 
@@ -272,11 +287,13 @@ function NoteForm({
 								<SelectValue />
 							</SelectTrigger>
 							<SelectContent>
-								{resolutionCodes.map(([value, text]) => (
-									<SelectItem key={value} value={value}>
-										{text}
-									</SelectItem>
-								))}
+								<SelectGroup>
+									{resolutionCodes.map(([value, text]) => (
+										<SelectItem key={value} value={value}>
+											{text}
+										</SelectItem>
+									))}
+								</SelectGroup>
 							</SelectContent>
 						</Select>
 					</Field>
@@ -526,15 +543,17 @@ function AssignForm({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									<SelectItem value="none">Unassigned</SelectItem>
-									{(name === "teamId"
-										? options.data?.teams
-										: options.data?.users
-									)?.map((option) => (
-										<SelectItem key={option.id} value={option.id}>
-											{option.name}
-										</SelectItem>
-									))}
+									<SelectGroup>
+										<SelectItem value="none">Unassigned</SelectItem>
+										{(name === "teamId"
+											? options.data?.teams
+											: options.data?.users
+										)?.map((option) => (
+											<SelectItem key={option.id} value={option.id}>
+												{option.name}
+											</SelectItem>
+										))}
+									</SelectGroup>
 								</SelectContent>
 							</Select>
 						</Field>
@@ -574,11 +593,13 @@ function RouteSelect({
 				<SelectValue />
 			</SelectTrigger>
 			<SelectContent>
-				{routes.map((route) => (
-					<SelectItem key={route} value={route}>
-						{route.replaceAll("_", " ")}
-					</SelectItem>
-				))}
+				<SelectGroup>
+					{routes.map((route) => (
+						<SelectItem key={route} value={route}>
+							{route.replaceAll("_", " ")}
+						</SelectItem>
+					))}
+				</SelectGroup>
 			</SelectContent>
 		</Select>
 	);

@@ -1,17 +1,29 @@
 import {
-	AlertTriangle,
-	CheckCircle2,
-	ChevronDown,
-	Circle,
-	Wrench,
-} from "lucide-react";
+	RiCheckboxCircleLine as CheckCircle2,
+	RiArrowDownSLine as ChevronDown,
+	RiEyeLine as Eye,
+	RiFlagLine as Flag,
+	RiLightbulbLine as Lightbulb,
+	RiToolsLine as Wrench,
+} from "@remixicon/react";
 import { formatDate } from "@/components/support-ui";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
 	Collapsible,
 	CollapsibleContent,
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
 import type { AgentStep } from "../api/types";
+
+const stepKinds = {
+	think: { icon: Lightbulb, tone: "text-muted-foreground" },
+	tool_call: { icon: Wrench, tone: "text-primary" },
+	observation: { icon: Eye, tone: "text-secondary-foreground" },
+	decision: { icon: CheckCircle2, tone: "text-success" },
+	terminal: { icon: Flag, tone: "text-warning" },
+} satisfies Record<AgentStep["kind"], { icon: typeof Lightbulb; tone: string }>;
 
 export function StepCard({
 	step,
@@ -20,7 +32,7 @@ export function StepCard({
 	step: AgentStep;
 	number: number;
 }) {
-	const kind = step.kind.toLowerCase();
+	const kind = step.kind;
 	const isToolCall = kind === "tool_call";
 	const isDecision = kind === "decision" || kind === "terminal";
 	return (
@@ -30,18 +42,16 @@ export function StepCard({
 					{number}
 				</span>
 			</div>
-			<article
-				className={`min-w-0 p-4 ${isDecision ? "bg-foreground/[0.03]" : ""}`}
-			>
+			<article className={cn("min-w-0 p-4", isDecision && "bg-muted/30")}>
 				<div className="flex flex-wrap items-center gap-2">
-					<StepIcon step={step} />
+					<StepIcon kind={kind} />
 					<strong className="text-xs uppercase tracking-wider">
 						{kind.replaceAll("_", " ")}
 					</strong>
 					{step.toolName && (
-						<span className="border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+						<Badge variant="secondary" className="font-mono">
 							{step.toolName}
-						</span>
+						</Badge>
 					)}
 					<time className="ml-auto text-[10px] text-muted-foreground">
 						{formatDate(step.createdAt)}
@@ -69,14 +79,15 @@ export function StepCard({
 
 function EvidenceBlock({ evidence }: { evidence: string }) {
 	return (
-		<section className="mt-3 border-2 border-emerald-500/40 bg-emerald-500/5 p-3">
-			<p className="mb-1.5 font-semibold text-[10px] text-emerald-700 uppercase tracking-wider dark:text-emerald-300">
-				Evidence
-			</p>
-			<pre className="whitespace-pre-wrap break-words font-sans text-xs leading-5">
-				{evidence}
-			</pre>
-		</section>
+		<Alert className="mt-3 border-success/40 bg-success/10">
+			<CheckCircle2 aria-hidden="true" />
+			<AlertTitle>Evidence</AlertTitle>
+			<AlertDescription>
+				<pre className="whitespace-pre-wrap break-words font-sans text-foreground text-xs leading-5">
+					{evidence}
+				</pre>
+			</AlertDescription>
+		</Alert>
 	);
 }
 
@@ -107,28 +118,30 @@ function ValueBlock({
 	code?: boolean;
 	error?: boolean;
 }) {
-	return (
-		<div
+	const content = (
+		<pre
 			className={
-				error
-					? "mt-3 border border-destructive/30 bg-destructive/5 p-3"
-					: "mt-3"
+				code
+					? "overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5"
+					: "whitespace-pre-wrap font-sans text-xs leading-5"
 			}
 		>
-			<p
-				className={`mb-1.5 font-medium text-[10px] uppercase tracking-wider ${error ? "text-destructive" : "text-muted-foreground"}`}
-			>
+			{serialize(value)}
+		</pre>
+	);
+	if (error)
+		return (
+			<Alert variant="destructive" className="mt-3">
+				<AlertTitle>{title}</AlertTitle>
+				<AlertDescription>{content}</AlertDescription>
+			</Alert>
+		);
+	return (
+		<div className="mt-3">
+			<p className="mb-1.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
 				{title}
 			</p>
-			<pre
-				className={
-					code
-						? "overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5"
-						: "whitespace-pre-wrap font-sans text-xs leading-5"
-				}
-			>
-				{serialize(value)}
-			</pre>
+			{content}
 		</div>
 	);
 }
@@ -139,16 +152,7 @@ function serialize(value: unknown) {
 	return serialized ?? String(value);
 }
 
-function StepIcon({ step }: { step: AgentStep }) {
-	if (step.error)
-		return (
-			<AlertTriangle className="size-4 text-destructive" aria-hidden="true" />
-		);
-	if (step.kind === "tool_call" || step.kind === "observation" || step.toolName)
-		return <Wrench className="size-4 text-violet-500" aria-hidden="true" />;
-	if (step.kind === "decision" || step.kind === "terminal")
-		return (
-			<CheckCircle2 className="size-4 text-emerald-500" aria-hidden="true" />
-		);
-	return <Circle className="size-4 text-sky-500" aria-hidden="true" />;
+function StepIcon({ kind }: { kind: AgentStep["kind"] }) {
+	const { icon: Icon, tone } = stepKinds[kind];
+	return <Icon className={cn("size-4", tone)} aria-hidden="true" />;
 }

@@ -1,11 +1,18 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { RiAlarmWarningLine as AlertTriangle } from "@remixicon/react";
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 export function RoutePending() {
 	return (
 		<div className="grid min-h-48 place-items-center" role="status">
 			<span className="flex items-center gap-2 text-muted-foreground">
-				<Loader2 className="size-4 animate-spin" />
+				<Spinner />
 				Loading…
 			</span>
 		</div>
@@ -21,12 +28,16 @@ export function RouteError({
 }) {
 	return (
 		<main id="main-content" className="grid min-h-svh place-items-center p-6">
-			<div className="max-w-md text-center">
-				<AlertTriangle className="mx-auto mb-3 text-destructive" />
-				<h1 className="font-semibold">Something went wrong</h1>
-				<p className="my-3 text-muted-foreground text-sm">{error.message}</p>
-				<Button onClick={reset}>Try again</Button>
-			</div>
+			<Alert variant="destructive" className="max-w-md">
+				<AlertTriangle />
+				<AlertTitle>Something went wrong</AlertTitle>
+				<AlertDescription>{error.message}</AlertDescription>
+				<AlertAction>
+					<Button variant="outline" size="sm" onClick={reset}>
+						Try again
+					</Button>
+				</AlertAction>
+			</Alert>
 		</main>
 	);
 }

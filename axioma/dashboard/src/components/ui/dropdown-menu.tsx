@@ -1,5 +1,3 @@
-"use client";
-
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { RiArrowRightSLine, RiCheckLine } from "@remixicon/react";
 import type * as React from "react";

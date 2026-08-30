@@ -1,12 +1,12 @@
+import {
+	RiCheckboxCircleLine as CircleCheckBig,
+	RiTimeLine as Clock3,
+	RiShieldFlashLine as ShieldAlert,
+	RiSparklingLine as Sparkles,
+	RiAlarmWarningLine as TriangleAlert,
+} from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import {
-	CircleCheckBig,
-	Clock3,
-	ShieldAlert,
-	Sparkles,
-	TriangleAlert,
-} from "lucide-react";
 import {
 	Area,
 	AreaChart,
@@ -320,7 +320,7 @@ function PriorityStat({
 	values: Record<"P1" | "P2" | "P3" | "P4", number>;
 }) {
 	return (
-		<Card className="h-full rounded-xl shadow-xs xl:col-span-2">
+		<Card className="h-full">
 			<CardHeader>
 				<CardDescription>Open by priority</CardDescription>
 				<CardTitle className="flex flex-wrap gap-x-4 gap-y-1 text-2xl tabular-nums">
@@ -373,7 +373,7 @@ function Stat({
 			search={search}
 			className="rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2"
 		>
-			<Card className="h-full rounded-xl shadow-xs transition-colors hover:border-foreground/30">
+			<Card className="h-full transition-colors hover:ring-foreground/30">
 				<CardHeader>
 					<CardDescription>{label}</CardDescription>
 					<CardTitle
@@ -403,7 +403,7 @@ function ChartCard({
 	children: React.ReactNode;
 }) {
 	return (
-		<Card className="rounded-xl shadow-xs">
+		<Card>
 			<CardHeader>
 				<CardTitle>{title}</CardTitle>
 				<CardDescription>{description}</CardDescription>

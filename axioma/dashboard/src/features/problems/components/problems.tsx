@@ -9,6 +9,8 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
 	Table,
@@ -68,7 +70,6 @@ export function ProblemEditor({
 }) {
 	return (
 		<form
-			className="flex gap-2"
 			onSubmit={(event) => {
 				event.preventDefault();
 				const data = new FormData(event.currentTarget);
@@ -78,14 +79,22 @@ export function ProblemEditor({
 				});
 			}}
 		>
-			<Input name="title" placeholder="Problem title" required minLength={3} />
-			<Input
-				name="description"
-				placeholder="Description"
-				required
-				minLength={1}
-			/>
-			<Button disabled={pending}>Create</Button>
+			<FieldGroup className="sm:flex-row sm:items-end">
+				<Field>
+					<FieldLabel htmlFor="problem-title">Title</FieldLabel>
+					<Input id="problem-title" name="title" required minLength={3} />
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="problem-description">Description</FieldLabel>
+					<Input
+						id="problem-description"
+						name="description"
+						required
+						minLength={1}
+					/>
+				</Field>
+				<Button disabled={pending}>Create</Button>
+			</FieldGroup>
 		</form>
 	);
 }
@@ -107,9 +116,11 @@ export function ProblemList({
 }) {
 	if (problems.length === 0)
 		return (
-			<p className="py-12 text-center text-muted-foreground text-sm">
-				No problems found.
-			</p>
+			<Empty>
+				<EmptyHeader>
+					<EmptyTitle>No problems found</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
 		);
 
 	return (
@@ -128,8 +139,23 @@ export function ProblemList({
 					{problems.map((problem) => (
 						<TableRow
 							key={problem.id}
-							className={onSelect ? "cursor-pointer" : undefined}
+							role={onSelect ? "button" : undefined}
+							tabIndex={onSelect ? 0 : undefined}
+							className={
+								onSelect
+									? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									: undefined
+							}
 							onClick={() => onSelect?.(problem)}
+							onKeyDown={(event) => {
+								if (onSelect && (event.key === "Enter" || event.key === " ")) {
+									event.preventDefault();
+									onSelect(problem);
+								}
+							}}
+							aria-label={
+								onSelect ? `View ${problem.title} problem details` : undefined
+							}
 						>
 							<TableCell>
 								<div className="font-medium">{problem.title}</div>
@@ -189,7 +215,11 @@ export function ProblemDetailView({ problem }: { problem: ProblemDetail }) {
 							))}
 						</ul>
 					) : (
-						<p className="text-muted-foreground">No linked incidents.</p>
+						<Empty>
+							<EmptyHeader>
+								<EmptyTitle>No linked incidents</EmptyTitle>
+							</EmptyHeader>
+						</Empty>
 					)}
 				</CardContent>
 			</Card>

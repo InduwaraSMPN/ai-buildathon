@@ -5,6 +5,7 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
@@ -78,11 +79,13 @@ export function TicketClassificationForm({
 									<SelectValue />
 								</SelectTrigger>
 								<SelectContent>
-									{recordTypes.map((recordType) => (
-										<SelectItem key={recordType} value={recordType}>
-											{recordType.replaceAll("_", " ")}
-										</SelectItem>
-									))}
+									<SelectGroup>
+										{recordTypes.map((recordType) => (
+											<SelectItem key={recordType} value={recordType}>
+												{recordType.replaceAll("_", " ")}
+											</SelectItem>
+										))}
+									</SelectGroup>
 								</SelectContent>
 							</Select>
 						</Field>
@@ -106,11 +109,13 @@ export function TicketClassificationForm({
 												<SelectValue />
 											</SelectTrigger>
 											<SelectContent>
-												{catalogue?.services.map((service) => (
-													<SelectItem key={service.id} value={service.id}>
-														{service.name}
-													</SelectItem>
-												))}
+												<SelectGroup>
+													{catalogue?.services.map((service) => (
+														<SelectItem key={service.id} value={service.id}>
+															{service.name}
+														</SelectItem>
+													))}
+												</SelectGroup>
 											</SelectContent>
 										</Select>
 									</Field>
@@ -133,19 +138,21 @@ export function TicketClassificationForm({
 												<SelectValue />
 											</SelectTrigger>
 											<SelectContent>
-												{catalogue?.subcategories
-													.filter(
-														(subcategory) =>
-															subcategory.serviceId === serviceId,
-													)
-													.map((subcategory) => (
-														<SelectItem
-															key={subcategory.id}
-															value={subcategory.id}
-														>
-															{subcategory.name}
-														</SelectItem>
-													))}
+												<SelectGroup>
+													{catalogue?.subcategories
+														.filter(
+															(subcategory) =>
+																subcategory.serviceId === serviceId,
+														)
+														.map((subcategory) => (
+															<SelectItem
+																key={subcategory.id}
+																value={subcategory.id}
+															>
+																{subcategory.name}
+															</SelectItem>
+														))}
+												</SelectGroup>
 											</SelectContent>
 										</Select>
 									</Field>
@@ -173,11 +180,13 @@ export function TicketClassificationForm({
 											<SelectValue />
 										</SelectTrigger>
 										<SelectContent>
-											{levels.map((level) => (
-												<SelectItem key={level} value={level}>
-													{level}
-												</SelectItem>
-											))}
+											<SelectGroup>
+												{levels.map((level) => (
+													<SelectItem key={level} value={level}>
+														{level}
+													</SelectItem>
+												))}
+											</SelectGroup>
 										</SelectContent>
 									</Select>
 								</Field>

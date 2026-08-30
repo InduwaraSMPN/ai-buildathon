@@ -1,6 +1,7 @@
+import { RiNodeTree as Network } from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
-import { Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { orpc } from "@/utils/orpc";
 
 export function TicketImpact({ ticketId }: { ticketId: string }) {
@@ -8,37 +9,41 @@ export function TicketImpact({ ticketId }: { ticketId: string }) {
 		orpc.listTicketCmdbObjects.queryOptions({ input: { ticketId } }),
 	);
 	return (
-		<section className="rounded-xl border bg-card p-4 shadow-sm">
-			<div className="flex items-center gap-2">
-				<Network className="size-4" />
-				<h2 className="font-semibold text-xs uppercase tracking-wider">
+		<Card size="sm">
+			<CardHeader>
+				<CardTitle className="flex items-center gap-2">
+					<Network className="size-4" aria-hidden="true" />
 					CMDB impact
-				</h2>
-			</div>
-			{linked.isPending ? (
-				<p className="mt-3 text-muted-foreground text-sm">
-					Loading linked items…
-				</p>
-			) : null}
-			{linked.isError ? (
-				<div className="mt-3 flex items-center gap-2 text-sm">
-					<span>Impact unavailable.</span>
-					<Button size="sm" variant="outline" onClick={() => linked.refetch()}>
-						Retry
-					</Button>
+				</CardTitle>
+			</CardHeader>
+			<CardContent>
+				{linked.isPending ? (
+					<p className="text-muted-foreground text-sm">Loading linked items…</p>
+				) : null}
+				{linked.isError ? (
+					<div className="flex items-center gap-2 text-sm">
+						<span>Impact unavailable.</span>
+						<Button
+							size="sm"
+							variant="outline"
+							onClick={() => linked.refetch()}
+						>
+							Retry
+						</Button>
+					</div>
+				) : null}
+				{linked.data?.length === 0 ? (
+					<p className="text-muted-foreground text-sm">
+						No configuration items linked.
+					</p>
+				) : null}
+				<div className="space-y-3">
+					{linked.data?.map((object) => (
+						<ImpactBranch key={object.id} object={object} />
+					))}
 				</div>
-			) : null}
-			{linked.data?.length === 0 ? (
-				<p className="mt-3 text-muted-foreground text-sm">
-					No configuration items linked.
-				</p>
-			) : null}
-			<div className="mt-3 space-y-3">
-				{linked.data?.map((object) => (
-					<ImpactBranch key={object.id} object={object} />
-				))}
-			</div>
-		</section>
+			</CardContent>
+		</Card>
 	);
 }
 

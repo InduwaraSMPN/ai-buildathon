@@ -1,14 +1,12 @@
+import { RiArrowLeftLine } from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import {
-	formatDate,
-	PageHeader,
-	PageState,
-	StatusBadge,
-} from "@/components/support-ui";
+import { PageContainer } from "@/components/layout/page-container";
+import { formatDate, PageState, StatusBadge } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	Tooltip,
@@ -90,9 +88,44 @@ function TicketDetail({
 		}),
 	);
 	const [customFields, setCustomFields] = useState(ticket.customFields);
+	const customFieldsRef = useRef(customFields);
+	customFieldsRef.current = customFields;
+	const submittedCustomFields = useRef<Record<string, unknown> | null>(null);
+	const ticketIdRef = useRef(ticket.id);
+	const editedCustomFields = useRef(new Set<string>());
+	useEffect(() => {
+		if (ticketIdRef.current !== ticket.id) {
+			ticketIdRef.current = ticket.id;
+			editedCustomFields.current.clear();
+			setCustomFields(ticket.customFields);
+			return;
+		}
+		setCustomFields((current) =>
+			Object.fromEntries(
+				Array.from(
+					new Set([
+						...Object.keys(current),
+						...Object.keys(ticket.customFields),
+					]),
+					(key) => [
+						key,
+						editedCustomFields.current.has(key)
+							? current[key]
+							: ticket.customFields[key],
+					],
+				),
+			),
+		);
+	}, [ticket.id, ticket.customFields]);
 	const customFieldsMutation = useMutation(
 		orpc.setTicketDynamicFields.mutationOptions({
 			onSuccess: async () => {
+				for (const [key, submittedValue] of Object.entries(
+					submittedCustomFields.current ?? {},
+				))
+					if (Object.is(customFieldsRef.current[key], submittedValue))
+						editedCustomFields.current.delete(key);
+				submittedCustomFields.current = null;
 				await queryClient.invalidateQueries({
 					queryKey: orpc.getTicket.key({ input: { id: ticket.id } }),
 				});
@@ -114,79 +147,97 @@ function TicketDetail({
 		mutation.mutateAsync({ id: ticket.id, ...input } as UpdateTicketInput);
 
 	return (
-		<div className="space-y-5">
-			<PageHeader
-				eyebrow={`Ticket / ${ticket.number ?? ticket.id}`}
-				title={ticket.title}
-				description={`Reported by ${ticket.reporterName} · ${formatDate(ticket.createdAt)}`}
-				actions={
+		<PageContainer
+			title={ticket.title}
+			description={`Ticket / ${ticket.number ?? ticket.id} · Reported by ${ticket.reporterName} · ${formatDate(ticket.createdAt)}`}
+			action={
+				<div className="flex items-center gap-3">
+					<Link
+						to="/tickets"
+						className="inline-flex items-center gap-1 text-muted-foreground text-xs hover:text-foreground"
+					>
+						<RiArrowLeftLine aria-hidden="true" /> Back to queue
+					</Link>
 					<StatusBadge
 						status={ticket.status}
 						label={ticket.statusLabel}
 						stateType={ticket.statusStateType}
 					/>
-				}
-			/>
+				</div>
+			}
+		>
 			<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
-				<Tabs
-					defaultValue="conversation"
-					className="min-w-0 rounded-xl border bg-card p-4 shadow-sm"
-				>
-					<TabsList variant="line" aria-label="Ticket details">
-						<TabsTrigger value="conversation">Conversation</TabsTrigger>
-						<TabsTrigger value="transcript">Transcript</TabsTrigger>
-						<TabsTrigger value="request">Request</TabsTrigger>
-						<TabsTrigger value="activity">Activity</TabsTrigger>
-					</TabsList>
-					<TabsContent value="conversation" className="pt-4">
-						<TicketConversation
-							ticket={ticket}
-							canAttach={capabilities.includes("ticket.update")}
-						/>
-					</TabsContent>
-					<TabsContent value="transcript" className="pt-4">
-						<AgentTranscript
-							runs={ticket.runs}
-							ticketId={ticket.id}
-							status={ticket.status}
-						/>
-					</TabsContent>
-					<TabsContent value="request" className="pt-4">
-						<p className="whitespace-pre-wrap text-sm leading-6">
-							{ticket.body}
-						</p>
-					</TabsContent>
-					<TabsContent value="activity" className="pt-4">
-						<TicketActivity
-							ticket={ticket}
-							canEdit={capabilities.includes("ticket.reclassify")}
-						/>
-					</TabsContent>
-				</Tabs>
-				<aside className="space-y-4">
+				<Card className="min-w-0">
+					<Tabs defaultValue="conversation">
+						<CardHeader>
+							<TabsList variant="line" aria-label="Ticket details">
+								<TabsTrigger value="conversation">Conversation</TabsTrigger>
+								<TabsTrigger value="transcript">Transcript</TabsTrigger>
+								<TabsTrigger value="request">Request</TabsTrigger>
+								<TabsTrigger value="activity">Activity</TabsTrigger>
+							</TabsList>
+						</CardHeader>
+						<CardContent>
+							<TabsContent value="conversation">
+								<TicketConversation
+									ticket={ticket}
+									canAttach={capabilities.includes("ticket.update")}
+								/>
+							</TabsContent>
+							<TabsContent value="transcript">
+								<AgentTranscript
+									runs={ticket.runs}
+									ticketId={ticket.id}
+									status={ticket.status}
+								/>
+							</TabsContent>
+							<TabsContent value="request">
+								<p className="whitespace-pre-wrap text-sm leading-6">
+									{ticket.body}
+								</p>
+							</TabsContent>
+							<TabsContent value="activity">
+								<TicketActivity
+									ticket={ticket}
+									canEdit={capabilities.includes("ticket.reclassify")}
+								/>
+							</TabsContent>
+						</CardContent>
+					</Tabs>
+				</Card>
+				<aside className="flex flex-col gap-4">
 					<Metadata ticket={ticket} />
 					<SlaCountdown targets={sla.data ?? []} />
 					<DynamicFields
 						definitions={fieldDefinitions.data ?? []}
 						values={customFields}
-						onChange={setCustomFields}
-						onSave={() =>
-							customFieldsMutation.mutate({
-								ticketId: ticket.id,
-								values: serializeDynamicFields(
-									fieldDefinitions.data ?? [],
-									customFields,
-								),
-							})
-						}
+						onChange={(values) => {
+							for (const key of new Set([
+								...Object.keys(customFields),
+								...Object.keys(values),
+							]))
+								if (!Object.is(values[key], customFields[key]))
+									editedCustomFields.current.add(key);
+							setCustomFields(values);
+						}}
+						onSave={() => {
+							const values = serializeDynamicFields(
+								fieldDefinitions.data ?? [],
+								customFields,
+							);
+							submittedCustomFields.current = Object.fromEntries(
+								Object.keys(values).map((key) => [key, customFields[key]]),
+							);
+							customFieldsMutation.mutate({ ticketId: ticket.id, values });
+						}}
 						pending={customFieldsMutation.isPending}
 					/>
 					<TicketImpact ticketId={ticket.id} />
-					<section className="rounded-xl border bg-card p-4 shadow-sm">
-						<h2 className="mb-3 font-semibold text-xs uppercase tracking-wider">
-							Related service records
-						</h2>
-						<div className="space-y-2 text-sm">
+					<Card size="sm">
+						<CardHeader>
+							<CardTitle>Related service records</CardTitle>
+						</CardHeader>
+						<CardContent className="flex flex-col gap-2">
 							{serviceRecords.data?.problems.map((problem) => (
 								<Link
 									key={problem.id}
@@ -213,17 +264,19 @@ function TicketDetail({
 							!serviceRecords.data.changes.length
 								? "None linked"
 								: null}
-						</div>
-					</section>
-					<section className="rounded-xl border bg-card p-4 shadow-sm">
-						<h2 className="mb-3 font-semibold text-xs uppercase tracking-wider">
-							Attachments
-						</h2>
-						<TicketAttachments
-							targetId={ticket.id}
-							canEdit={capabilities.includes("ticket.update")}
-						/>
-					</section>
+						</CardContent>
+					</Card>
+					<Card size="sm">
+						<CardHeader>
+							<CardTitle>Attachments</CardTitle>
+						</CardHeader>
+						<CardContent>
+							<TicketAttachments
+								targetId={ticket.id}
+								canEdit={capabilities.includes("ticket.update")}
+							/>
+						</CardContent>
+					</Card>
 					<TicketActions
 						ticket={ticket}
 						capabilities={capabilities}
@@ -232,89 +285,93 @@ function TicketDetail({
 					/>
 				</aside>
 			</div>
-		</div>
+		</PageContainer>
 	);
 }
 
 function Metadata({ ticket }: { ticket: TicketDetailData }) {
 	return (
-		<section className="rounded-xl border bg-card p-4 shadow-sm">
-			<h2 className="font-semibold text-xs uppercase tracking-wider">
-				Metadata
-			</h2>
-			<dl className="mt-3 divide-y text-xs">
-				<Meta label="Reference">{ticket.number ?? ticket.id}</Meta>
-				<Meta label="Status">
-					<StatusBadge
-						status={ticket.status}
-						label={ticket.statusLabel}
-						stateType={ticket.statusStateType}
-					/>
-				</Meta>
-				<Meta label="Type">{label(ticket.recordType)}</Meta>
-				<Meta label="Priority">
-					<Tooltip>
-						<TooltipTrigger
-							render={<Badge variant="outline" className="cursor-help" />}
-						>
-							{ticket.priority}
-						</TooltipTrigger>
-						<TooltipContent>
-							Calculated from impact and urgency; change classification to
-							update it.
-						</TooltipContent>
-					</Tooltip>
-				</Meta>
-				<Meta label="Impact">{label(ticket.impact)}</Meta>
-				<Meta label="Urgency">{label(ticket.urgency)}</Meta>
-				<Meta label="Service">{ticket.serviceName}</Meta>
-				<Meta label="Service subcategory">{ticket.serviceSubcategoryName}</Meta>
-				<Meta label="Route">
-					{ticket.route ? label(ticket.route) : "Unassigned"}
-				</Meta>
-				<Meta label="Progress">
-					{ticket.progressMarker ? label(ticket.progressMarker) : "None"}
-				</Meta>
-				<Meta label="Reporter">{ticket.reporterName}</Meta>
-				<Meta label="Reporter ID">{ticket.reporterId}</Meta>
-				<Meta label="Device">
-					{ticket.deviceId ? (
-						<Link
-							to="/devices"
-							search={{ deviceId: ticket.deviceId }}
-							className="underline underline-offset-2"
-						>
-							{ticket.deviceId}
-						</Link>
-					) : (
-						"None linked"
-					)}
-				</Meta>
-				<Meta label="Created">
-					<time className="tabular-nums">{formatDate(ticket.createdAt)}</time>
-				</Meta>
-				<Meta label="Updated">
-					<time className="tabular-nums">{formatDate(ticket.updatedAt)}</time>
-				</Meta>
-				<Meta label="Resolved">
-					<span className="tabular-nums">
-						{ticket.resolvedAt ? formatDate(ticket.resolvedAt) : "—"}
-					</span>
-				</Meta>
-				<Meta label="Closed">
-					<span className="tabular-nums">
-						{ticket.closedAt ? formatDate(ticket.closedAt) : "—"}
-					</span>
-				</Meta>
-				<Meta label="Resolution">{ticket.resolution ?? "Pending"}</Meta>
-				<Meta label="Escalation">{ticket.escalationNote ?? "None"}</Meta>
-				<Meta label="Reopened">
-					<span className="tabular-nums">
-						{ticket.reopenedAt ? formatDate(ticket.reopenedAt) : "—"}
-					</span>
-				</Meta>
-			</dl>
-		</section>
+		<Card size="sm">
+			<CardHeader>
+				<CardTitle>Metadata</CardTitle>
+			</CardHeader>
+			<CardContent>
+				<dl className="divide-y text-xs">
+					<Meta label="Reference">{ticket.number ?? ticket.id}</Meta>
+					<Meta label="Status">
+						<StatusBadge
+							status={ticket.status}
+							label={ticket.statusLabel}
+							stateType={ticket.statusStateType}
+						/>
+					</Meta>
+					<Meta label="Type">{label(ticket.recordType)}</Meta>
+					<Meta label="Priority">
+						<Tooltip>
+							<TooltipTrigger
+								render={<Badge variant="outline" className="cursor-help" />}
+							>
+								{ticket.priority}
+							</TooltipTrigger>
+							<TooltipContent>
+								Calculated from impact and urgency; change classification to
+								update it.
+							</TooltipContent>
+						</Tooltip>
+					</Meta>
+					<Meta label="Impact">{label(ticket.impact)}</Meta>
+					<Meta label="Urgency">{label(ticket.urgency)}</Meta>
+					<Meta label="Service">{ticket.serviceName}</Meta>
+					<Meta label="Service subcategory">
+						{ticket.serviceSubcategoryName}
+					</Meta>
+					<Meta label="Route">
+						{ticket.route ? label(ticket.route) : "Unassigned"}
+					</Meta>
+					<Meta label="Progress">
+						{ticket.progressMarker ? label(ticket.progressMarker) : "None"}
+					</Meta>
+					<Meta label="Reporter">{ticket.reporterName}</Meta>
+					<Meta label="Reporter ID">{ticket.reporterId}</Meta>
+					<Meta label="Device">
+						{ticket.deviceId ? (
+							<Link
+								to="/devices"
+								search={{ deviceId: ticket.deviceId }}
+								className="underline underline-offset-2"
+							>
+								{ticket.deviceId}
+							</Link>
+						) : (
+							"None linked"
+						)}
+					</Meta>
+					<Meta label="Created">
+						<time className="tabular-nums">{formatDate(ticket.createdAt)}</time>
+					</Meta>
+					<Meta label="Updated">
+						<time className="tabular-nums">{formatDate(ticket.updatedAt)}</time>
+					</Meta>
+					<Meta label="Resolved">
+						<span className="tabular-nums">
+							{ticket.resolvedAt ? formatDate(ticket.resolvedAt) : "—"}
+						</span>
+					</Meta>
+					<Meta label="Closed">
+						<span className="tabular-nums">
+							{ticket.closedAt ? formatDate(ticket.closedAt) : "—"}
+						</span>
+					</Meta>
+					<Meta label="Resolution">{ticket.resolution ?? "Pending"}</Meta>
+					<Meta label="Escalation">{ticket.escalationNote ?? "None"}</Meta>
+					<Meta label="Reopened">
+						<span className="tabular-nums">
+							{ticket.reopenedAt ? formatDate(ticket.reopenedAt) : "—"}
+						</span>
+					</Meta>
+				</dl>
+			</CardContent>
+		</Card>
 	);
 }
 

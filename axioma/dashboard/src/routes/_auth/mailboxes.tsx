@@ -5,12 +5,21 @@ import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
 	Select,
 	SelectContent,
+	SelectGroup,
 	SelectItem,
 	SelectTrigger,
 	SelectValue,
@@ -88,80 +97,91 @@ function Mailboxes() {
 				<CardHeader>
 					<CardTitle>{id ? "Edit mailbox" : "New mailbox"}</CardTitle>
 				</CardHeader>
-				<CardContent className="grid gap-3 md:grid-cols-2">
-					<Input
-						aria-label="Mailbox name"
-						placeholder="Helpdesk"
-						value={name}
-						onChange={(event) => setName(event.target.value)}
-					/>
-					<Input
-						aria-label="Mailbox address"
-						type="email"
-						placeholder="help@example.com"
-						value={address}
-						onChange={(event) => setAddress(event.target.value)}
-					/>
-					<Select
-						value={ticketOrigin}
-						onValueChange={(value) => setTicketOrigin(value ?? "")}
-					>
-						<SelectTrigger className="w-full" aria-label="Ticket origin">
-							<SelectValue placeholder="Ticket origin" />
-						</SelectTrigger>
-						<SelectContent>
-							{origins.data.map((origin) => (
-								<SelectItem key={origin.id} value={origin.key}>
-									{origin.name}
-								</SelectItem>
-							))}
-						</SelectContent>
-					</Select>
-					<div className="flex items-center gap-2 text-sm">
-						<Checkbox
-							id="mailbox-enabled"
-							checked={enabled}
-							onCheckedChange={setEnabled}
-						/>
-						<label htmlFor="mailbox-enabled">Enabled</label>
-					</div>
-					<div className="flex gap-2 md:col-span-2">
-						<Button
-							disabled={
-								!name.trim() ||
-								!address.trim() ||
-								!ticketOrigin ||
-								save.isPending
-							}
-							onClick={() =>
-								save.mutate({ id, name, address, ticketOrigin, enabled })
-							}
-						>
-							{id ? "Save mailbox" : "Create mailbox"}
-						</Button>
-						{id && (
-							<Button variant="outline" onClick={reset}>
-								Cancel
+				<CardContent>
+					<FieldGroup className="grid md:grid-cols-2">
+						<Field>
+							<FieldLabel htmlFor="mailbox-name">Mailbox name</FieldLabel>
+							<Input
+								id="mailbox-name"
+								placeholder="Helpdesk"
+								value={name}
+								onChange={(event) => setName(event.target.value)}
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="mailbox-address">Mailbox address</FieldLabel>
+							<Input
+								id="mailbox-address"
+								type="email"
+								placeholder="help@example.com"
+								value={address}
+								onChange={(event) => setAddress(event.target.value)}
+							/>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="mailbox-origin">Ticket origin</FieldLabel>
+							<Select
+								value={ticketOrigin}
+								onValueChange={(value) => setTicketOrigin(value ?? "")}
+							>
+								<SelectTrigger id="mailbox-origin" className="w-full">
+									<SelectValue placeholder="Ticket origin" />
+								</SelectTrigger>
+								<SelectContent>
+									<SelectGroup>
+										{origins.data.map((origin) => (
+											<SelectItem key={origin.id} value={origin.key}>
+												{origin.name}
+											</SelectItem>
+										))}
+									</SelectGroup>
+								</SelectContent>
+							</Select>
+						</Field>
+						<Field orientation="horizontal">
+							<Checkbox
+								id="mailbox-enabled"
+								checked={enabled}
+								onCheckedChange={setEnabled}
+							/>
+							<FieldLabel htmlFor="mailbox-enabled">Enabled</FieldLabel>
+						</Field>
+						<div className="flex gap-2 md:col-span-2">
+							<Button
+								disabled={
+									!name.trim() ||
+									!address.trim() ||
+									!ticketOrigin ||
+									save.isPending
+								}
+								onClick={() =>
+									save.mutate({ id, name, address, ticketOrigin, enabled })
+								}
+							>
+								{id ? "Save mailbox" : "Create mailbox"}
 							</Button>
-						)}
-					</div>
+							{id && (
+								<Button variant="outline" onClick={reset}>
+									Cancel
+								</Button>
+							)}
+						</div>
+					</FieldGroup>
 				</CardContent>
 			</Card>
 			<div className="grid gap-3">
 				{mailboxes.data.map((mailbox) => (
 					<Card key={mailbox.id}>
-						<CardContent className="flex items-start justify-between gap-4 p-4">
-							<div>
-								<p className="font-medium">{mailbox.name}</p>
-								<p className="text-muted-foreground text-sm">
-									{mailbox.address} ·{" "}
-									{origins.data.find(
-										(origin) => origin.key === mailbox.ticketOrigin,
-									)?.name ?? mailbox.ticketOrigin}{" "}
-									· {mailbox.enabled ? "Enabled" : "Disabled"}
-								</p>
-							</div>
-							<div className="flex gap-2">
+						<CardHeader>
+							<CardTitle>{mailbox.name}</CardTitle>
+							<CardDescription>
+								{mailbox.address} ·{" "}
+								{origins.data.find(
+									(origin) => origin.key === mailbox.ticketOrigin,
+								)?.name ?? mailbox.ticketOrigin}{" "}
+								· {mailbox.enabled ? "Enabled" : "Disabled"}
+							</CardDescription>
+							<CardAction className="flex gap-2">
 								<Button
 									variant="outline"
 									onClick={() => {
@@ -181,8 +201,8 @@ function Mailboxes() {
 								>
 									Delete
 								</Button>
-							</div>
-						</CardContent>
+							</CardAction>
+						</CardHeader>
 					</Card>
 				))}
 			</div>

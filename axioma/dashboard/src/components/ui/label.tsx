@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils";
 
 function Label({ className, ...props }: React.ComponentProps<"label">) {
 	return (
-		// biome-ignore lint/a11y/noLabelWithoutControl: The caller supplies htmlFor or nests the associated control.
+		// Consumers associate this primitive through htmlFor or nested controls.
+		// biome-ignore lint/a11y/noLabelWithoutControl: Association is supplied through the forwarded props and children.
 		<label
 			data-slot="label"
 			className={cn(

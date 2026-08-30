@@ -1,3 +1,4 @@
+import { RiArrowUpDownLine as ArrowUpDown } from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
 import {
 	createColumnHelper,
@@ -9,7 +10,6 @@ import {
 	type SortingState,
 	useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpDown } from "lucide-react";
 import { useState } from "react";
 import { PageState, timeAgo } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,7 @@ const columns = [
 				<div>
 					<p className="flex items-center gap-2 font-medium">
 						<span
-							className={`size-2 rounded-full ${online ? "bg-emerald-500" : "bg-muted-foreground/50"}`}
+							className={`size-2 rounded-full ${online ? "bg-success" : "bg-muted-foreground/50"}`}
 							aria-hidden="true"
 						/>
 						{row.original.hostname}

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { allowedActions } from "./allowed-actions.ts";
+import { allowedActions, ticketStatusTone } from "./allowed-actions.ts";
 
 const now = Date.UTC(2026, 7, 29);
 const ticket = (
@@ -40,7 +40,7 @@ assert.deepEqual(allowedActions(ticket("Resolved", "resolved"), all, now), [
 	"reclassify",
 ]);
 assert.deepEqual(allowedActions(ticket("Escalated", "open"), all, now), [
-	"close",
+	"resolve",
 	"escalate",
 	"assign",
 	"reclassify",
@@ -74,9 +74,28 @@ assert.deepEqual(
 	["resolve"],
 );
 assert.deepEqual(allowedActions(ticket("Open", "new"), [], now), []);
-assert.deepEqual(allowedActions(ticket("Unknown", "open"), all, now), []);
+assert.deepEqual(allowedActions(ticket("Renamed by admin", "open"), all, now), [
+	"resolve",
+	"escalate",
+	"assign",
+	"reclassify",
+]);
+assert.deepEqual(allowedActions(ticket("Anything", "merged"), all, now), []);
+assert.deepEqual(allowedActions(ticket("Anything", "cancelled"), all, now), []);
 assert.ok(
 	!allowedActions(ticket("Resolving", "open"), all, now).includes("add_detail"),
 );
+for (const stateType of [
+	"new",
+	"open",
+	"pending",
+	"resolved",
+	"closed",
+	"merged",
+	"cancelled",
+]) {
+	assert.ok(ticketStatusTone(stateType), `${stateType} must have a tone`);
+}
+assert.equal(ticketStatusTone("unknown"), undefined);
 
 console.log("ticket allowed-actions validation passed");

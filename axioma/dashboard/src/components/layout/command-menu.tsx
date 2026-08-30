@@ -1,6 +1,6 @@
+import { RiFileSearchLine as FileSearch } from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { FileSearch } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +34,11 @@ export function CommandMenu({
 }) {
 	const navigate = useNavigate();
 	const [search, setSearch] = useState("");
-	const query = search.trim();
+	const [query, setQuery] = useState("");
+	useEffect(() => {
+		const timer = window.setTimeout(() => setQuery(search.trim()), 300);
+		return () => window.clearTimeout(timer);
+	}, [search]);
 	const results = useQuery({
 		...orpc.search.queryOptions({ input: { query, limit: 40, offset: 0 } }),
 		enabled: open && query.length > 0,
@@ -81,7 +85,7 @@ export function CommandMenu({
 					</span>
 				</div>
 				<CommandList>
-					{!query ? (
+					{!search.trim() ? (
 						<>
 							<p className="py-4 text-center text-muted-foreground text-sm">
 								Type to search records.

@@ -1,5 +1,5 @@
+import { RiSearchLine as Search } from "@remixicon/react";
 import { Link } from "@tanstack/react-router";
-import { Search } from "lucide-react";
 import { Fragment } from "react";
 import { ModeToggle } from "@/components/mode-toggle";
 import {

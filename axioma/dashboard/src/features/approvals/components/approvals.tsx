@@ -1,4 +1,5 @@
 import { PageContainer } from "@/components/layout/page-container";
+import { PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,9 +54,11 @@ export function ApprovalList({
 }) {
 	if (approvals.length === 0)
 		return (
-			<p className="py-12 text-center text-muted-foreground text-sm">
-				No approvals found.
-			</p>
+			<PageState
+				kind="empty"
+				title="No approvals found"
+				description="Approval requests will appear here when they need a decision."
+			/>
 		);
 	return (
 		<div className="border">

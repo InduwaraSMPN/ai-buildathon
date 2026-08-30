@@ -12,6 +12,7 @@ export function createQueryClient() {
 		queryCache: new QueryCache({
 			onError: (error, query) => {
 				toast.error(`Error: ${error.message}`, {
+					id: `query-error:${query.queryHash}`,
 					action: {
 						label: "retry",
 						onClick: () => {

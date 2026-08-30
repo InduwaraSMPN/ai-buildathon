@@ -4,6 +4,7 @@
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { STATE_TYPES } from "../shared";
 import { id, impact, jsonRecord, nullableId, priority } from "./shared";
 
 const runStatus = z.enum([
@@ -250,7 +251,8 @@ const ticket = z.object({
 	serviceSubcategoryName: z.string(),
 	status: ticketStatus,
 	statusLabel: z.string(),
-	statusStateType: z.string(),
+	statusStateType: z.enum(STATE_TYPES),
+	// Admin-editable presentation metadata; clients intentionally derive semantics from statusStateType.
 	statusColour: z.string().nullable(),
 	route: ticketRoute.nullable(),
 	resolution: z.string().nullable(),
@@ -307,6 +309,7 @@ export const ticketsContract = {
 	createTicket: oc
 		.input(
 			z.object({
+				idempotencyKey: z.uuid(),
 				title: z.string().trim().min(3).max(160),
 				body: z.string().trim().min(10).max(10_000),
 				recordType: recordType.default("incident"),

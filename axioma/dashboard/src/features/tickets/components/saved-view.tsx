@@ -1,7 +1,19 @@
+import { RiAddLine as Plus, RiDeleteBinLine as Trash2 } from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { orpc } from "@/utils/orpc";
 import {
 	normalizeTicketQueueSearch,
@@ -29,6 +41,8 @@ export function SavedViews({
 	onSelect: (search: TicketQueueSearch) => void;
 }) {
 	const queryClient = useQueryClient();
+	const [saveOpen, setSaveOpen] = useState(false);
+	const [name, setName] = useState("");
 	const views = useQuery(orpc.listSavedViews.queryOptions());
 	const invalidate = () =>
 		queryClient.invalidateQueries({ queryKey: orpc.listSavedViews.key() });
@@ -43,11 +57,17 @@ export function SavedViews({
 			(view) => !view.objectType || view.objectType === "ticket",
 		) ?? [];
 	const save = () => {
-		const name = window.prompt("View name")?.trim();
-		if (!name) return;
+		const viewName = name.trim();
+		if (!viewName) return;
 		create.mutate(
-			{ name, objectType: "ticket", filters: clean(active) },
-			{ onSuccess: () => toast.success("View saved") },
+			{ name: viewName, objectType: "ticket", filters: clean(active) },
+			{
+				onSuccess: () => {
+					toast.success("View saved");
+					setSaveOpen(false);
+					setName("");
+				},
+			},
 		);
 	};
 
@@ -116,11 +136,52 @@ export function SavedViews({
 			<Button
 				variant="outline"
 				size="sm"
-				onClick={save}
+				onClick={() => setSaveOpen(true)}
 				disabled={create.isPending}
 			>
-				<Plus /> Save view
+				<Plus data-icon="inline-start" /> Save view
 			</Button>
+			<Dialog
+				open={saveOpen}
+				onOpenChange={(open) => {
+					setSaveOpen(open);
+					if (!open && !create.isPending) setName("");
+				}}
+			>
+				<DialogContent>
+					<form
+						className="contents"
+						onSubmit={(event) => {
+							event.preventDefault();
+							save();
+						}}
+					>
+						<DialogHeader>
+							<DialogTitle>Save queue view</DialogTitle>
+							<DialogDescription>
+								Name the current queue filters so you can return to them later.
+							</DialogDescription>
+						</DialogHeader>
+						<Field>
+							<FieldLabel htmlFor="saved-view-name">View name</FieldLabel>
+							<Input
+								id="saved-view-name"
+								value={name}
+								onChange={(event) => setName(event.target.value)}
+								autoFocus
+							/>
+						</Field>
+						<DialogFooter>
+							<DialogClose render={<Button variant="outline" type="button" />}>
+								Cancel
+							</DialogClose>
+							<Button type="submit" disabled={!name.trim() || create.isPending}>
+								Save view
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
 		</nav>
 	);
 }

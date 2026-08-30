@@ -1,6 +1,12 @@
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@/components/ui/empty";
 
 export type SupplierRow = {
 	id: string;
@@ -89,7 +95,12 @@ function SimpleList({
 						))}
 					</ul>
 				) : (
-					<p className="text-muted-foreground text-sm">{empty}</p>
+					<Empty className="border">
+						<EmptyHeader>
+							<EmptyTitle>No {title.toLowerCase()} found</EmptyTitle>
+							<EmptyDescription>{empty}</EmptyDescription>
+						</EmptyHeader>
+					</Empty>
 				)}
 			</CardContent>
 		</Card>

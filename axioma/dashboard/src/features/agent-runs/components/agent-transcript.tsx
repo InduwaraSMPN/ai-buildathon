@@ -1,8 +1,21 @@
+import {
+	RiErrorWarningLine as AlertTriangle,
+	RiFileCopyLine as Copy,
+	RiInbox2Line as Inbox,
+	RiPlayLine as Play,
+	RiRestartLine as RotateCcw,
+	RiStopLine as Square,
+} from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, Play, RotateCcw, Square } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { PageState, StatusBadge } from "@/components/support-ui";
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@/components/ui/alert";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -15,7 +28,14 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import type { TicketStatus } from "@/features/tickets/api/types";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import type { TicketDetail, TicketStatus } from "@/features/tickets/api/types";
 import { invalidateTicketQueries } from "@/features/tickets/query-behavior";
 import { orpc } from "@/utils/orpc";
 import type { AgentRun } from "../api/types";
@@ -28,12 +48,19 @@ export function AgentTranscript({
 	runs,
 	ticketId,
 	status,
+	escalationFlag,
 }: {
 	runs: AgentRun[];
 	ticketId: string;
 	status: TicketStatus;
+	escalationFlag?: TicketDetail["escalationFlag"];
 }) {
 	const queryClient = useQueryClient();
+	const ticketQuery = useQuery(
+		orpc.getTicket.queryOptions({ input: { id: ticketId } }),
+	);
+	const ticketEscalationFlag =
+		escalationFlag ?? ticketQuery.data?.escalationFlag ?? "none";
 	const [selectedId, setSelectedId] = useState<string>();
 	const listedRun = runs.find((run) => run.id === selectedId) ?? runs[0];
 	const queriedId = selectedId ?? listedRun?.id ?? "";
@@ -99,9 +126,9 @@ export function AgentTranscript({
 		try {
 			await cancelMutation.mutateAsync({
 				id: selectedRun.id,
-				reason: "Cancelled by dashboard operator",
+				reason: "Taken over by dashboard operator",
 			});
-			toast.success("Agent run cancelled");
+			toast.success("Agent run stopped for operator takeover");
 		} catch (error) {
 			toast.error(
 				error instanceof Error ? error.message : "Could not cancel run",
@@ -128,23 +155,21 @@ export function AgentTranscript({
 		);
 	if (!selectedRun)
 		return (
-			<div className="relative">
-				<PageState
-					kind="empty"
-					title="No agent activity"
-					description="No run attempts are available."
-				/>
+			<Empty className="min-h-64 border" role="status">
+				<EmptyHeader>
+					<EmptyMedia variant="icon">
+						<Inbox />
+					</EmptyMedia>
+					<EmptyTitle>No agent activity</EmptyTitle>
+					<EmptyDescription>No run attempts are available.</EmptyDescription>
+				</EmptyHeader>
 				{status === "open" && (
-					<Button
-						className="absolute bottom-12 left-1/2 -translate-x-1/2"
-						disabled={startMutation.isPending}
-						onClick={startRun}
-					>
-						<Play aria-hidden="true" />
+					<Button disabled={startMutation.isPending} onClick={startRun}>
+						<Play data-icon="inline-start" aria-hidden="true" />
 						{startMutation.isPending ? "Starting…" : "Start agent run"}
 					</Button>
 				)}
-			</div>
+			</Empty>
 		);
 
 	const steps = selectedRun.steps.toSorted((a, b) => a.ordinal - b.ordinal);
@@ -175,12 +200,12 @@ export function AgentTranscript({
 							disabled={startMutation.isPending}
 							onClick={startRun}
 						>
-							<RotateCcw aria-hidden="true" />{" "}
+							<RotateCcw data-icon="inline-start" aria-hidden="true" />
 							{startMutation.isPending ? "Starting…" : "Rerun"}
 						</Button>
 					)}
 					{selectedRun.status === "running" && (
-						<CancelRunButton
+						<TakeoverButton
 							pending={cancelMutation.isPending}
 							onConfirm={cancel}
 						/>
@@ -197,7 +222,12 @@ export function AgentTranscript({
 				Selected run {selectedRun.id}, {selectedRun.status}, {steps.length}{" "}
 				steps.
 			</p>
-			{escalation && <EscalationProposal details={escalation} />}
+			{(selectedRun.status === "escalated" || escalation) && (
+				<EscalationProposal details={escalation} />
+			)}
+			{ticketEscalationFlag !== "none" && (
+				<TicketEscalationAlert escalationFlag={ticketEscalationFlag} />
+			)}
 			{steps.length ? (
 				<ol className="mt-3 overflow-hidden border bg-card">
 					{steps.map((step, index) => (
@@ -205,15 +235,23 @@ export function AgentTranscript({
 					))}
 				</ol>
 			) : (
-				<p className="mt-3 border border-dashed p-6 text-center text-muted-foreground text-xs">
-					This run has no transcript steps yet.
-				</p>
+				<Empty className="mt-3 border" role="status">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Inbox />
+						</EmptyMedia>
+						<EmptyTitle>No transcript steps</EmptyTitle>
+						<EmptyDescription>
+							This run has no transcript steps yet.
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			)}
 		</section>
 	);
 }
 
-function CancelRunButton({
+function TakeoverButton({
 	pending,
 	onConfirm,
 }: {
@@ -226,18 +264,18 @@ function CancelRunButton({
 			<AlertDialogTrigger
 				render={<Button size="sm" variant="destructive" disabled={pending} />}
 			>
-				<Square aria-hidden="true" /> {pending ? "Cancelling…" : "Cancel run"}
+				<Square aria-hidden="true" /> {pending ? "Taking over…" : "Take over"}
 			</AlertDialogTrigger>
 			<AlertDialogContent>
 				<AlertDialogHeader>
-					<AlertDialogTitle>Cancel this agent run?</AlertDialogTitle>
+					<AlertDialogTitle>Take over this agent run?</AlertDialogTitle>
 					<AlertDialogDescription>
-						The agent will stop after its current operation. This cannot be
-						undone.
+						The agent will stop after its current operation so you can continue
+						handling the ticket manually.
 					</AlertDialogDescription>
 				</AlertDialogHeader>
 				<AlertDialogFooter>
-					<AlertDialogCancel>Keep running</AlertDialogCancel>
+					<AlertDialogCancel>Keep agent running</AlertDialogCancel>
 					<AlertDialogAction
 						variant="destructive"
 						onClick={() => {
@@ -245,7 +283,7 @@ function CancelRunButton({
 							onConfirm();
 						}}
 					>
-						Cancel run
+						Take over
 					</AlertDialogAction>
 				</AlertDialogFooter>
 			</AlertDialogContent>
@@ -253,8 +291,34 @@ function CancelRunButton({
 	);
 }
 
-function EscalationProposal({ details }: { details: EscalationDetails }) {
-	const patch = details.patchLines.join("\n");
+function TicketEscalationAlert({
+	escalationFlag,
+}: {
+	escalationFlag: Exclude<TicketDetail["escalationFlag"], "none">;
+}) {
+	const breached = escalationFlag === "breach";
+	return (
+		<Alert
+			variant={breached ? "destructive" : "default"}
+			className={breached ? "mt-3" : "mt-3 border-warning/40 bg-warning/10"}
+		>
+			<AlertTriangle aria-hidden="true" />
+			<AlertTitle>
+				{breached ? "Ticket escalation breached" : "Ticket escalation warning"}
+			</AlertTitle>
+			<AlertDescription>
+				This ticket's escalation flag is {escalationFlag}.
+			</AlertDescription>
+		</Alert>
+	);
+}
+
+function EscalationProposal({
+	details,
+}: {
+	details: EscalationDetails | null;
+}) {
+	const patch = details?.patchLines.join("\n") ?? "";
 	const copy = async () => {
 		try {
 			await navigator.clipboard.writeText(patch);
@@ -265,55 +329,56 @@ function EscalationProposal({ details }: { details: EscalationDetails }) {
 	};
 
 	return (
-		<section
-			className="mt-3 border-2 border-orange-500/40 bg-orange-500/5 p-4"
-			aria-labelledby="escalation-proposal-heading"
-		>
-			<div className="flex items-center justify-between gap-3">
-				<div>
-					<p className="text-[10px] text-orange-700 uppercase tracking-wider dark:text-orange-300">
-						Escalated run
-					</p>
-					<h3
-						id="escalation-proposal-heading"
-						className="font-semibold text-sm"
-					>
-						Scheduler capacity escalation
-					</h3>
-				</div>
-				{patch && (
-					<Button variant="outline" size="sm" onClick={copy}>
-						<Copy aria-hidden="true" /> Copy patch
-					</Button>
+		<Alert className="mt-3 border-warning/40 bg-warning/10">
+			<AlertTriangle aria-hidden="true" />
+			<AlertTitle>Scheduler capacity escalation</AlertTitle>
+			<AlertDescription>
+				<p className="text-[10px] text-warning uppercase tracking-wider">
+					Escalated run
+				</p>
+				{details?.schedulerMessage && (
+					<div className="mt-3">
+						<p className="mb-1.5 font-medium text-[10px] uppercase tracking-wider">
+							Scheduler message — quoted verbatim
+						</p>
+						<blockquote className="border-warning border-l-2 pl-3 text-foreground text-xs leading-5">
+							“{details.schedulerMessage}”
+						</blockquote>
+					</div>
 				)}
-			</div>
-			{details.schedulerMessage && (
-				<div className="mt-3">
-					<p className="mb-1.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-						Scheduler message — quoted verbatim
-					</p>
-					<blockquote className="border-orange-500 border-l-2 pl-3 text-xs leading-5">
-						“{details.schedulerMessage}”
-					</blockquote>
-				</div>
-			)}
+				{patch && details && (
+					<div className="mt-3">
+						<p className="mb-1.5 font-medium text-[10px] uppercase tracking-wider">
+							Proposed patch
+						</p>
+						<pre className="overflow-x-auto whitespace-pre-wrap break-words border bg-background p-3 font-mono text-xs leading-5">
+							{details.patchLines.map((line, index) => (
+								<span
+									// biome-ignore lint/suspicious/noArrayIndexKey: diff lines can repeat.
+									key={`${index}-${line}`}
+									className={
+										line.startsWith("+")
+											? "block text-success"
+											: line.startsWith("-")
+												? "block text-destructive"
+												: "block text-muted-foreground"
+									}
+								>
+									{line}
+								</span>
+							))}
+						</pre>
+					</div>
+				)}
+			</AlertDescription>
 			{patch && (
-				<div className="mt-3">
-					<p className="mb-1.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
-						Proposed patch
-					</p>
-					<pre className="overflow-x-auto whitespace-pre-wrap break-words border bg-background/70 p-3 font-mono text-xs leading-5">
-						{details.patchLines.map((line) => (
-							<span
-								key={line}
-								className={`block ${line.startsWith("+") ? "text-emerald-700 dark:text-emerald-300" : "text-red-700 dark:text-red-300"}`}
-							>
-								{line}
-							</span>
-						))}
-					</pre>
-				</div>
+				<AlertAction>
+					<Button variant="outline" size="sm" onClick={copy}>
+						<Copy data-icon="inline-start" aria-hidden="true" />
+						Copy patch
+					</Button>
+				</AlertAction>
 			)}
-		</section>
+		</Alert>
 	);
 }

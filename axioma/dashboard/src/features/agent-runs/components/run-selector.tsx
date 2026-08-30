@@ -1,4 +1,5 @@
 import { formatDate, StatusBadge } from "@/components/support-ui";
+import { Item, ItemContent, ItemGroup } from "@/components/ui/item";
 import type { AgentRun } from "../api/types";
 
 export function RunSelector({
@@ -11,37 +12,43 @@ export function RunSelector({
 	onSelect: (id: string) => void;
 }) {
 	return (
-		<fieldset className="grid gap-2 sm:grid-cols-2">
+		<fieldset>
 			<legend className="sr-only">Run attempts</legend>
-			{runs.map((run, index) => {
-				const selected = run.id === selectedId;
-				return (
-					<button
-						key={run.id}
-						type="button"
-						aria-pressed={selected}
-						className={`border p-3 text-left text-xs transition-colors ${selected ? "border-foreground bg-muted" : "bg-card hover:bg-muted/50"}`}
-						onClick={() => onSelect(run.id)}
-					>
-						<span className="flex items-center justify-between gap-2">
-							<strong className="tabular-nums">
-								Attempt {runs.length - index}
-							</strong>
-							<StatusBadge status={run.status} />
-						</span>
-						<span className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
-							<span>{run.model ?? "Unknown model"}</span>
-							<span className="text-right tabular-nums">
-								{formatDuration(run)}
-							</span>
-							<span className="tabular-nums">{formatTokens(run)} tokens</span>
-							<time className="text-right tabular-nums">
-								{formatDate(run.startedAt)}
-							</time>
-						</span>
-					</button>
-				);
-			})}
+			<ItemGroup className="grid gap-2 sm:grid-cols-2">
+				{runs.map((run, index) => {
+					const selected = run.id === selectedId;
+					return (
+						<Item
+							key={run.id}
+							render={<button type="button" />}
+							variant={selected ? "muted" : "outline"}
+							aria-pressed={selected}
+							onClick={() => onSelect(run.id)}
+						>
+							<ItemContent className="text-xs">
+								<span className="flex items-center justify-between gap-2">
+									<strong className="tabular-nums">
+										Attempt {runs.length - index}
+									</strong>
+									<StatusBadge status={run.status} />
+								</span>
+								<span className="grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
+									<span>{run.model ?? "Unknown model"}</span>
+									<span className="text-right tabular-nums">
+										{formatDuration(run)}
+									</span>
+									<span className="tabular-nums">
+										{formatTokens(run)} tokens
+									</span>
+									<time className="text-right tabular-nums">
+										{formatDate(run.startedAt)}
+									</time>
+								</span>
+							</ItemContent>
+						</Item>
+					);
+				})}
+			</ItemGroup>
 		</fieldset>
 	);
 }

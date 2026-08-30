@@ -9,7 +9,13 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from "@/components/ui/native-select";
 import {
 	Table,
 	TableBody,
@@ -18,6 +24,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 
 export type ChangeSummary = {
 	id: string;
@@ -90,7 +97,6 @@ export function ChangeEditor({
 }) {
 	return (
 		<form
-			className="grid gap-2 sm:grid-cols-2"
 			onSubmit={(event) => {
 				event.preventDefault();
 				const data = new FormData(event.currentTarget);
@@ -105,17 +111,37 @@ export function ChangeEditor({
 				});
 			}}
 		>
-			<Input name="title" placeholder="Change title" required minLength={3} />
-			<select name="changeType" className="h-9 border bg-background px-2">
-				<option value="normal">Normal</option>
-				<option value="emergency">Emergency</option>
-			</select>
-			<Input name="description" placeholder="Description" />
-			<Input name="reasonForChange" placeholder="Reason for change" required />
-			<Input name="testPlan" placeholder="Test plan" required />
-			<Input name="rollbackPlan" placeholder="Rollback plan" required />
-			<input type="hidden" name="cabMemberIds" value={cabMemberId ?? ""} />
-			<Button disabled={pending}>Create change</Button>
+			<FieldGroup className="grid sm:grid-cols-2">
+				<Field>
+					<FieldLabel htmlFor="change-title">Title</FieldLabel>
+					<Input id="change-title" name="title" required minLength={3} />
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="change-type">Type</FieldLabel>
+					<NativeSelect id="change-type" name="changeType" className="w-full">
+						<NativeSelectOption value="normal">Normal</NativeSelectOption>
+						<NativeSelectOption value="emergency">Emergency</NativeSelectOption>
+					</NativeSelect>
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="change-description">Description</FieldLabel>
+					<Input id="change-description" name="description" />
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="change-reason">Reason for change</FieldLabel>
+					<Input id="change-reason" name="reasonForChange" required />
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="change-test-plan">Test plan</FieldLabel>
+					<Input id="change-test-plan" name="testPlan" required />
+				</Field>
+				<Field>
+					<FieldLabel htmlFor="change-rollback-plan">Rollback plan</FieldLabel>
+					<Input id="change-rollback-plan" name="rollbackPlan" required />
+				</Field>
+				<input type="hidden" name="cabMemberIds" value={cabMemberId ?? ""} />
+				<Button disabled={pending}>Create change</Button>
+			</FieldGroup>
 		</form>
 	);
 }
@@ -158,9 +184,11 @@ export function ChangeList({
 }) {
 	if (changes.length === 0)
 		return (
-			<p className="py-12 text-center text-muted-foreground text-sm">
-				No changes found.
-			</p>
+			<Empty>
+				<EmptyHeader>
+					<EmptyTitle>No changes found</EmptyTitle>
+				</EmptyHeader>
+			</Empty>
 		);
 	return (
 		<div className="border">
@@ -178,8 +206,23 @@ export function ChangeList({
 					{changes.map((change) => (
 						<TableRow
 							key={change.id}
-							className={onSelect ? "cursor-pointer" : undefined}
+							role={onSelect ? "button" : undefined}
+							tabIndex={onSelect ? 0 : undefined}
+							className={
+								onSelect
+									? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+									: undefined
+							}
 							onClick={() => onSelect?.(change)}
+							onKeyDown={(event) => {
+								if (onSelect && (event.key === "Enter" || event.key === " ")) {
+									event.preventDefault();
+									onSelect(change);
+								}
+							}}
+							aria-label={
+								onSelect ? `View ${change.title} change details` : undefined
+							}
 						>
 							<TableCell>
 								<div className="font-medium">{change.title}</div>
@@ -280,7 +323,6 @@ export function ChangeDetailView({
 					<Section title="PIR follow-up" value={change.pirFollowUp} />
 					{onUpdate ? (
 						<form
-							className="space-y-2"
 							onSubmit={(event) => {
 								event.preventDefault();
 								const data = new FormData(event.currentTarget);
@@ -297,51 +339,73 @@ export function ChangeDetailView({
 								});
 							}}
 						>
-							<select
-								name="successful"
-								defaultValue={
-									change.pirWasSuccessful === false ? "false" : "true"
-								}
-								className="h-8 border bg-background px-2"
-							>
-								<option value="true">Successful</option>
-								<option value="false">Unsuccessful</option>
-							</select>
-							<input
-								name="start"
-								type="datetime-local"
-								defaultValue={
-									change.pirActualStartAt
-										? new Date(change.pirActualStartAt)
-												.toISOString()
-												.slice(0, 16)
-										: ""
-								}
-								className="h-8 border px-2"
-							/>
-							<input
-								name="end"
-								type="datetime-local"
-								defaultValue={
-									change.pirActualEndAt
-										? new Date(change.pirActualEndAt).toISOString().slice(0, 16)
-										: ""
-								}
-								className="h-8 border px-2"
-							/>
-							<textarea
-								name="lessons"
-								defaultValue={change.pirLessonsLearned ?? ""}
-								placeholder="Lessons learned"
-								className="w-full border p-2"
-							/>
-							<textarea
-								name="followUp"
-								defaultValue={change.pirFollowUp ?? ""}
-								placeholder="Follow-up"
-								className="w-full border p-2"
-							/>
-							<Button disabled={pending}>Save PIR</Button>
+							<FieldGroup>
+								<Field>
+									<FieldLabel htmlFor="pir-successful">Outcome</FieldLabel>
+									<NativeSelect
+										id="pir-successful"
+										name="successful"
+										defaultValue={
+											change.pirWasSuccessful === false ? "false" : "true"
+										}
+										className="w-full"
+									>
+										<NativeSelectOption value="true">
+											Successful
+										</NativeSelectOption>
+										<NativeSelectOption value="false">
+											Unsuccessful
+										</NativeSelectOption>
+									</NativeSelect>
+								</Field>
+								<Field>
+									<FieldLabel htmlFor="pir-start">Actual start</FieldLabel>
+									<Input
+										id="pir-start"
+										name="start"
+										type="datetime-local"
+										defaultValue={
+											change.pirActualStartAt
+												? new Date(change.pirActualStartAt)
+														.toISOString()
+														.slice(0, 16)
+												: ""
+										}
+									/>
+								</Field>
+								<Field>
+									<FieldLabel htmlFor="pir-end">Actual end</FieldLabel>
+									<Input
+										id="pir-end"
+										name="end"
+										type="datetime-local"
+										defaultValue={
+											change.pirActualEndAt
+												? new Date(change.pirActualEndAt)
+														.toISOString()
+														.slice(0, 16)
+												: ""
+										}
+									/>
+								</Field>
+								<Field>
+									<FieldLabel htmlFor="pir-lessons">Lessons learned</FieldLabel>
+									<Textarea
+										id="pir-lessons"
+										name="lessons"
+										defaultValue={change.pirLessonsLearned ?? ""}
+									/>
+								</Field>
+								<Field>
+									<FieldLabel htmlFor="pir-follow-up">Follow-up</FieldLabel>
+									<Textarea
+										id="pir-follow-up"
+										name="followUp"
+										defaultValue={change.pirFollowUp ?? ""}
+									/>
+								</Field>
+								<Button disabled={pending}>Save PIR</Button>
+							</FieldGroup>
 						</form>
 					) : null}
 				</CardContent>
@@ -384,7 +448,11 @@ export function ChangeDetailView({
 							))}
 						</ul>
 					) : (
-						<p className="text-muted-foreground">No CAB members.</p>
+						<Empty>
+							<EmptyHeader>
+								<EmptyTitle>No CAB members</EmptyTitle>
+							</EmptyHeader>
+						</Empty>
 					)}
 				</CardContent>
 			</Card>

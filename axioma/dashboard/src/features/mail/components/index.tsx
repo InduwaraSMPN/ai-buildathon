@@ -1,6 +1,14 @@
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
 
 export type MailLogRow = {
 	id: string;
@@ -18,6 +26,17 @@ export type MailboxActivityRow = {
 	createdAt: Date;
 };
 
+function decisionLabel(decision: string) {
+	const labels: Record<string, string> = {
+		threaded: "Threaded",
+		ticket_created: "Ticket created",
+		auto_reply_suppressed: "Auto-reply suppressed",
+		duplicate_ignored: "Duplicate ignored",
+		failed: "Failed",
+	};
+	return labels[decision] ?? (decision || "Unknown decision");
+}
+
 export function MailLogPage({
 	entries,
 	activity,
@@ -31,38 +50,36 @@ export function MailLogPage({
 			description="Inspect successful and failed delivery attempts."
 		>
 			{entries.length ? (
-				<div className="overflow-x-auto border">
-					<table className="w-full text-left text-sm">
-						<thead>
-							<tr className="border-b">
-								<th className="p-3">Attempted</th>
-								<th className="p-3">Recipient</th>
-								<th className="p-3">Subject</th>
-								<th className="p-3">Subsystem</th>
-								<th className="p-3">Outcome</th>
-							</tr>
-						</thead>
-						<tbody>
-							{entries.map((entry) => (
-								<tr key={entry.id} className="border-b">
-									<td className="p-3">{entry.attemptedAt.toLocaleString()}</td>
-									<td className="p-3">{entry.recipient}</td>
-									<td className="p-3 font-medium">{entry.subject}</td>
-									<td className="p-3">{entry.subsystem}</td>
-									<td className="p-3">
-										<Badge
-											variant={
-												entry.outcome === "failed" ? "destructive" : "outline"
-											}
-										>
-											{entry.outcome}
-										</Badge>
-									</td>
-								</tr>
-							))}
-						</tbody>
-					</table>
-				</div>
+				<Table>
+					<TableHeader>
+						<TableRow>
+							<TableHead>Attempted</TableHead>
+							<TableHead>Recipient</TableHead>
+							<TableHead>Subject</TableHead>
+							<TableHead>Subsystem</TableHead>
+							<TableHead>Outcome</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody>
+						{entries.map((entry) => (
+							<TableRow key={entry.id}>
+								<TableCell>{entry.attemptedAt.toLocaleString()}</TableCell>
+								<TableCell>{entry.recipient}</TableCell>
+								<TableCell className="font-medium">{entry.subject}</TableCell>
+								<TableCell>{entry.subsystem}</TableCell>
+								<TableCell>
+									<Badge
+										variant={
+											entry.outcome === "failed" ? "destructive" : "outline"
+										}
+									>
+										{entry.outcome}
+									</Badge>
+								</TableCell>
+							</TableRow>
+						))}
+					</TableBody>
+				</Table>
 			) : (
 				<PageState
 					kind="empty"
@@ -70,27 +87,35 @@ export function MailLogPage({
 					description="No delivery attempts have been recorded."
 				/>
 			)}
-			<section className="mt-6 space-y-3">
+			<section className="mt-6 flex flex-col gap-3">
 				<h2 className="font-semibold">Inbound activity</h2>
 				{activity.length ? (
-					<div className="overflow-x-auto border">
-						<table className="w-full text-left text-sm">
-							<tbody>
-								{activity.map((entry) => (
-									<tr key={entry.id} className="border-b">
-										<td className="p-3">{entry.createdAt.toLocaleString()}</td>
-										<td className="p-3">{entry.mailboxId}</td>
-										<td className="p-3">{entry.decision}</td>
-										<td className="p-3">{entry.reason}</td>
-									</tr>
-								))}
-							</tbody>
-						</table>
-					</div>
+					<Table>
+						<TableHeader>
+							<TableRow>
+								<TableHead>Received</TableHead>
+								<TableHead>Mailbox</TableHead>
+								<TableHead>Decision</TableHead>
+								<TableHead>Reason</TableHead>
+							</TableRow>
+						</TableHeader>
+						<TableBody>
+							{activity.map((entry) => (
+								<TableRow key={entry.id}>
+									<TableCell>{entry.createdAt.toLocaleString()}</TableCell>
+									<TableCell>{entry.mailboxId}</TableCell>
+									<TableCell>{decisionLabel(entry.decision)}</TableCell>
+									<TableCell>{entry.reason}</TableCell>
+								</TableRow>
+							))}
+						</TableBody>
+					</Table>
 				) : (
-					<p className="text-muted-foreground text-sm">
-						No inbound activity recorded.
-					</p>
+					<PageState
+						kind="empty"
+						title="No inbound activity"
+						description="No inbound activity has been recorded."
+					/>
 				)}
 			</section>
 		</PageContainer>

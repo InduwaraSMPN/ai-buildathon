@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useRef } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
@@ -26,15 +27,30 @@ export const Route = createFileRoute("/_auth/overview-widgets")({
 function OverviewWidgetsRoute() {
 	const queryClient = useQueryClient();
 	const query = useQuery(orpc.getDashboardArrangement.queryOptions());
+	const latestMutation = useRef(0);
+	const arrangementQuery = { queryKey: orpc.getDashboardArrangement.key() };
 	const save = useMutation(
 		orpc.setDashboardArrangement.mutationOptions({
-			onSuccess: async () => {
-				await queryClient.invalidateQueries({
-					queryKey: orpc.getDashboardArrangement.key(),
-				});
+			scope: { id: "dashboard-arrangement" },
+			onMutate: async ({ widgets }) => {
+				const mutationId = ++latestMutation.current;
+				await queryClient.cancelQueries(arrangementQuery);
+				queryClient.setQueryData(
+					arrangementQuery.queryKey,
+					widgets.map((widget, position) => ({ ...widget, position })),
+				);
+				return { mutationId };
+			},
+			onSuccess: (arrangement, _variables, context) => {
+				if (context?.mutationId !== latestMutation.current) return;
+				queryClient.setQueryData(arrangementQuery.queryKey, arrangement);
 				toast.success("Widget arrangement saved");
 			},
-			onError: (error) => toast.error(error.message),
+			onError: async (error, _variables, context) => {
+				if (context?.mutationId !== latestMutation.current) return;
+				await queryClient.invalidateQueries(arrangementQuery);
+				toast.error(error.message);
+			},
 		}),
 	);
 	if (query.isPending)

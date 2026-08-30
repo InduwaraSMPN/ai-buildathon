@@ -3,9 +3,38 @@ import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { formatDate } from "@/components/support-ui";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+	Message,
+	MessageContent,
+	MessageHeader,
+} from "@/components/ui/message";
+import {
+	MessageScroller,
+	MessageScrollerButton,
+	MessageScrollerContent,
+	MessageScrollerItem,
+	MessageScrollerViewport,
+} from "@/components/ui/message-scroller";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { TicketAttachments } from "@/features/documents/components";
 import { client, orpc, queryClient } from "@/utils/orpc";
@@ -70,52 +99,71 @@ export function TicketConversation({
 					<span>No other staff</span>
 				)}
 			</div>
-			<ol className="space-y-3">
-				{ticket.messages.length ? (
-					ticket.messages.map((message) => (
-						<li
-							key={message.id}
-							className={
-								message.visibility === "private"
-									? "rounded-lg border border-amber-500/30 bg-amber-500/5 p-3"
-									: "rounded-lg border bg-muted/30 p-3"
-							}
-						>
-							<div className="mb-2 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
-								<span className="font-medium text-foreground">
-									{message.authorType === "staff"
-										? "Support"
-										: ticket.reporterName}
-								</span>
-								<Badge variant="outline">
-									{message.visibility === "private"
-										? "Private note"
-										: "Public reply"}
-								</Badge>
-								<time>{formatDate(message.createdAt)}</time>
-							</div>
-							<p className="whitespace-pre-wrap text-sm leading-6">
-								{message.body}
-							</p>
-							{message.visibility === "private" ? (
-								<div className="mt-3 border-t pt-3">
-									<TicketAttachments
-										targetType="case_note"
-										targetId={message.id}
-										canEdit={canAttach}
-									/>
-								</div>
-							) : null}
-						</li>
-					))
-				) : (
-					<li className="rounded-lg border border-dashed p-6 text-center text-muted-foreground text-sm">
-						No conversation yet.
-					</li>
-				)}
-			</ol>
+			{ticket.messages.length ? (
+				<MessageScroller className="h-96">
+					<MessageScrollerViewport>
+						<MessageScrollerContent className="gap-3 p-1">
+							{ticket.messages.map((message) => (
+								<MessageScrollerItem key={message.id}>
+									<Message>
+										<MessageContent>
+											<MessageHeader className="flex-wrap gap-2">
+												<span className="font-medium text-foreground">
+													{message.authorType === "staff"
+														? "Support"
+														: ticket.reporterName}
+												</span>
+												<Badge variant="outline">
+													{message.visibility === "private"
+														? "Private note"
+														: "Public reply"}
+												</Badge>
+												<time>{formatDate(message.createdAt)}</time>
+											</MessageHeader>
+											<Bubble
+												variant={
+													message.visibility === "private" ? "tinted" : "muted"
+												}
+											>
+												<BubbleContent>
+													{message.visibility === "private" ? (
+														<Alert className="border-warning/30 bg-warning/10">
+															<AlertDescription className="whitespace-pre-wrap">
+																{message.body}
+															</AlertDescription>
+															<TicketAttachments
+																targetType="case_note"
+																targetId={message.id}
+																canEdit={canAttach}
+															/>
+														</Alert>
+													) : (
+														<p className="whitespace-pre-wrap">
+															{message.body}
+														</p>
+													)}
+												</BubbleContent>
+											</Bubble>
+										</MessageContent>
+									</Message>
+								</MessageScrollerItem>
+							))}
+						</MessageScrollerContent>
+					</MessageScrollerViewport>
+					<MessageScrollerButton />
+				</MessageScroller>
+			) : (
+				<Empty>
+					<EmptyHeader>
+						<EmptyTitle>No conversation yet</EmptyTitle>
+						<EmptyDescription>
+							Replies and private notes will appear here.
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			)}
 			<form
-				className="space-y-3 border-t pt-4"
+				className="flex flex-col gap-3 border-t pt-4"
 				onSubmit={(event) => {
 					event.preventDefault();
 					const message = body.trim();
@@ -127,49 +175,53 @@ export function TicketConversation({
 						});
 				}}
 			>
-				<fieldset className="flex gap-2">
-					<legend className="sr-only">Message visibility</legend>
-					<Button
-						type="button"
-						size="sm"
-						variant={visibility === "public" ? "default" : "outline"}
-						aria-pressed={visibility === "public"}
-						onClick={() => setVisibility("public")}
-					>
-						Public reply
+				<FieldGroup>
+					<fieldset className="flex gap-2">
+						<legend className="sr-only">Message visibility</legend>
+						<Button
+							type="button"
+							size="sm"
+							variant={visibility === "public" ? "default" : "outline"}
+							aria-pressed={visibility === "public"}
+							onClick={() => setVisibility("public")}
+						>
+							Public reply
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							variant={visibility === "private" ? "default" : "outline"}
+							aria-pressed={visibility === "private"}
+							onClick={() => setVisibility("private")}
+						>
+							Private note
+						</Button>
+					</fieldset>
+					<Field>
+						<FieldLabel htmlFor="ticket-message" className="sr-only">
+							Message
+						</FieldLabel>
+						<Textarea
+							id="ticket-message"
+							value={body}
+							onChange={(event) => setBody(event.target.value)}
+							maxLength={10_000}
+							placeholder={
+								visibility === "public"
+									? "Reply to the requester…"
+									: "Add a note visible only to staff…"
+							}
+							className="min-h-28"
+						/>
+					</Field>
+					<Button type="submit" disabled={!body.trim() || addMessage.isPending}>
+						{addMessage.isPending
+							? "Sending…"
+							: visibility === "public"
+								? "Send reply"
+								: "Add private note"}
 					</Button>
-					<Button
-						type="button"
-						size="sm"
-						variant={visibility === "private" ? "default" : "outline"}
-						aria-pressed={visibility === "private"}
-						onClick={() => setVisibility("private")}
-					>
-						Private note
-					</Button>
-				</fieldset>
-				<label htmlFor="ticket-message" className="sr-only">
-					Message
-				</label>
-				<Textarea
-					id="ticket-message"
-					value={body}
-					onChange={(event) => setBody(event.target.value)}
-					maxLength={10_000}
-					placeholder={
-						visibility === "public"
-							? "Reply to the requester…"
-							: "Add a note visible only to staff…"
-					}
-					className="min-h-28"
-				/>
-				<Button type="submit" disabled={!body.trim() || addMessage.isPending}>
-					{addMessage.isPending
-						? "Sending…"
-						: visibility === "public"
-							? "Send reply"
-							: "Add private note"}
-				</Button>
+				</FieldGroup>
 			</form>
 		</div>
 	);
@@ -289,10 +341,10 @@ export function TicketActivity({
 			<section className="space-y-3">
 				<h3 className="font-semibold text-sm">Links and merge</h3>
 				{ticket.mergedIntoId ? (
-					<div className="flex items-center justify-between rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-						<span>
+					<Alert className="flex-row items-center justify-between border-warning/30 bg-warning/10">
+						<AlertDescription>
 							Merged into <TicketLink id={ticket.mergedIntoId} />
-						</span>
+						</AlertDescription>
 						{canEdit ? (
 							<Button
 								size="sm"
@@ -302,7 +354,7 @@ export function TicketActivity({
 								Unmerge
 							</Button>
 						) : null}
-					</div>
+					</Alert>
 				) : null}
 				<ul className="space-y-2 text-sm">
 					{links.data?.map((item) => {
@@ -332,47 +384,63 @@ export function TicketActivity({
 				</ul>
 				{canEdit ? (
 					<form
-						className="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]"
 						onSubmit={(event) => {
 							event.preventDefault();
 							if (target.trim()) void linkTarget();
 						}}
 					>
-						<Input
-							value={target}
-							onChange={(event) => setTarget(event.target.value)}
-							placeholder="INC-2026-00001 or ticket ID"
-							aria-label="Target ticket reference"
-						/>
-						<select
-							value={relation}
-							onChange={(event) =>
-								setRelation(event.target.value as typeof relation)
-							}
-							className="h-9 rounded-md border bg-background px-3 text-sm"
-							aria-label="Relationship"
-						>
-							{relations.map((value) => (
-								<option key={value} value={value}>
-									{value.replaceAll("_", " ")}
-								</option>
-							))}
-						</select>
-						<Button
-							type="submit"
-							variant="outline"
-							disabled={!target.trim() || link.isPending}
-						>
-							Link
-						</Button>
-						<Button
-							type="button"
-							variant="outline"
-							disabled={!target.trim() || merge.isPending}
-							onClick={() => void mergeTarget()}
-						>
-							Merge into
-						</Button>
+						<FieldGroup className="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+							<Field>
+								<FieldLabel htmlFor="target-ticket" className="sr-only">
+									Target ticket reference
+								</FieldLabel>
+								<Input
+									id="target-ticket"
+									value={target}
+									onChange={(event) => setTarget(event.target.value)}
+									placeholder="INC-2026-00001 or ticket ID"
+								/>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor="ticket-relationship" className="sr-only">
+									Relationship
+								</FieldLabel>
+								<Select
+									value={relation}
+									onValueChange={(value) =>
+										value && setRelation(value as typeof relation)
+									}
+								>
+									<SelectTrigger id="ticket-relationship">
+										<SelectValue />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectGroup>
+											{relations.map((value) => (
+												<SelectItem key={value} value={value}>
+													{value.replaceAll("_", " ")}
+												</SelectItem>
+											))}
+										</SelectGroup>
+									</SelectContent>
+								</Select>
+							</Field>
+							<Button
+								type="submit"
+								variant="outline"
+								disabled={!target.trim() || link.isPending}
+							>
+								Link
+							</Button>
+							<Button
+								type="button"
+								variant="outline"
+								disabled={!target.trim() || merge.isPending}
+								onClick={() => void mergeTarget()}
+							>
+								Merge into
+							</Button>
+						</FieldGroup>
 					</form>
 				) : null}
 			</section>
@@ -392,7 +460,6 @@ export function TicketActivity({
 				</ul>
 				{canEdit ? (
 					<form
-						className="grid gap-2 sm:grid-cols-[7rem_1fr_auto]"
 						onSubmit={(event) => {
 							event.preventDefault();
 							const value = Number(minutes);
@@ -404,25 +471,37 @@ export function TicketActivity({
 								});
 						}}
 					>
-						<Input
-							type="number"
-							min={1}
-							max={1440}
-							value={minutes}
-							onChange={(event) => setMinutes(event.target.value)}
-							placeholder="Minutes"
-							aria-label="Minutes"
-						/>
-						<Input
-							value={note}
-							maxLength={2000}
-							onChange={(event) => setNote(event.target.value)}
-							placeholder="Work note (optional)"
-							aria-label="Work note"
-						/>
-						<Button type="submit" disabled={!minutes || addTime.isPending}>
-							Log time
-						</Button>
+						<FieldGroup className="grid gap-2 sm:grid-cols-[7rem_1fr_auto]">
+							<Field>
+								<FieldLabel htmlFor="time-minutes" className="sr-only">
+									Minutes
+								</FieldLabel>
+								<Input
+									id="time-minutes"
+									type="number"
+									min={1}
+									max={1440}
+									value={minutes}
+									onChange={(event) => setMinutes(event.target.value)}
+									placeholder="Minutes"
+								/>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor="time-note" className="sr-only">
+									Work note
+								</FieldLabel>
+								<Input
+									id="time-note"
+									value={note}
+									maxLength={2000}
+									onChange={(event) => setNote(event.target.value)}
+									placeholder="Work note (optional)"
+								/>
+							</Field>
+							<Button type="submit" disabled={!minutes || addTime.isPending}>
+								Log time
+							</Button>
+						</FieldGroup>
 					</form>
 				) : null}
 			</section>

@@ -1,17 +1,17 @@
+import {
+	RiArrowDownLine as ArrowDown,
+	RiArrowUpLine as ArrowUp,
+	RiFileCopyLine as Copy,
+	RiExternalLinkLine as ExternalLink,
+	RiMoreLine as MoreHorizontal,
+	RiSearchLine as Search,
+} from "@remixicon/react";
 import { useNavigate } from "@tanstack/react-router";
 import {
 	flexRender,
 	getCoreRowModel,
 	useReactTable,
 } from "@tanstack/react-table";
-import {
-	ArrowDown,
-	ArrowUp,
-	Copy,
-	ExternalLink,
-	MoreHorizontal,
-	Search,
-} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
 	KeyboardShortcutSheet,
@@ -20,14 +20,35 @@ import {
 import { PageState } from "@/components/support-ui";
 import { Button } from "@/components/ui/button";
 import {
+	Dialog,
+	DialogClose,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type {
 	Ticket,
@@ -81,6 +102,8 @@ export function TicketQueue({
 	const navigate = useNavigate();
 	const tickets = result?.items ?? [];
 	const [selected, setSelected] = useState(-1);
+	const [escalationTicket, setEscalationTicket] = useState<Ticket>();
+	const [escalationReason, setEscalationReason] = useState("");
 	const [query, setQuery] = useState(search.search ?? "");
 	const searchRef = useRef<HTMLInputElement>(null);
 	useEffect(() => setQuery(search.search ?? ""), [search.search]);
@@ -132,9 +155,20 @@ export function TicketQueue({
 			});
 			return;
 		}
-		const note = window.prompt("Escalation reason")?.trim();
-		if (note)
-			onShortcutAction({ id: ticket.id, action, note, route: "human_triage" });
+		setEscalationReason("");
+		setEscalationTicket(ticket);
+	};
+	const escalate = () => {
+		const note = escalationReason.trim();
+		if (!escalationTicket || !note) return;
+		onShortcutAction({
+			id: escalationTicket.id,
+			action: "escalate",
+			note,
+			route: "human_triage",
+		});
+		setEscalationTicket(undefined);
+		setEscalationReason("");
 	};
 	const shortcuts = useKeyboardShortcuts({
 		search: () => searchRef.current?.focus(),
@@ -312,17 +346,17 @@ export function TicketQueue({
 					description="Change or reset the filters to widen the queue."
 				/>
 			) : (
-				<div className="max-h-[calc(100vh-20rem)] overflow-auto">
-					<table className="w-full min-w-[1100px] border-collapse text-left text-xs">
-						<thead className="sticky top-0 z-10 bg-card text-muted-foreground shadow-[0_1px_0_var(--border)]">
+				<div className="max-h-[calc(100vh-20rem)] overflow-auto [&>[data-slot=table-container]]:overflow-visible">
+					<Table className="min-w-[1100px] border-collapse text-left text-xs">
+						<TableHeader className="sticky top-0 z-10 bg-card text-muted-foreground shadow-[0_1px_0_var(--border)]">
 							{table.getHeaderGroups().map((group) => (
-								<tr key={group.id}>
+								<TableRow key={group.id}>
 									{group.headers.map((header) => {
 										const sortable = ["priority", "updatedAt"].includes(
 											header.column.id,
 										);
 										return (
-											<th
+											<TableHead
 												key={header.id}
 												scope="col"
 												aria-sort={
@@ -363,15 +397,15 @@ export function TicketQueue({
 														header.getContext(),
 													)
 												)}
-											</th>
+											</TableHead>
 										);
 									})}
-								</tr>
+								</TableRow>
 							))}
-						</thead>
-						<tbody>
+						</TableHeader>
+						<TableBody>
 							{table.getRowModel().rows.map((row, index) => (
-								<tr
+								<TableRow
 									key={row.id}
 									data-queue-row={index}
 									tabIndex={index === selected ? 0 : -1}
@@ -380,9 +414,18 @@ export function TicketQueue({
 									className="border-t outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring data-[state=selected]:bg-muted/70"
 									onClick={() => setSelected(index)}
 									onDoubleClick={() => open(row.original)}
+									onKeyDown={(event) => {
+										if (
+											event.target === event.currentTarget &&
+											(event.key === "Enter" || event.key === " ")
+										) {
+											event.preventDefault();
+											open(row.original);
+										}
+									}}
 								>
 									{row.getVisibleCells().map((cell) => (
-										<td
+										<TableCell
 											key={cell.id}
 											className={cn(
 												"px-3 text-muted-foreground first:text-foreground",
@@ -393,12 +436,12 @@ export function TicketQueue({
 												cell.column.columnDef.cell,
 												cell.getContext(),
 											)}
-										</td>
+										</TableCell>
 									))}
-								</tr>
+								</TableRow>
 							))}
-						</tbody>
-					</table>
+						</TableBody>
+					</Table>
 				</div>
 			)}
 
@@ -430,6 +473,51 @@ export function TicketQueue({
 				open={shortcuts.shortcutsOpen}
 				onOpenChange={shortcuts.setShortcutsOpen}
 			/>
+			<Dialog
+				open={escalationTicket !== undefined}
+				onOpenChange={(open) => {
+					if (!open) {
+						setEscalationTicket(undefined);
+						setEscalationReason("");
+					}
+				}}
+			>
+				<DialogContent>
+					<form
+						className="contents"
+						onSubmit={(event) => {
+							event.preventDefault();
+							escalate();
+						}}
+					>
+						<DialogHeader>
+							<DialogTitle>Escalate ticket</DialogTitle>
+							<DialogDescription>
+								Provide a reason for routing this ticket to human triage.
+							</DialogDescription>
+						</DialogHeader>
+						<Field>
+							<FieldLabel htmlFor="escalation-reason">
+								Escalation reason
+							</FieldLabel>
+							<Textarea
+								id="escalation-reason"
+								value={escalationReason}
+								onChange={(event) => setEscalationReason(event.target.value)}
+								autoFocus
+							/>
+						</Field>
+						<DialogFooter>
+							<DialogClose render={<Button variant="outline" type="button" />}>
+								Cancel
+							</DialogClose>
+							<Button type="submit" disabled={!escalationReason.trim()}>
+								Escalate
+							</Button>
+						</DialogFooter>
+					</form>
+				</DialogContent>
+			</Dialog>
 		</section>
 	);
 }
@@ -458,26 +546,30 @@ function RowActions({
 				<MoreHorizontal />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
-				<DropdownMenuLabel>{ticket.id}</DropdownMenuLabel>
-				<DropdownMenuItem onClick={() => onOpen(ticket)}>
-					<ExternalLink /> Open
-				</DropdownMenuItem>
-				{actions.includes("assign") && (
-					<DropdownMenuItem onClick={() => onOpen(ticket, "assign")}>
-						Assign
+				<DropdownMenuGroup>
+					<DropdownMenuLabel>{ticket.id}</DropdownMenuLabel>
+					<DropdownMenuItem onClick={() => onOpen(ticket)}>
+						<ExternalLink /> Open
 					</DropdownMenuItem>
-				)}
-				{actions.includes("reclassify") && (
-					<DropdownMenuItem onClick={() => onOpen(ticket, "reclassify")}>
-						Reclassify
-					</DropdownMenuItem>
-				)}
+					{actions.includes("assign") && (
+						<DropdownMenuItem onClick={() => onOpen(ticket, "assign")}>
+							Assign
+						</DropdownMenuItem>
+					)}
+					{actions.includes("reclassify") && (
+						<DropdownMenuItem onClick={() => onOpen(ticket, "reclassify")}>
+							Reclassify
+						</DropdownMenuItem>
+					)}
+				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
-				<DropdownMenuItem
-					onClick={() => navigator.clipboard.writeText(ticket.id)}
-				>
-					<Copy /> Copy ID
-				</DropdownMenuItem>
+				<DropdownMenuGroup>
+					<DropdownMenuItem
+						onClick={() => navigator.clipboard.writeText(ticket.id)}
+					>
+						<Copy /> Copy ID
+					</DropdownMenuItem>
+				</DropdownMenuGroup>
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);
@@ -491,7 +583,7 @@ function QueueLoading() {
 			aria-label="Loading ticket queue"
 		>
 			{["a", "b", "c", "d", "e", "f", "g", "h"].map((key) => (
-				<div key={key} className="h-9 animate-pulse bg-muted/60" />
+				<Skeleton key={key} className="h-9 rounded-none" />
 			))}
 		</div>
 	);

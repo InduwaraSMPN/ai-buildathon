@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Kbd } from "@/components/ui/kbd";
 import {
 	Sheet,
@@ -19,6 +19,8 @@ export type KeyboardShortcutHandlers = Partial<
 
 export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers = {}) {
 	const [shortcutsOpen, setShortcutsOpen] = useState(false);
+	const handlersRef = useRef(handlers);
+	handlersRef.current = handlers;
 
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -28,7 +30,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers = {}) {
 			const handler =
 				action === "shortcuts"
 					? () => setShortcutsOpen((open) => !open)
-					: handlers[action];
+					: handlersRef.current[action];
 			if (!handler) return;
 
 			event.preventDefault();
@@ -37,7 +39,7 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers = {}) {
 
 		window.addEventListener("keydown", onKeyDown);
 		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [handlers, shortcutsOpen]);
+	}, [shortcutsOpen]);
 
 	return { shortcutsOpen, setShortcutsOpen };
 }

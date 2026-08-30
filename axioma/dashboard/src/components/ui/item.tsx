@@ -7,7 +7,10 @@ import { cn } from "@/lib/utils";
 
 function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
 	return (
+		// Items support arbitrary render targets, so ul/ol would not guarantee valid li children.
+		// biome-ignore lint/a11y/useSemanticElements: Preserve the polymorphic item group's valid generic markup.
 		<div
+			role="list"
 			data-slot="item-group"
 			className={cn(
 				"group/item-group flex w-full flex-col gap-4 has-data-[size=sm]:gap-2.5 has-data-[size=xs]:gap-2",

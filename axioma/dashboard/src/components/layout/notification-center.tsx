@@ -1,7 +1,16 @@
+import { RiNotification3Line as Bell } from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Bell } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
 import {
 	Popover,
 	PopoverContent,
@@ -9,6 +18,7 @@ import {
 	PopoverTitle,
 	PopoverTrigger,
 } from "@/components/ui/popover";
+import { Spinner } from "@/components/ui/spinner";
 import { orpc } from "@/utils/orpc";
 
 export function NotificationCenter() {
@@ -40,9 +50,12 @@ export function NotificationCenter() {
 			>
 				<Bell />
 				{unread ? (
-					<span className="absolute top-1 right-1 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] text-destructive-foreground">
+					<Badge
+						variant="destructive"
+						className="absolute top-1 right-1 h-4 min-w-4 px-1 text-[10px]"
+					>
 						{unread}
-					</span>
+					</Badge>
 				) : null}
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-96 max-w-[calc(100vw-2rem)]">
@@ -50,12 +63,30 @@ export function NotificationCenter() {
 					<PopoverTitle>Notifications</PopoverTitle>
 				</PopoverHeader>
 				<div className="max-h-96 divide-y overflow-y-auto">
-					{notifications.isPending ? <p className="p-3">Loading…</p> : null}
+					{notifications.isPending ? (
+						<div
+							className="flex items-center justify-center gap-2 p-6 text-muted-foreground"
+							role="status"
+						>
+							<Spinner />
+							Loading…
+						</div>
+					) : null}
 					{notifications.isError ? (
-						<p className="p-3 text-destructive">Notifications unavailable.</p>
+						<Alert variant="destructive" className="m-3 w-auto">
+							<AlertDescription>Notifications unavailable.</AlertDescription>
+						</Alert>
 					) : null}
 					{notifications.data?.length === 0 ? (
-						<p className="p-3 text-muted-foreground">You’re all caught up.</p>
+						<Empty className="p-6">
+							<EmptyHeader>
+								<EmptyMedia variant="icon">
+									<Bell />
+								</EmptyMedia>
+								<EmptyTitle>No notifications</EmptyTitle>
+								<EmptyDescription>You’re all caught up.</EmptyDescription>
+							</EmptyHeader>
+						</Empty>
 					) : null}
 					{notifications.data?.map((item) => {
 						const content = (

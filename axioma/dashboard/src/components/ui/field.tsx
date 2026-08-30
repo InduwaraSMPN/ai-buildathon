@@ -1,5 +1,3 @@
-"use client";
-
 import { cva, type VariantProps } from "class-variance-authority";
 import { useMemo } from "react";
 import { Label } from "@/components/ui/label";
@@ -74,7 +72,10 @@ function Field({
 	...props
 }: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
 	return (
+		// A field can contain arbitrary controls; fieldset semantics are not always valid.
+		// biome-ignore lint/a11y/useSemanticElements: Preserve this generic layout primitive's div prop contract.
 		<div
+			role="group"
 			data-slot="field"
 			data-orientation={orientation}
 			className={cn(fieldVariants({ orientation }), className)}

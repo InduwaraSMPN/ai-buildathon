@@ -3,7 +3,13 @@ import { createFileRoute } from "@tanstack/react-router";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Button } from "@/components/ui/button";
+import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from "@/components/ui/native-select";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/forms")({
@@ -66,7 +72,7 @@ function FormsRoute() {
 			description="Author and publish typed service-request forms."
 		>
 			<form
-				className="mb-6 flex gap-2"
+				className="mb-6"
 				onSubmit={(event) => {
 					event.preventDefault();
 					const data = new FormData(event.currentTarget);
@@ -84,18 +90,25 @@ function FormsRoute() {
 					});
 				}}
 			>
-				<Input name="key" placeholder="form key" required />
-				<Input name="name" placeholder="Form name" required />
-				<Button disabled={create.isPending}>Create draft</Button>
+				<FieldGroup className="sm:flex-row sm:items-end">
+					<Field>
+						<FieldLabel htmlFor="form-key">Form key</FieldLabel>
+						<Input id="form-key" name="key" required />
+					</Field>
+					<Field>
+						<FieldLabel htmlFor="form-name">Form name</FieldLabel>
+						<Input id="form-name" name="name" required />
+					</Field>
+					<Button disabled={create.isPending}>Create draft</Button>
+				</FieldGroup>
 			</form>
 			<div className="space-y-2">
 				{(query.data ?? []).length === 0 ? (
-					<p
-						className="py-12 text-center text-muted-foreground text-sm"
-						role="status"
-					>
-						No forms found.
-					</p>
+					<Empty>
+						<EmptyHeader>
+							<EmptyTitle>No forms found</EmptyTitle>
+						</EmptyHeader>
+					</Empty>
 				) : (
 					(query.data ?? []).map((form) => (
 						<div
@@ -113,34 +126,46 @@ function FormsRoute() {
 									Publish
 								</Button>
 							) : (
-								<select
-									aria-label={`Subcategory for ${form.name}`}
-									className="h-9 border bg-background px-2"
-									value={
-										catalogue.data?.subcategories.find(
-											(subcategory) => subcategory.formId === form.id,
-										)?.id ?? ""
-									}
-									disabled={attach.isPending}
-									onChange={(event) => {
-										const currentId = catalogue.data?.subcategories.find(
-											(subcategory) => subcategory.formId === form.id,
-										)?.id;
-										const subcategoryId = event.target.value || currentId;
-										if (subcategoryId)
-											attach.mutate({
-												subcategoryId,
-												formId: event.target.value ? form.id : null,
-											});
-									}}
-								>
-									<option value="">Not attached</option>
-									{catalogue.data?.subcategories.map((subcategory) => (
-										<option key={subcategory.id} value={subcategory.id}>
-											{subcategory.name}
-										</option>
-									))}
-								</select>
+								<Field>
+									<FieldLabel
+										className="sr-only"
+										htmlFor={`subcategory-${form.id}`}
+									>
+										Subcategory for {form.name}
+									</FieldLabel>
+									<NativeSelect
+										id={`subcategory-${form.id}`}
+										value={
+											catalogue.data?.subcategories.find(
+												(subcategory) => subcategory.formId === form.id,
+											)?.id ?? ""
+										}
+										disabled={attach.isPending}
+										onChange={(event) => {
+											const currentId = catalogue.data?.subcategories.find(
+												(subcategory) => subcategory.formId === form.id,
+											)?.id;
+											const subcategoryId = event.target.value || currentId;
+											if (subcategoryId)
+												attach.mutate({
+													subcategoryId,
+													formId: event.target.value ? form.id : null,
+												});
+										}}
+									>
+										<NativeSelectOption value="">
+											Not attached
+										</NativeSelectOption>
+										{catalogue.data?.subcategories.map((subcategory) => (
+											<NativeSelectOption
+												key={subcategory.id}
+												value={subcategory.id}
+											>
+												{subcategory.name}
+											</NativeSelectOption>
+										))}
+									</NativeSelect>
+								</Field>
 							)}
 						</div>
 					))

@@ -52,6 +52,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 				name: "description",
 				content: "Axiōma IT operations console.",
 			},
+			// A single meta value cannot follow the active theme; use the light --primary.
 			{ name: "theme-color", content: "#008236" },
 		],
 		links: [

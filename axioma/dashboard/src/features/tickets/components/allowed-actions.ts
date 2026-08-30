@@ -1,27 +1,28 @@
+import type { StateType } from "../../../sdk/shared";
 import type { TicketDetail, TicketOperatorAction } from "../api/types";
 
-const stateTones: Record<string, string> = {
-	new: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
-	open: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-	pending:
-		"border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300",
-	resolved:
-		"border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+const stateTones: Record<StateType, string> = {
+	new: "border-info/30 bg-info/10 text-info-foreground",
+	open: "border-warning/30 bg-warning/10 text-warning-foreground",
+	pending: "border-warning/30 bg-warning/10 text-warning-foreground",
+	resolved: "border-success/30 bg-success/10 text-success-foreground",
 	closed: "border-border bg-muted text-muted-foreground",
+	merged: "border-success/30 bg-success/10 text-success-foreground",
+	cancelled: "border-destructive/30 bg-destructive/10 text-destructive",
 };
 
-const actionsByLabel: Record<string, readonly TicketOperatorAction[]> = {
-	Open: ["assign", "reclassify", "pend"],
-	"Waiting for reply": ["unpend"],
-	Routing: ["assign", "reclassify"],
-	Resolving: ["resolve", "escalate", "assign", "reclassify"],
-	Resolved: ["close", "escalate", "assign", "reclassify"],
-	Escalated: ["close", "escalate", "assign", "reclassify"],
-	Closed: ["reopen"],
+const actionsByState: Record<StateType, readonly TicketOperatorAction[]> = {
+	new: ["assign", "reclassify", "pend"],
+	open: ["resolve", "escalate", "assign", "reclassify"],
+	pending: ["unpend"],
+	resolved: ["close", "escalate", "assign", "reclassify"],
+	closed: ["reopen"],
+	merged: [],
+	cancelled: [],
 };
 
 export function ticketStatusTone(stateType: string): string | undefined {
-	return stateTones[stateType];
+	return stateTones[stateType as StateType];
 }
 
 const actionCapabilities: Record<TicketOperatorAction, string> = {
@@ -36,16 +37,14 @@ const actionCapabilities: Record<TicketOperatorAction, string> = {
 };
 
 export function allowedActions(
-	ticket: Pick<
-		TicketDetail,
-		"statusLabel" | "statusStateType" | "closedAt" | "reopenedAt"
-	>,
+	ticket: Pick<TicketDetail, "statusStateType" | "closedAt" | "reopenedAt">,
 	capabilities: readonly string[],
 	now = Date.now(),
 ): readonly TicketOperatorAction[] {
-	const actions = actionsByLabel[ticket.statusLabel] ?? [];
+	const stateType = ticket.statusStateType as StateType;
+	const actions = actionsByState[stateType] ?? [];
 	if (
-		ticket.statusStateType === "closed" &&
+		stateType === "closed" &&
 		(!ticket.closedAt ||
 			ticket.reopenedAt ||
 			now - ticket.closedAt.getTime() > 7 * 24 * 60 * 60 * 1_000)

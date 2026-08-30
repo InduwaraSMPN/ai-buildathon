@@ -1,0 +1,23 @@
+{
+	"components/sign-in-form.tsx": 3,
+	"components/sign-up-form.tsx": 4,
+	"features/admin/roles-page.tsx": 4,
+	"features/assets/components/index.tsx": 2,
+	"features/automation/components/automation-pages.tsx": 6,
+	"features/changes/components/changes.tsx": 3,
+	"features/cmdb/components/ticket-impact.tsx": 2,
+	"features/devices/components/device-detail-sheet.tsx": 3,
+	"features/devices/components/devices-table.tsx": 1,
+	"features/documents/components/index.tsx": 1,
+	"features/knowledge/components/knowledge.tsx": 4,
+	"features/mail/components/index.tsx": 1,
+	"features/problems/components/problems.tsx": 2,
+	"features/tickets/components/dynamic-fields.tsx": 2,
+	"features/tickets/components/sla-countdown.tsx": 1,
+	"features/tickets/components/ticket-actions.tsx": 4,
+	"features/tickets/components/ticket-collaboration.tsx": 8,
+	"features/tickets/components/ticket-detail.tsx": 3,
+	"features/tickets/components/ticket-queue.tsx": 2,
+	"routes/_auth/forms.tsx": 1,
+	"routes/_auth/software-licences.tsx": 2
+}

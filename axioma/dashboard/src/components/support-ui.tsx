@@ -1,14 +1,26 @@
-import { AlertCircle, Inbox, LoaderCircle } from "lucide-react";
-import type { ReactNode } from "react";
+import {
+	RiErrorWarningLine as AlertCircle,
+	RiInbox2Line as Inbox,
+} from "@remixicon/react";
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { ticketStatusTone } from "@/features/tickets/components/allowed-actions";
-import { cn } from "@/lib/utils";
-
-const connectionTone = {
-	online:
-		"border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
-	offline: "border-border bg-muted text-muted-foreground",
-} as const;
+import type { StateType } from "@/sdk/shared";
 
 export function StatusBadge({
 	status,
@@ -17,20 +29,12 @@ export function StatusBadge({
 }: {
 	status: string;
 	label?: string;
-	stateType?: string;
+	stateType?: StateType;
 }) {
-	const normalized = status.toLowerCase();
 	return (
-		<span
-			className={cn(
-				"inline-flex items-center rounded-md border px-1.5 py-0.5 font-medium text-[10px] uppercase tracking-wider",
-				ticketStatusTone(stateType ?? normalized) ??
-					connectionTone[normalized as keyof typeof connectionTone] ??
-					connectionTone.offline,
-			)}
-		>
+		<Badge variant="outline" className={ticketStatusTone(stateType ?? status)}>
 			{label}
-		</span>
+		</Badge>
 	);
 }
 
@@ -45,52 +49,50 @@ export function PageState({
 	description: string;
 	onRetry?: () => void;
 }) {
-	const Icon =
-		kind === "loading" ? LoaderCircle : kind === "error" ? AlertCircle : Inbox;
-	return (
-		<div
-			className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-card p-8 text-center shadow-sm"
-			role={kind === "error" ? "alert" : "status"}
-		>
-			<Icon
-				className={cn(
-					"size-6 text-muted-foreground",
-					kind === "loading" && "animate-spin",
-				)}
-			/>
-			<div>
-				<p className="font-semibold text-sm">{title}</p>
-				<p className="mt-1 max-w-md text-muted-foreground text-xs">
-					{description}
-				</p>
-			</div>
-			{onRetry && <Button onClick={onRetry}>Try again</Button>}
-		</div>
-	);
-}
+	if (kind === "error")
+		return (
+			<Alert variant="destructive" className="min-h-64 content-center">
+				<AlertCircle />
+				<AlertTitle>{title}</AlertTitle>
+				<AlertDescription>{description}</AlertDescription>
+				{onRetry ? (
+					<AlertAction>
+						<Button variant="outline" size="sm" onClick={onRetry}>
+							Try again
+						</Button>
+					</AlertAction>
+				) : null}
+			</Alert>
+		);
 
-export function PageHeader({
-	eyebrow,
-	title,
-	description,
-	actions,
-}: {
-	eyebrow: string;
-	title: string;
-	description: string;
-	actions?: ReactNode;
-}) {
-	return (
-		<header className="flex flex-col gap-3 border-b pb-5 sm:flex-row sm:items-end sm:justify-between">
-			<div>
-				<p className="font-mono text-[10px] text-muted-foreground uppercase tracking-[0.2em]">
-					{eyebrow}
-				</p>
-				<h1 className="mt-1 font-semibold text-2xl tracking-tight">{title}</h1>
-				<p className="mt-1 text-muted-foreground text-xs">{description}</p>
+	if (kind === "loading")
+		return (
+			<div
+				className="flex min-h-64 flex-col items-center justify-center gap-4"
+				role="status"
+			>
+				<Spinner />
+				<div className="text-center">
+					<p className="font-medium">{title}</p>
+					<p className="text-muted-foreground text-sm">{description}</p>
+				</div>
+				<div className="flex flex-col gap-2" aria-hidden="true">
+					<Skeleton className="h-3 w-48" />
+					<Skeleton className="h-3 w-32" />
+				</div>
 			</div>
-			{actions && <div className="flex items-center gap-2">{actions}</div>}
-		</header>
+		);
+
+	return (
+		<Empty className="min-h-64 border" role="status">
+			<EmptyHeader>
+				<EmptyMedia variant="icon">
+					<Inbox />
+				</EmptyMedia>
+				<EmptyTitle>{title}</EmptyTitle>
+				<EmptyDescription>{description}</EmptyDescription>
+			</EmptyHeader>
+		</Empty>
 	);
 }
 

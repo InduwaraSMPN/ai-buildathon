@@ -1,5 +1,8 @@
+import {
+	RiExternalLinkLine as ExternalLink,
+	RiRefreshLine as RefreshCw,
+} from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, RefreshCw } from "lucide-react";
 import { formatDate, PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -54,7 +57,7 @@ function DeviceDetail({ device }: { device: Device }) {
 			<SheetHeader className="border-b pr-12">
 				<div className="flex items-center gap-2">
 					<span
-						className={`size-2 rounded-full ${online ? "bg-emerald-500" : "bg-muted-foreground/50"}`}
+						className={`size-2 rounded-full ${online ? "bg-success" : "bg-muted-foreground/50"}`}
 						aria-hidden="true"
 					/>
 					<SheetTitle>{device.hostname}</SheetTitle>

@@ -1,22 +1,26 @@
+import {
+	RiComputerLine as Laptop,
+	RiAlarmWarningLine as Siren,
+	RiToolsLine as Wrench,
+} from "@remixicon/react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Laptop, Siren, Wrench } from "lucide-react";
 import { StatusBadge, timeAgo } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
 import type { Ticket } from "../api/types";
 
-const priorityTone = {
-	P1: "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300",
-	P2: "border-orange-500/40 bg-orange-500/10 text-orange-700 dark:text-orange-300",
-	P3: "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300",
-	P4: "border-border bg-muted text-muted-foreground",
-};
+const priorityVariant = {
+	P1: "destructive",
+	P2: "default",
+	P3: "secondary",
+	P4: "outline",
+} as const;
 
 export const queueColumns: ColumnDef<Ticket>[] = [
 	{
 		accessorKey: "priority",
 		header: "Priority",
 		cell: ({ row }) => (
-			<Badge variant="outline" className={priorityTone[row.original.priority]}>
+			<Badge variant={priorityVariant[row.original.priority]}>
 				{row.original.priority}
 			</Badge>
 		),
@@ -47,7 +51,7 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 		header: () => <span className="sr-only">Record type</span>,
 		cell: ({ row }) =>
 			row.original.recordType === "incident" ? (
-				<Siren aria-label="Incident" className="size-4 text-orange-600" />
+				<Siren aria-label="Incident" className="size-4 text-destructive" />
 			) : (
 				<Wrench aria-label="Service request" className="size-4" />
 			),

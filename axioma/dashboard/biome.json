@@ -12,7 +12,8 @@
 			"!**/dist",
 			"!**/node_modules",
 			"!**/routeTree.gen.ts",
-			"!src/sdk/contracts"
+			"!src/sdk/contracts",
+			"!public/brand"
 		]
 	},
 	"formatter": {
