@@ -1,0 +1,7 @@
+{
+	"components/sign-in-form.tsx": 1,
+	"features/request-catalogue/components/dynamic-request-form.tsx": 3,
+	"features/tickets/components/request-form.tsx": 13,
+	"features/tickets/components/resolution-card.tsx": 2,
+	"routes/_auth/tickets/$ticketId.tsx": 3
+}

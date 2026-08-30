@@ -1,10 +1,17 @@
+import { RiAddLine, RiMenuLine } from "@remixicon/react";
 import { Link } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
 import { AxiomaWordmark } from "@/components/brand";
 import { statusCopy } from "@/features/status/copy";
 import { ModeToggle } from "./mode-toggle";
 import { NotificationCenter } from "./notification-center";
-import { buttonVariants } from "./ui/button";
+import { Button, buttonVariants } from "./ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import UserMenu from "./user-menu";
 
 export default function Header() {
@@ -43,6 +50,36 @@ export default function Header() {
 					</nav>
 				</div>
 				<div className="flex items-center gap-2">
+					<DropdownMenu>
+						<DropdownMenuTrigger
+							render={
+								<Button
+									variant="ghost"
+									size="icon"
+									className="sm:hidden"
+									aria-label="Open navigation"
+								/>
+							}
+						>
+							<RiMenuLine />
+						</DropdownMenuTrigger>
+						<DropdownMenuContent align="end" className="sm:hidden">
+							<DropdownMenuGroup>
+								<DropdownMenuItem render={<Link to="/home" />}>
+									My requests
+								</DropdownMenuItem>
+								<DropdownMenuItem render={<Link to="/knowledge" />}>
+									Help articles
+								</DropdownMenuItem>
+								<DropdownMenuItem render={<Link to="/status" />}>
+									{statusCopy.viewStatus}
+								</DropdownMenuItem>
+								<DropdownMenuItem render={<Link to="/tickets/new" />}>
+									New request
+								</DropdownMenuItem>
+							</DropdownMenuGroup>
+						</DropdownMenuContent>
+					</DropdownMenu>
 					<Link
 						to="/tickets/new"
 						className={buttonVariants({
@@ -50,7 +87,8 @@ export default function Header() {
 							className: "hidden sm:inline-flex",
 						})}
 					>
-						<Plus aria-hidden="true" /> New request
+						<RiAddLine data-icon="inline-start" aria-hidden="true" /> New
+						request
 					</Link>
 					<NotificationCenter />
 					<ModeToggle />

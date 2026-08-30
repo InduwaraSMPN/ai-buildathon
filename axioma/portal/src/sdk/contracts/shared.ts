@@ -43,3 +43,5 @@ export const capability = z.enum([
 	"admin.roles",
 	"admin.settings",
 ]);
+
+export { STATE_TYPES } from "../shared";

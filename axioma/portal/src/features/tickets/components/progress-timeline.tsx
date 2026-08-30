@@ -1,4 +1,4 @@
-import { Check, Circle } from "lucide-react";
+import { RiCheckLine, RiCircleLine } from "@remixicon/react";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	getProgressMarkerCopy,
@@ -64,11 +64,11 @@ export function ProgressTimeline({
 								)}
 							>
 								{complete ? (
-									<Check className="size-4" aria-hidden="true" />
+									<RiCheckLine className="size-4" aria-hidden="true" />
 								) : active ? (
 									<Spinner className="size-4" aria-hidden="true" />
 								) : (
-									<Circle className="size-3" aria-hidden="true" />
+									<RiCircleLine className="size-3" aria-hidden="true" />
 								)}
 								<span className="sr-only">
 									{complete

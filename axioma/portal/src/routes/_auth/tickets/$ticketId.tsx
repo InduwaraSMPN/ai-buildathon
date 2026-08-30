@@ -1,7 +1,14 @@
+import {
+	RiAddLine,
+	RiArrowLeftLine,
+	RiAttachment2,
+	RiCheckboxBlankCircleLine,
+	RiComputerLine,
+	RiLinkM,
+} from "@remixicon/react";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, CircleDot, Monitor, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
@@ -12,6 +19,8 @@ import {
 	PageShell,
 	StatusBadge,
 } from "@/components/ticket-ui";
+import { Alert, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -28,6 +37,21 @@ import {
 	EmptyHeader,
 	EmptyTitle,
 } from "@/components/ui/empty";
+import {
+	Field,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+	Item,
+	ItemContent,
+	ItemGroup,
+	ItemMedia,
+	ItemTitle,
+} from "@/components/ui/item";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { env } from "@/env";
@@ -63,6 +87,11 @@ function RouteComponent() {
 	const { ticketId } = Route.useParams();
 	const queryClient = useQueryClient();
 	const [detailHelpOpen, setDetailHelpOpen] = useState(false);
+	const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+	const [linkUrl, setLinkUrl] = useState("");
+	const [linkUrlTouched, setLinkUrlTouched] = useState(false);
+	const [linkName, setLinkName] = useState("");
+	const [uploadError, setUploadError] = useState(false);
 	const ticket = useQuery(myTicketQueryOptions(ticketId));
 	const approval = useQuery(
 		orpc.getMyApprovalStatus.queryOptions({ input: { ticketId } }),
@@ -73,10 +102,15 @@ function RouteComponent() {
 	);
 	const addLink = useMutation(
 		orpc.createLinkDocument.mutationOptions({
-			onSuccess: () =>
-				queryClient.invalidateQueries({
+			onSuccess: async () => {
+				await queryClient.invalidateQueries({
 					queryKey: orpc.listDocuments.key({ input: documentInput }),
-				}),
+				});
+				setLinkDialogOpen(false);
+				setLinkUrl("");
+				setLinkUrlTouched(false);
+				setLinkName("");
+			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
@@ -135,7 +169,7 @@ function RouteComponent() {
 	if (!ticket.data) {
 		return (
 			<PageShell>
-				<Card className="rounded-xl">
+				<Card>
 					<Empty>
 						<EmptyHeader>
 							<EmptyTitle>{ticketDetailCopy.notFound}</EmptyTitle>
@@ -169,7 +203,8 @@ function RouteComponent() {
 					className: "mb-6 -ml-2",
 				})}
 			>
-				<ArrowLeft aria-hidden="true" /> {ticketDetailCopy.back}
+				<RiArrowLeftLine data-icon="inline-start" aria-hidden="true" />{" "}
+				{ticketDetailCopy.back}
 			</Link>
 
 			<header className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
@@ -196,14 +231,15 @@ function RouteComponent() {
 						className="w-full sm:w-auto"
 						onClick={() => setDetailHelpOpen(true)}
 					>
-						<Plus aria-hidden="true" /> {ticketDetailCopy.addDetail}
+						<RiAddLine data-icon="inline-start" aria-hidden="true" />
+						{ticketDetailCopy.addDetail}
 					</Button>
 				) : null}
 			</header>
 
 			<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
 				<div className="min-w-0 space-y-6">
-					<Card className="rounded-xl">
+					<Card>
 						<CardContent>
 							<ProgressTimeline
 								stateType={data.statusStateType}
@@ -212,8 +248,8 @@ function RouteComponent() {
 						</CardContent>
 					</Card>
 
-					<Card id="shared-details" className="rounded-xl">
-						<CardHeader className="border-b">
+					<Card id="shared-details">
+						<CardHeader>
 							<CardTitle>{ticketDetailCopy.shared}</CardTitle>
 						</CardHeader>
 						<CardContent>
@@ -237,130 +273,145 @@ function RouteComponent() {
 
 				<aside className="space-y-4" aria-label={ticketDetailCopy.information}>
 					{approvalCopy ? (
-						<Card className="rounded-xl">
-							<CardHeader className="border-b">
+						<Card>
+							<CardHeader>
 								<CardTitle>{ticketDetailCopy.approval}</CardTitle>
 							</CardHeader>
 							<CardContent>
-								<p className="font-medium text-sm">{approvalCopy.label}</p>
+								<Badge variant="outline">{approvalCopy.label}</Badge>
 								<p className="mt-1 text-muted-foreground text-sm">
 									{approvalCopy.detail}
 								</p>
 							</CardContent>
 						</Card>
 					) : null}
-					<Card className="rounded-xl">
-						<CardHeader className="border-b">
+					<Card>
+						<CardHeader>
 							<CardTitle>{ticketDetailCopy.information}</CardTitle>
 						</CardHeader>
-						<CardContent className="space-y-5">
-							<div className="flex gap-3">
-								<CircleDot
-									className="mt-0.5 size-4 text-muted-foreground"
-									aria-hidden="true"
-								/>
-								<div>
-									<p className="text-muted-foreground text-xs">
-										{ticketDetailCopy.status}
-									</p>
-									<p className="mt-1 font-medium text-sm">{progress.label}</p>
-								</div>
-							</div>
-							{data.deviceId ? (
-								<div className="flex gap-3">
-									<Monitor
-										className="mt-0.5 size-4 text-muted-foreground"
-										aria-hidden="true"
-									/>
-									<div>
-										<p className="text-muted-foreground text-xs">
-											{ticketDetailCopy.deviceAttached}
+						<CardContent>
+							<ItemGroup>
+								<Item size="sm">
+									<ItemMedia variant="icon">
+										<RiCheckboxBlankCircleLine aria-hidden="true" />
+									</ItemMedia>
+									<ItemContent>
+										<ItemTitle>{ticketDetailCopy.status}</ItemTitle>
+										<Badge variant="secondary">{progress.label}</Badge>
+									</ItemContent>
+								</Item>
+								{data.deviceId ? (
+									<>
+										<Separator />
+										<Item size="sm">
+											<ItemMedia variant="icon">
+												<RiComputerLine aria-hidden="true" />
+											</ItemMedia>
+											<ItemContent>
+												<ItemTitle>{ticketDetailCopy.deviceAttached}</ItemTitle>
+												<Badge variant="outline">{ticketDetailCopy.yes}</Badge>
+											</ItemContent>
+										</Item>
+									</>
+								) : null}
+								<Separator />
+								<Item size="sm">
+									<ItemContent>
+										<ItemTitle>{ticketDetailCopy.lastUpdated}</ItemTitle>
+										<p className="text-muted-foreground text-sm">
+											{formatDate(data.updatedAt)}
 										</p>
-										<p className="mt-1 font-medium text-sm">
-											{ticketDetailCopy.yes}
-										</p>
-									</div>
-								</div>
-							) : null}
-							<div>
-								<p className="text-muted-foreground text-xs">
-									{ticketDetailCopy.lastUpdated}
-								</p>
-								<p className="mt-1 font-medium text-sm">
-									{formatDate(data.updatedAt)}
-								</p>
-							</div>
+									</ItemContent>
+								</Item>
+							</ItemGroup>
 						</CardContent>
 					</Card>
-					<Card className="rounded-xl">
-						<CardHeader className="border-b">
+					<Card>
+						<CardHeader>
 							<CardTitle>{attachmentCopy.title}</CardTitle>
 						</CardHeader>
-						<CardContent className="space-y-3">
+						<CardContent className="flex flex-col gap-3">
 							{documents.isPending ? (
 								<p role="status" className="text-muted-foreground text-sm">
 									{attachmentCopy.loading}
 								</p>
 							) : documents.isError ? (
-								<button
-									type="button"
-									className="text-destructive text-sm underline"
+								<Button
+									variant="destructive"
+									size="sm"
 									onClick={() => documents.refetch()}
 								>
 									{attachmentCopy.loadError}
-								</button>
+								</Button>
 							) : documents.data.length ? (
-								documents.data.map((item) => (
-									<a
-										key={item.id}
-										className="block text-sm underline underline-offset-4"
-										href={
-											item.kind === "link"
-												? item.url
-												: new URL(
-														item.downloadUrl,
-														`${env.VITE_SERVER_URL.replace(/\/$/, "")}/`,
-													).toString()
-										}
-									>
-										{item.displayName}
-									</a>
-								))
+								<ItemGroup>
+									{documents.data.map((item) => (
+										<Item
+											key={item.id}
+											size="sm"
+											variant="outline"
+											render={
+												<a
+													href={
+														item.kind === "link"
+															? item.url
+															: new URL(
+																	item.downloadUrl,
+																	`${env.VITE_SERVER_URL.replace(/\/$/, "")}/`,
+																).toString()
+													}
+												/>
+											}
+										>
+											<ItemMedia variant="icon">
+												{item.kind === "link" ? (
+													<RiLinkM aria-hidden="true" />
+												) : (
+													<RiAttachment2 aria-hidden="true" />
+												)}
+											</ItemMedia>
+											<ItemContent>
+												<ItemTitle>{item.displayName}</ItemTitle>
+											</ItemContent>
+										</Item>
+									))}
+								</ItemGroup>
 							) : (
 								<p className="text-muted-foreground text-sm">
 									{attachmentCopy.empty}
 								</p>
 							)}
+							{uploadError ? (
+								<Alert variant="destructive">
+									<AlertTitle>{attachmentCopy.uploadFailed}</AlertTitle>
+								</Alert>
+							) : null}
+							<Separator />
 							<div className="flex flex-wrap gap-2">
 								<Button
 									variant="outline"
 									size="sm"
 									disabled={addLink.isPending}
-									onClick={() => {
-										const url = window.prompt(attachmentCopy.linkUrlPrompt);
-										if (!url) return;
-										addLink.mutate({
-											...documentInput,
-											url,
-											displayName:
-												window.prompt(attachmentCopy.linkNamePrompt, url) ??
-												url,
-										});
-									}}
+									onClick={() => setLinkDialogOpen(true)}
 								>
+									<RiLinkM data-icon="inline-start" aria-hidden="true" />
 									{attachmentCopy.addLink}
 								</Button>
-								<label className="inline-flex cursor-pointer items-center rounded-md border px-3 text-sm">
+								<label
+									className={buttonVariants({ variant: "outline", size: "sm" })}
+								>
+									<RiAttachment2 data-icon="inline-start" aria-hidden="true" />
 									<input
 										className="sr-only"
 										type="file"
 										multiple
 										onChange={(event) => {
-											if (event.target.files)
-												void uploadDocuments({
-													...documentInput,
-													files: event.target.files,
-												});
+											if (!event.target.files) return;
+											setUploadError(false);
+											void uploadDocuments({
+												...documentInput,
+												files: event.target.files,
+											}).catch(() => setUploadError(true));
 										}}
 									/>
 									{attachmentCopy.attachFiles}
@@ -371,6 +422,69 @@ function RouteComponent() {
 				</aside>
 			</div>
 
+			<Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+				<DialogContent>
+					<DialogHeader>
+						<DialogTitle>{attachmentCopy.addLink}</DialogTitle>
+						<DialogDescription>
+							Add a link to this request’s attachments.
+						</DialogDescription>
+					</DialogHeader>
+					<form
+						onSubmit={(event) => {
+							event.preventDefault();
+							const url = linkUrl.trim();
+							setLinkUrlTouched(true);
+							if (!url) return;
+							addLink.mutate({
+								...documentInput,
+								url,
+								displayName: linkName.trim() || url,
+							});
+						}}
+					>
+						<FieldGroup>
+							<Field data-invalid={linkUrlTouched && !linkUrl.trim()}>
+								<FieldLabel htmlFor="attachment-link-url">
+									{attachmentCopy.linkUrlPrompt}
+								</FieldLabel>
+								<Input
+									id="attachment-link-url"
+									type="url"
+									required
+									value={linkUrl}
+									onBlur={() => setLinkUrlTouched(true)}
+									onChange={(event) => setLinkUrl(event.target.value)}
+									aria-invalid={linkUrlTouched && !linkUrl.trim()}
+								/>
+								{linkUrlTouched && !linkUrl.trim() ? (
+									<FieldError>This field is required.</FieldError>
+								) : null}
+							</Field>
+							<Field>
+								<FieldLabel htmlFor="attachment-link-name">
+									{attachmentCopy.linkNamePrompt}
+								</FieldLabel>
+								<Input
+									id="attachment-link-name"
+									value={linkName}
+									onChange={(event) => setLinkName(event.target.value)}
+									placeholder={linkUrl}
+								/>
+							</Field>
+							<DialogFooter>
+								<Button
+									type="submit"
+									disabled={!linkUrl.trim() || addLink.isPending}
+								>
+									{attachmentCopy.addLink}
+								</Button>
+							</DialogFooter>
+						</FieldGroup>
+					</form>
+				</DialogContent>
+			</Dialog>
+
 			<Dialog open={detailHelpOpen} onOpenChange={setDetailHelpOpen}>
 				<DialogContent>
 					<DialogHeader>
@@ -380,62 +494,64 @@ function RouteComponent() {
 						</DialogDescription>
 					</DialogHeader>
 					<form
-						className="space-y-4"
 						onSubmit={(event) => {
 							event.preventDefault();
 							event.stopPropagation();
 							void detailForm.handleSubmit().catch(() => undefined);
 						}}
 					>
-						<detailForm.Field name="note">
-							{(field) => (
-								<div className="space-y-2">
-									<label htmlFor="detail-note" className="font-medium text-sm">
-										{ticketDetailCopy.additionalDetail}
-									</label>
-									<Textarea
-										id="detail-note"
-										name={field.name}
-										value={field.state.value}
-										onBlur={field.handleBlur}
-										onChange={(event) => field.handleChange(event.target.value)}
-										maxLength={2_000}
-										placeholder={ticketDetailCopy.notePlaceholder}
-										className="min-h-24 rounded-md text-sm"
-										aria-invalid={field.state.meta.errors.length > 0}
-									/>
-									{field.state.meta.errors.length ? (
-										<p className="text-destructive text-sm" role="alert">
-											{field.state.meta.errors[0]?.message}
-										</p>
-									) : null}
-								</div>
-							)}
-						</detailForm.Field>
-						<DialogFooter>
-							<detailForm.Subscribe
-								selector={(state) => ({
-									canSubmit: state.canSubmit,
-									isSubmitting: state.isSubmitting,
-									note: state.values.note,
-								})}
-							>
-								{({ canSubmit, isSubmitting, note }) => (
-									<Button
-										type="submit"
-										disabled={
-											!canSubmit ||
-											!note.trim() ||
-											note.trim().length > 2_000 ||
-											isSubmitting ||
-											updateTicket.isPending
-										}
-									>
-										{ticketDetailCopy.addDetail}
-									</Button>
-								)}
-							</detailForm.Subscribe>
-						</DialogFooter>
+						<FieldGroup>
+							<detailForm.Field name="note">
+								{(field) => {
+									const invalid = field.state.meta.errors.length > 0;
+									return (
+										<Field data-invalid={invalid}>
+											<FieldLabel htmlFor="detail-note">
+												{ticketDetailCopy.additionalDetail}
+											</FieldLabel>
+											<Textarea
+												id="detail-note"
+												name={field.name}
+												value={field.state.value}
+												onBlur={field.handleBlur}
+												onChange={(event) =>
+													field.handleChange(event.target.value)
+												}
+												maxLength={2_000}
+												placeholder={ticketDetailCopy.notePlaceholder}
+												className="min-h-24"
+												aria-invalid={invalid}
+											/>
+											<FieldError errors={field.state.meta.errors} />
+										</Field>
+									);
+								}}
+							</detailForm.Field>
+							<DialogFooter>
+								<detailForm.Subscribe
+									selector={(state) => ({
+										canSubmit: state.canSubmit,
+										isSubmitting: state.isSubmitting,
+										note: state.values.note,
+									})}
+								>
+									{({ canSubmit, isSubmitting, note }) => (
+										<Button
+											type="submit"
+											disabled={
+												!canSubmit ||
+												!note.trim() ||
+												note.trim().length > 2_000 ||
+												isSubmitting ||
+												updateTicket.isPending
+											}
+										>
+											{ticketDetailCopy.addDetail}
+										</Button>
+									)}
+								</detailForm.Subscribe>
+							</DialogFooter>
+						</FieldGroup>
 					</form>
 				</DialogContent>
 			</Dialog>

@@ -1,5 +1,18 @@
+import { Checkbox } from "@/components/ui/checkbox";
+import { Field, FieldContent, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from "@/components/ui/native-select";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { client } from "@/utils/orpc";
 
@@ -33,12 +46,6 @@ export function DynamicFields({
 		const config = definition.config as Config;
 		const id = `custom-field-${definition.key}`;
 		const value = values[definition.key];
-		const common = {
-			id,
-			name: definition.key,
-			className:
-				"h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50",
-		};
 		let control: React.ReactNode;
 
 		switch (definition.fieldType) {
@@ -56,7 +63,8 @@ export function DynamicFields({
 			case "integer":
 				control = (
 					<Input
-						{...common}
+						id={id}
+						name={definition.key}
 						type="number"
 						step={1}
 						min={config.min}
@@ -75,7 +83,8 @@ export function DynamicFields({
 			case "datetime":
 				control = (
 					<Input
-						{...common}
+						id={id}
+						name={definition.key}
 						type={definition.fieldType === "date" ? "date" : "datetime-local"}
 						value={typeof value === "string" ? value : ""}
 						onChange={(event) => set(definition.key, event.target.value)}
@@ -84,26 +93,33 @@ export function DynamicFields({
 				break;
 			case "dropdown":
 				control = (
-					<select
-						{...common}
-						value={typeof value === "string" ? value : ""}
-						onChange={(event) => set(definition.key, event.target.value)}
+					<Select
+						name={definition.key}
+						value={typeof value === "string" && value ? value : null}
+						onValueChange={(next) => set(definition.key, next ?? "")}
 					>
-						<option value="">Select an option</option>
-						{config.options?.map((option) => (
-							<option key={option} value={option}>
-								{option}
-							</option>
-						))}
-					</select>
+						<SelectTrigger id={id} className="w-full">
+							<SelectValue placeholder="Select an option" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectGroup>
+								{config.options?.map((option) => (
+									<SelectItem key={option} value={option}>
+										{option}
+									</SelectItem>
+								))}
+							</SelectGroup>
+						</SelectContent>
+					</Select>
 				);
 				break;
 			case "multiselect":
 				control = (
-					<select
-						{...common}
+					<NativeSelect
+						id={id}
+						name={definition.key}
 						multiple
-						className={`${common.className} h-auto min-h-24 py-2`}
+						className="w-full [&_[data-slot=native-select]]:min-h-24 [&_[data-slot=native-select]]:py-2"
 						value={Array.isArray(value) ? (value as string[]) : []}
 						onChange={(event) =>
 							set(
@@ -116,36 +132,35 @@ export function DynamicFields({
 						}
 					>
 						{config.options?.map((option) => (
-							<option key={option} value={option}>
+							<NativeSelectOption key={option} value={option}>
 								{option}
-							</option>
+							</NativeSelectOption>
 						))}
-					</select>
+					</NativeSelect>
 				);
 				break;
 			case "checkbox":
 				return (
-					<label
-						key={definition.id}
-						htmlFor={id}
-						className="flex items-center gap-3 text-sm"
-					>
-						<input
+					<Field key={definition.id} orientation="horizontal">
+						<Checkbox
 							id={id}
 							name={definition.key}
-							type="checkbox"
 							checked={value === true}
-							onChange={(event) => set(definition.key, event.target.checked)}
-							className="size-4 accent-primary"
+							onCheckedChange={(checked) =>
+								set(definition.key, checked === true)
+							}
 						/>
-						{definition.label}
-					</label>
+						<FieldContent>
+							<FieldLabel htmlFor={id}>{definition.label}</FieldLabel>
+						</FieldContent>
+					</Field>
 				);
 			case "reference":
 			case "text":
 				control = (
 					<Input
-						{...common}
+						id={id}
+						name={definition.key}
 						type="text"
 						value={typeof value === "string" ? value : ""}
 						maxLength={config.maxLength}
@@ -160,10 +175,10 @@ export function DynamicFields({
 		}
 
 		return (
-			<div key={definition.id} className="space-y-2">
-				<Label htmlFor={id}>{definition.label}</Label>
+			<Field key={definition.id}>
+				<FieldLabel htmlFor={id}>{definition.label}</FieldLabel>
 				{control}
-			</div>
+			</Field>
 		);
 	});
 }

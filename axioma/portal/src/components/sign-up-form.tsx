@@ -3,8 +3,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
 import { Button } from "@/components/ui/button";
+import {
+	Field,
+	FieldError,
+	FieldGroup,
+	FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 
 import { authClient } from "@/lib/auth-client";
 
@@ -76,75 +82,71 @@ export default function SignUpForm({
 					e.stopPropagation();
 					form.handleSubmit();
 				}}
-				className="space-y-4"
+				className="flex flex-col gap-4"
 			>
-				<div>
+				<FieldGroup>
 					<form.Field name="name">
-						{(field) => (
-							<div className="space-y-2">
-								<Label htmlFor={field.name}>Name</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-								/>
-								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-destructive text-sm">
-										{error?.message}
-									</p>
-								))}
-							</div>
-						)}
+						{(field) => {
+							const invalid = field.state.meta.errors.length > 0;
+							return (
+								<Field data-invalid={invalid}>
+									<FieldLabel htmlFor={field.name}>Name</FieldLabel>
+									<Input
+										id={field.name}
+										name={field.name}
+										value={field.state.value}
+										onBlur={field.handleBlur}
+										onChange={(e) => field.handleChange(e.target.value)}
+										aria-invalid={invalid}
+									/>
+									<FieldError errors={field.state.meta.errors} />
+								</Field>
+							);
+						}}
 					</form.Field>
-				</div>
 
-				<div>
 					<form.Field name="email">
-						{(field) => (
-							<div className="space-y-2">
-								<Label htmlFor={field.name}>Email</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									type="email"
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-								/>
-								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-destructive text-sm">
-										{error?.message}
-									</p>
-								))}
-							</div>
-						)}
+						{(field) => {
+							const invalid = field.state.meta.errors.length > 0;
+							return (
+								<Field data-invalid={invalid}>
+									<FieldLabel htmlFor={field.name}>Email</FieldLabel>
+									<Input
+										id={field.name}
+										name={field.name}
+										type="email"
+										value={field.state.value}
+										onBlur={field.handleBlur}
+										onChange={(e) => field.handleChange(e.target.value)}
+										aria-invalid={invalid}
+									/>
+									<FieldError errors={field.state.meta.errors} />
+								</Field>
+							);
+						}}
 					</form.Field>
-				</div>
 
-				<div>
 					<form.Field name="password">
-						{(field) => (
-							<div className="space-y-2">
-								<Label htmlFor={field.name}>Password</Label>
-								<Input
-									id={field.name}
-									name={field.name}
-									type="password"
-									value={field.state.value}
-									onBlur={field.handleBlur}
-									onChange={(e) => field.handleChange(e.target.value)}
-								/>
-								{field.state.meta.errors.map((error) => (
-									<p key={error?.message} className="text-destructive text-sm">
-										{error?.message}
-									</p>
-								))}
-							</div>
-						)}
+						{(field) => {
+							const invalid = field.state.meta.errors.length > 0;
+							return (
+								<Field data-invalid={invalid}>
+									<FieldLabel htmlFor={field.name}>Password</FieldLabel>
+									<Input
+										id={field.name}
+										name={field.name}
+										type="password"
+										value={field.state.value}
+										onBlur={field.handleBlur}
+										onChange={(e) => field.handleChange(e.target.value)}
+										aria-invalid={invalid}
+									/>
+									<FieldError errors={field.state.meta.errors} />
+								</Field>
+							);
+						}}
 					</form.Field>
-				</div>
+				</FieldGroup>
 
 				<form.Subscribe
 					selector={(state) => ({
@@ -158,6 +160,7 @@ export default function SignUpForm({
 							className="w-full"
 							disabled={!canSubmit || isSubmitting}
 						>
+							{isSubmitting ? <Spinner data-icon="inline-start" /> : null}
 							{isSubmitting ? "Submitting..." : "Sign Up"}
 						</Button>
 					)}

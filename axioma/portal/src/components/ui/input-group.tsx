@@ -1,5 +1,3 @@
-"use client";
-
 import { cva, type VariantProps } from "class-variance-authority";
 import type * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -51,18 +49,20 @@ function InputGroupAddon({
 }: React.ComponentProps<"div"> & VariantProps<typeof inputGroupAddonVariants>) {
 	return (
 		// Clicking the adornment only delegates focus to its input; it is not an action.
-		// biome-ignore lint/a11y/useKeyWithClickEvents: Keyboard users can focus the input directly.
 		// biome-ignore lint/a11y/useSemanticElements: Preserve the generic addon container and its div prop contract.
 		<div
 			role="group"
 			data-slot="input-group-addon"
 			data-align={align}
 			className={cn(inputGroupAddonVariants({ align }), className)}
-			onClick={(e) => {
-				if ((e.target as HTMLElement).closest("button")) {
+			onPointerDown={(event) => {
+				if (
+					event.button !== 0 ||
+					(event.target as HTMLElement).closest("button")
+				) {
 					return;
 				}
-				e.currentTarget.parentElement?.querySelector("input")?.focus();
+				event.currentTarget.parentElement?.querySelector("input")?.focus();
 			}}
 			{...props}
 		/>

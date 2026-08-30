@@ -1,5 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -23,8 +23,8 @@ export default function UserMenu() {
 
 	if (!session) {
 		return (
-			<Link to="/login">
-				<Button variant="outline">Sign In</Button>
+			<Link to="/login" className={buttonVariants({ variant: "outline" })}>
+				Sign In
 			</Link>
 		);
 	}

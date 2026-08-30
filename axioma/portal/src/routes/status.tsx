@@ -1,5 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { ServiceStatusList } from "@/features/status/components/service-status";
 import { statusCopy } from "@/features/status/copy";
 import { orpc } from "@/utils/orpc";
@@ -12,28 +16,32 @@ export const Route = createFileRoute("/status")({
 function PublicStatusPage() {
 	const query = useQuery(orpc.readStatus.queryOptions({ input: { days: 90 } }));
 	return (
-		<main className="mx-auto min-h-full w-full max-w-6xl space-y-6 px-4 py-10 sm:px-6 lg:px-8">
+		<main className="mx-auto flex min-h-full w-full max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 lg:px-8">
 			{query.isPending ? (
-				<p
-					role="status"
-					className="rounded-xl border p-8 text-center text-muted-foreground"
-				>
-					{statusCopy.loading}
-				</p>
+				<div className="flex flex-col gap-4" role="status">
+					<span className="flex items-center gap-2 text-muted-foreground text-sm">
+						<Spinner aria-hidden="true" />
+						{statusCopy.loading}
+					</span>
+					{[0, 1, 2].map((item) => (
+						<Skeleton key={item} className="h-36 w-full" />
+					))}
+				</div>
 			) : query.isError ? (
-				<div role="alert" className="rounded-xl border p-8 text-center">
-					<p className="font-medium">{statusCopy.unavailable}</p>
-					<p className="mt-1 text-muted-foreground text-sm">
+				<Alert variant="destructive">
+					<AlertTitle>{statusCopy.unavailable}</AlertTitle>
+					<AlertDescription>
 						{statusCopy.unavailableDescription}
-					</p>
-					<button
+					</AlertDescription>
+					<Button
 						type="button"
-						className="mt-3 underline underline-offset-4"
+						variant="outline"
+						className="mt-3 w-fit"
 						onClick={() => query.refetch()}
 					>
 						Try again
-					</button>
-				</div>
+					</Button>
+				</Alert>
 			) : (
 				<ServiceStatusList services={query.data} />
 			)}

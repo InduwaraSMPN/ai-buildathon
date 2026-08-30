@@ -1,4 +1,28 @@
 import { useId } from "react";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+	Item,
+	ItemContent,
+	ItemDescription,
+	ItemFooter,
+	ItemGroup,
+	ItemTitle,
+} from "@/components/ui/item";
+import {
+	Select,
+	SelectContent,
+	SelectGroup,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
 
 export type KnowledgeArticleSummary = {
 	id: string;
@@ -47,7 +71,10 @@ export function KnowledgeBrowser({
 	const folderSelectId = useId();
 
 	return (
-		<section aria-labelledby={`${searchId}-heading`} className="space-y-5">
+		<section
+			aria-labelledby={`${searchId}-heading`}
+			className="flex flex-col gap-5"
+		>
 			<div>
 				<h2
 					id={`${searchId}-heading`}
@@ -60,83 +87,82 @@ export function KnowledgeBrowser({
 				</p>
 			</div>
 
-			<div className="grid gap-4 sm:grid-cols-[1fr_14rem]">
-				<div className="space-y-2">
-					<label htmlFor={searchId} className="font-medium text-sm">
-						Search help articles
-					</label>
-					<input
+			<FieldGroup className="grid gap-4 sm:grid-cols-[1fr_14rem]">
+				<Field>
+					<FieldLabel htmlFor={searchId}>Search help articles</FieldLabel>
+					<Input
 						id={searchId}
 						type="search"
 						value={query}
 						onChange={(event) => onQueryChange(event.target.value)}
 						placeholder="Example: connect to Wi-Fi"
-						className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
 					/>
-				</div>
+				</Field>
 				{onFolderChange ? (
-					<div className="space-y-2">
-						<label htmlFor={folderSelectId} className="font-medium text-sm">
-							Topic
-						</label>
-						<select
-							id={folderSelectId}
+					<Field>
+						<FieldLabel htmlFor={folderSelectId}>Topic</FieldLabel>
+						<Select
 							value={folderId}
-							onChange={(event) => onFolderChange(event.target.value)}
-							className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+							onValueChange={(value) => onFolderChange(value ?? "")}
 						>
-							<option value="">All topics</option>
-							{folders.map((folder) => (
-								<option key={folder.id} value={folder.id}>
-									{folder.name}
-								</option>
-							))}
-						</select>
-					</div>
+							<SelectTrigger id={folderSelectId} className="w-full">
+								<SelectValue placeholder="All topics" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectGroup>
+									<SelectItem value="">All topics</SelectItem>
+									{folders.map((folder) => (
+										<SelectItem key={folder.id} value={folder.id}>
+											{folder.name}
+										</SelectItem>
+									))}
+								</SelectGroup>
+							</SelectContent>
+						</Select>
+					</Field>
 				) : null}
-			</div>
+			</FieldGroup>
 
 			{articles.length ? (
-				<ul className="grid gap-3" aria-live="polite">
+				<ItemGroup aria-live="polite">
 					{articles.map((article) => {
 						const status = plainStatus(article.status);
 						return (
-							<li key={article.id}>
-								<button
-									type="button"
-									onClick={() => onArticleSelect(article)}
-									className="w-full rounded-lg border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-								>
-									<span className="font-semibold">{article.title}</span>
+							<Item
+								key={article.id}
+								variant="outline"
+								render={<button type="button" />}
+								onClick={() => onArticleSelect(article)}
+							>
+								<ItemContent>
+									<ItemTitle>{article.title}</ItemTitle>
 									{article.summary ? (
-										<span className="mt-1 block text-muted-foreground text-sm leading-relaxed">
-											{article.summary}
+										<ItemDescription>{article.summary}</ItemDescription>
+									) : null}
+								</ItemContent>
+								<ItemFooter className="justify-start text-muted-foreground text-xs">
+									{article.folder ? <span>{article.folder}</span> : null}
+									{status ? <span>{status}</span> : null}
+									{article.updatedAt ? (
+										<span>
+											Updated{" "}
+											{new Intl.DateTimeFormat(undefined, {
+												dateStyle: "medium",
+											}).format(new Date(article.updatedAt))}
 										</span>
 									) : null}
-									<span className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground text-xs">
-										{article.folder ? <span>{article.folder}</span> : null}
-										{status ? <span>{status}</span> : null}
-										{article.updatedAt ? (
-											<span>
-												Updated{" "}
-												{new Intl.DateTimeFormat(undefined, {
-													dateStyle: "medium",
-												}).format(new Date(article.updatedAt))}
-											</span>
-										) : null}
-									</span>
-								</button>
-							</li>
+								</ItemFooter>
+							</Item>
 						);
 					})}
-				</ul>
+				</ItemGroup>
 			) : (
-				<p
-					className="rounded-lg border border-dashed p-8 text-center text-muted-foreground"
-					role="status"
-				>
-					{emptyMessage}
-				</p>
+				<Empty className="border" role="status">
+					<EmptyHeader>
+						<EmptyTitle>No articles found</EmptyTitle>
+						<EmptyDescription>{emptyMessage}</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
 			)}
 		</section>
 	);

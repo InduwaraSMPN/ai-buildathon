@@ -1,12 +1,19 @@
-import type { LucideIcon } from "lucide-react";
 import {
-	AlertCircle,
-	CircleCheck,
-	Clock3,
-	LifeBuoy,
-	Route,
-} from "lucide-react";
+	type RemixiconComponentType,
+	RiCheckboxCircleLine,
+	RiErrorWarningLine,
+	RiLifebuoyLine,
+	RiRouteLine,
+	RiTimeLine,
+} from "@remixicon/react";
 import type { ReactNode } from "react";
+import {
+	Alert,
+	AlertAction,
+	AlertDescription,
+	AlertTitle,
+} from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -15,21 +22,42 @@ import {
 	statusDetailCopy,
 	ticketUiCopy,
 } from "@/features/tickets/copy";
-import { cn } from "@/lib/utils";
+import { STATE_TYPES } from "@/sdk/shared";
 
-const statusIcons: Record<string, LucideIcon> = {
-	new: Clock3,
-	open: LifeBuoy,
-	pending: Route,
-	resolved: CircleCheck,
-	closed: CircleCheck,
+type StateType = (typeof STATE_TYPES)[number];
+
+const statusIcons: Record<StateType, RemixiconComponentType> = {
+	new: RiTimeLine,
+	open: RiLifebuoyLine,
+	pending: RiRouteLine,
+	resolved: RiCheckboxCircleLine,
+	closed: RiCheckboxCircleLine,
+	merged: RiCheckboxCircleLine,
+	cancelled: RiErrorWarningLine,
 };
+
+const statusVariants: Record<
+	StateType,
+	"default" | "secondary" | "destructive" | "outline"
+> = {
+	new: "secondary",
+	open: "default",
+	pending: "outline",
+	resolved: "secondary",
+	closed: "outline",
+	merged: "secondary",
+	cancelled: "destructive",
+} as const;
+
+function isStateType(value: string): value is StateType {
+	return (STATE_TYPES as readonly string[]).includes(value);
+}
 
 export function getStatus(stateType: string, label = fallbackStatusCopy.label) {
 	return {
 		label,
 		detail: statusDetailCopy[stateType] ?? fallbackStatusCopy.detail,
-		icon: statusIcons[stateType] ?? Clock3,
+		icon: isStateType(stateType) ? statusIcons[stateType] : RiTimeLine,
 	};
 }
 
@@ -41,18 +69,10 @@ export function StatusBadge({
 	label?: string;
 }) {
 	const { label } = getStatus(stateType, configuredLabel);
-	return (
-		<span
-			className={cn(
-				"inline-flex items-center rounded-full border px-2.5 py-1 font-medium text-xs",
-				stateType === "resolved" || stateType === "closed"
-					? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-					: "border-blue-500/20 bg-blue-500/10 text-blue-700 dark:text-blue-300",
-			)}
-		>
-			{configuredLabel ?? label}
-		</span>
-	);
+	const variant = isStateType(stateType)
+		? statusVariants[stateType]
+		: "outline";
+	return <Badge variant={variant}>{configuredLabel ?? label}</Badge>;
 }
 
 export function formatDate(value: Date) {
@@ -105,11 +125,11 @@ export function LoadingCards() {
 	return (
 		<div className="grid gap-4" role="status" aria-label={ticketUiCopy.loading}>
 			{[0, 1, 2].map((item) => (
-				<Card className="rounded-xl" key={item}>
-					<CardContent className="space-y-4 py-2">
-						<Skeleton className="h-5 w-2/3 rounded-md" />
-						<Skeleton className="h-4 w-full rounded-md" />
-						<Skeleton className="h-4 w-1/3 rounded-md" />
+				<Card key={item}>
+					<CardContent className="flex flex-col gap-4 py-2">
+						<Skeleton className="h-5 w-2/3" />
+						<Skeleton className="h-4 w-full" />
+						<Skeleton className="h-4 w-1/3" />
 					</CardContent>
 				</Card>
 			))}
@@ -119,19 +139,15 @@ export function LoadingCards() {
 
 export function ErrorState({ retry }: { retry: () => void }) {
 	return (
-		<Card className="rounded-xl border-destructive/30">
-			<CardContent className="flex flex-col items-center gap-4 py-12 text-center">
-				<AlertCircle className="size-8 text-destructive" aria-hidden="true" />
-				<div>
-					<h2 className="font-semibold text-lg">{ticketUiCopy.errorTitle}</h2>
-					<p className="mt-1 text-muted-foreground">
-						{ticketUiCopy.errorDescription}
-					</p>
-				</div>
-				<Button variant="outline" onClick={retry}>
+		<Alert variant="destructive">
+			<RiErrorWarningLine aria-hidden="true" />
+			<AlertTitle>{ticketUiCopy.errorTitle}</AlertTitle>
+			<AlertDescription>{ticketUiCopy.errorDescription}</AlertDescription>
+			<AlertAction>
+				<Button variant="outline" size="sm" onClick={retry}>
 					{ticketUiCopy.tryAgain}
 				</Button>
-			</CardContent>
-		</Card>
+			</AlertAction>
+		</Alert>
 	);
 }

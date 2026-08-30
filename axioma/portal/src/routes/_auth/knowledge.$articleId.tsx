@@ -1,7 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PageShell } from "@/components/ticket-ui";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import {
+	Empty,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyTitle,
+} from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 import { KnowledgeArticle } from "@/features/knowledge/components";
 import { orpc } from "@/utils/orpc";
 
@@ -17,34 +25,52 @@ function ArticleRoute() {
 	if (query.isPending && query.data == null) {
 		return (
 			<PageShell>
-				<p className="text-muted-foreground text-sm" role="status">
-					Loading article…
-				</p>
+				<div
+					className="flex flex-col gap-4"
+					role="status"
+					aria-label="Loading article"
+				>
+					<Skeleton className="h-8 w-40" />
+					<Skeleton className="h-10 w-3/4" />
+					<Skeleton className="h-48 w-full" />
+				</div>
 			</PageShell>
 		);
 	}
 	if (query.isError && query.data == null) {
 		return (
 			<PageShell>
-				<div
-					className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-card p-6"
-					role="alert"
-				>
-					<p className="font-semibold">Could not load article</p>
-					<p className="text-muted-foreground text-sm">{query.error.message}</p>
-					<div>
-						<Button variant="outline" onClick={() => query.refetch()}>
-							Try again
-						</Button>
-					</div>
-				</div>
+				<Alert variant="destructive">
+					<AlertTitle>Could not load article</AlertTitle>
+					<AlertDescription>{query.error.message}</AlertDescription>
+					<Button
+						variant="outline"
+						className="mt-3 w-fit"
+						onClick={() => query.refetch()}
+					>
+						Try again
+					</Button>
+				</Alert>
 			</PageShell>
 		);
 	}
 	if (!query.data) {
 		return (
 			<PageShell>
-				<p>Article not found.</p>
+				<Empty className="border">
+					<EmptyHeader>
+						<EmptyTitle>Article not found</EmptyTitle>
+						<EmptyDescription>
+							This help article may have been moved or removed.
+						</EmptyDescription>
+					</EmptyHeader>
+					<Button
+						variant="outline"
+						onClick={() => void navigate({ to: "/knowledge" })}
+					>
+						Back to help articles
+					</Button>
+				</Empty>
 			</PageShell>
 		);
 	}

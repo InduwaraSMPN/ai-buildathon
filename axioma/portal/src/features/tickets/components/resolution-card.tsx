@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { RiCheckLine } from "@remixicon/react";
 import { formatDate } from "@/components/ticket-ui";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { resolutionCopy } from "@/features/tickets/copy";
@@ -23,7 +23,7 @@ export function ResolutionCard({
 }) {
 	if (ticket.statusStateType === "closed") {
 		return (
-			<Card className="rounded-xl">
+			<Card>
 				<CardHeader>
 					<CardTitle>{resolutionCopy.closedTitle}</CardTitle>
 				</CardHeader>
@@ -47,10 +47,23 @@ export function ResolutionCard({
 		return null;
 
 	return (
-		<Card className="rounded-xl border-emerald-500/20 bg-emerald-500/5">
+		<Card
+			className={
+				ticket.statusStateType === "resolved"
+					? "border-success/20 bg-success/5"
+					: "border-warning/20 bg-warning/5"
+			}
+		>
 			<CardHeader>
 				<CardTitle className="flex items-center gap-2">
-					<Check className="size-5 text-emerald-600" aria-hidden="true" />
+					<RiCheckLine
+						className={
+							ticket.statusStateType === "resolved"
+								? "text-success"
+								: "text-warning"
+						}
+						aria-hidden="true"
+					/>
 					{ticket.statusStateType === "resolved"
 						? resolutionCopy.resolvedTitle
 						: resolutionCopy.escalatedTitle}

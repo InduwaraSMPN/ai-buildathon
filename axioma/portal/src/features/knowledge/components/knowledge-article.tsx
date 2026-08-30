@@ -1,3 +1,15 @@
+import { RiArrowLeftLine } from "@remixicon/react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+	Field,
+	FieldGroup,
+	FieldLabel,
+	FieldLegend,
+	FieldSet,
+} from "@/components/ui/field";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+
 export type KnowledgeArticleData = {
 	title: string;
 	body: string;
@@ -15,16 +27,23 @@ export function KnowledgeArticle({
 	onBack?: () => void;
 	onHelpful?: (helpful: boolean) => void;
 }) {
+	const [helpful, setHelpful] = useState("");
+
 	return (
-		<article className="space-y-6" aria-labelledby="knowledge-article-title">
+		<article
+			className="flex flex-col gap-6"
+			aria-labelledby="knowledge-article-title"
+		>
 			{onBack ? (
-				<button
+				<Button
 					type="button"
+					variant="ghost"
 					onClick={onBack}
-					className="font-medium text-primary text-sm underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+					className="self-start"
 				>
+					<RiArrowLeftLine data-icon="inline-start" aria-hidden="true" />
 					Back to help articles
-				</button>
+				</Button>
 			) : null}
 			<header className="border-b pb-5">
 				{article.topic ? (
@@ -56,25 +75,28 @@ export function KnowledgeArticle({
 				{article.body}
 			</div>
 			{onHelpful ? (
-				<fieldset className="flex flex-wrap items-center gap-3 border-t pt-5">
-					<legend className="mb-3 font-medium text-sm">
-						Was this article helpful?
-					</legend>
-					<button
-						type="button"
-						onClick={() => onHelpful(true)}
-						className="rounded-md border px-4 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+				<FieldSet className="border-t pt-5">
+					<FieldLegend variant="label">Was this article helpful?</FieldLegend>
+					<RadioGroup
+						value={helpful}
+						onValueChange={(value) => {
+							setHelpful(value);
+							onHelpful(value === "yes");
+						}}
 					>
-						Yes
-					</button>
-					<button
-						type="button"
-						onClick={() => onHelpful(false)}
-						className="rounded-md border px-4 py-2 text-sm hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-					>
-						No
-					</button>
-				</fieldset>
+						<FieldGroup className="flex-row">
+							{[
+								["yes", "Yes"],
+								["no", "No"],
+							].map(([value, label]) => (
+								<Field key={value} orientation="horizontal">
+									<RadioGroupItem id={`helpful-${value}`} value={value} />
+									<FieldLabel htmlFor={`helpful-${value}`}>{label}</FieldLabel>
+								</Field>
+							))}
+						</FieldGroup>
+					</RadioGroup>
+				</FieldSet>
 			) : null}
 		</article>
 	);

@@ -1,14 +1,20 @@
+import { RiNotificationLine } from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Bell } from "lucide-react";
 import { orpc } from "@/utils/orpc";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 import { Button } from "./ui/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuItem,
 	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { Empty, EmptyDescription } from "./ui/empty";
+import { Skeleton } from "./ui/skeleton";
 
 export function NotificationCenter() {
 	const queryClient = useQueryClient();
@@ -36,57 +42,57 @@ export function NotificationCenter() {
 			<DropdownMenuTrigger
 				render={<Button variant="ghost" size="icon" aria-label={unreadLabel} />}
 			>
-				<Bell />
+				<RiNotificationLine />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-80 p-2">
 				<DropdownMenuLabel>
 					Notifications {query.data && unread ? `(${unread})` : ""}
 				</DropdownMenuLabel>
+				<DropdownMenuSeparator />
 				{query.isPending && query.data == null ? (
-					<p className="p-2 text-muted-foreground text-xs" role="status">
-						Loading notifications…
-					</p>
+					<div className="flex flex-col gap-2 p-2" role="status">
+						<Skeleton className="h-4 w-2/3" />
+						<Skeleton className="h-3 w-full" />
+					</div>
 				) : query.isError && query.data == null ? (
-					<div className="p-2" role="alert">
-						<p className="text-destructive text-xs">
-							Could not load notifications
-						</p>
-						<p className="mt-1 text-muted-foreground text-xs">
-							{query.error.message}
-						</p>
-						<Button
-							variant="outline"
-							size="sm"
-							className="mt-2"
-							onClick={() => query.refetch()}
-						>
+					<Alert variant="destructive">
+						<AlertTitle>Could not load notifications</AlertTitle>
+						<AlertDescription>{query.error.message}</AlertDescription>
+						<Button variant="outline" size="sm" onClick={() => query.refetch()}>
 							Try again
 						</Button>
-					</div>
+					</Alert>
 				) : query.data?.length === 0 ? (
-					<p className="p-2 text-muted-foreground text-xs">
-						You’re all caught up.
-					</p>
+					<Empty className="p-3">
+						<EmptyDescription>You’re all caught up.</EmptyDescription>
+					</Empty>
 				) : null}
-				{query.data?.map((item) => (
-					<Link
-						key={item.id}
-						to={item.recordType === "ticket" ? "/tickets/$ticketId" : "/home"}
-						params={
-							item.recordType === "ticket"
-								? { ticketId: item.recordId }
-								: undefined
-						}
-						className="block border-t p-2 text-xs"
-						onClick={() => !item.readAt && markRead.mutate({ id: item.id })}
-					>
-						<p className="font-medium">
-							{item.title}
-							{item.eventCount > 1 ? ` (${item.eventCount})` : ""}
-						</p>
-						<p className="line-clamp-2 text-muted-foreground">{item.body}</p>
-					</Link>
-				))}
+				<DropdownMenuGroup>
+					{query.data?.map((item) => {
+						const isTicket = item.recordType === "ticket";
+						return (
+							<DropdownMenuItem
+								key={item.id}
+								render={
+									<Link
+										to={isTicket ? "/tickets/$ticketId" : "/home"}
+										params={isTicket ? { ticketId: item.recordId } : undefined}
+									/>
+								}
+								className="flex-col items-start"
+								onClick={() => !item.readAt && markRead.mutate({ id: item.id })}
+							>
+								<p className="font-medium">
+									{item.title}
+									{item.eventCount > 1 ? ` (${item.eventCount})` : ""}
+								</p>
+								<p className="line-clamp-2 text-muted-foreground text-xs">
+									{item.body}
+								</p>
+							</DropdownMenuItem>
+						);
+					})}
+				</DropdownMenuGroup>
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

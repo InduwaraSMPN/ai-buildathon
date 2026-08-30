@@ -1,7 +1,12 @@
+import {
+	RiAddLine,
+	RiArrowRightLine,
+	RiCheckboxCircleLine,
+	RiInboxLine,
+} from "@remixicon/react";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, CircleCheck, Inbox, Plus } from "lucide-react";
 import {
 	ErrorState,
 	formatDate,
@@ -20,8 +25,10 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	getTicketStage,
 	homeCopy,
@@ -68,7 +75,7 @@ function RouteComponent() {
 			params={{ ticketId: ticket.id }}
 			className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		>
-			<Card className="rounded-xl transition-colors group-hover:bg-muted/40">
+			<Card className="transition-colors group-hover:bg-muted/40">
 				<CardContent className="flex items-center justify-between gap-4 py-1 sm:gap-5">
 					<div className="min-w-0">
 						<div className="mb-3 flex flex-wrap items-center gap-2 sm:gap-3">
@@ -81,7 +88,10 @@ function RouteComponent() {
 							</span>
 							{ticket.statusStateType === "resolved" ? (
 								<span className="inline-flex items-center gap-1 text-muted-foreground text-xs">
-									<CircleCheck className="size-3.5" aria-hidden="true" />
+									<RiCheckboxCircleLine
+										className="size-3.5"
+										aria-hidden="true"
+									/>
 									<span>{homeCopy.resolutionReady}</span>
 								</span>
 							) : null}
@@ -97,7 +107,7 @@ function RouteComponent() {
 							{ticket.body}
 						</p>
 					</div>
-					<ArrowRight
+					<RiArrowRightLine
 						className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1"
 						aria-hidden="true"
 					/>
@@ -114,56 +124,69 @@ function RouteComponent() {
 				description={homeCopy.description}
 				action={
 					<Link to="/tickets/new" className={buttonVariants({ size: "lg" })}>
-						<Plus aria-hidden="true" /> {homeCopy.newRequest}
+						<RiAddLine data-icon="inline-start" aria-hidden="true" />
+						{homeCopy.newRequest}
 					</Link>
 				}
 			/>
 
-			<details className="mb-6 rounded-xl border bg-card">
-				<summary className="cursor-pointer rounded-xl px-4 py-3 font-medium outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring sm:px-6">
-					{homeCopy.connectComputer}
-				</summary>
-				<form
-					className="flex flex-col gap-3 border-t p-4 sm:flex-row sm:items-end sm:p-6"
-					onSubmit={(event) => {
-						event.preventDefault();
-						enrollmentForm.handleSubmit();
-					}}
-				>
-					<enrollmentForm.Field name="code">
-						{(field) => (
-							<div className="min-w-0 flex-1 space-y-2">
-								<Label htmlFor="enrollment-code">{homeCopy.codeLabel}</Label>
-								<Input
-									id="enrollment-code"
-									value={field.state.value}
-									onChange={(event) => field.handleChange(event.target.value)}
-									maxLength={64}
-									placeholder={homeCopy.codePlaceholder}
-								/>
-								{field.state.meta.errors.length ? (
-									<p className="text-destructive text-sm" role="alert">
-										{field.state.meta.errors.map(String).join(", ")}
-									</p>
-								) : null}
-							</div>
-						)}
-					</enrollmentForm.Field>
-					<Button type="submit" disabled={enroll.isPending}>
-						{enroll.isPending ? homeCopy.connecting : homeCopy.connectComputer}
-					</Button>
-				</form>
-				{enroll.isError ? (
-					<p className="px-4 pb-4 text-destructive text-sm" role="alert">
-						{homeCopy.connectError}
-					</p>
-				) : null}
-				{enroll.isSuccess ? (
-					<p className="px-4 pb-4 text-sm" role="status">
-						{homeCopy.connected}
-					</p>
-				) : null}
-			</details>
+			<Card className="mb-6 py-0">
+				<details>
+					<summary className="cursor-pointer rounded-xl px-4 py-3 font-medium outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring sm:px-6">
+						{homeCopy.connectComputer}
+					</summary>
+					<Separator />
+					<form
+						className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-6"
+						onSubmit={(event) => {
+							event.preventDefault();
+							enrollmentForm.handleSubmit();
+						}}
+					>
+						<enrollmentForm.Field name="code">
+							{(field) => {
+								const invalid = field.state.meta.errors.length > 0;
+								return (
+									<Field className="min-w-0 flex-1" data-invalid={invalid}>
+										<FieldLabel htmlFor="enrollment-code">
+											{homeCopy.codeLabel}
+										</FieldLabel>
+										<Input
+											id="enrollment-code"
+											value={field.state.value}
+											onChange={(event) =>
+												field.handleChange(event.target.value)
+											}
+											maxLength={64}
+											placeholder={homeCopy.codePlaceholder}
+											aria-invalid={invalid}
+										/>
+										<FieldError>
+											{field.state.meta.errors.map(String).join(", ")}
+										</FieldError>
+									</Field>
+								);
+							}}
+						</enrollmentForm.Field>
+						<Button type="submit" disabled={enroll.isPending}>
+							{enroll.isPending ? <Spinner data-icon="inline-start" /> : null}
+							{enroll.isPending
+								? homeCopy.connecting
+								: homeCopy.connectComputer}
+						</Button>
+					</form>
+					{enroll.isError ? (
+						<FieldError className="px-4 pb-4 sm:px-6">
+							{homeCopy.connectError}
+						</FieldError>
+					) : null}
+					{enroll.isSuccess ? (
+						<p className="px-4 pb-4 text-sm sm:px-6" role="status">
+							{homeCopy.connected}
+						</p>
+					) : null}
+				</details>
+			</Card>
 
 			<div className="mb-4 flex items-center justify-between">
 				<h2 className="font-semibold text-lg">{homeCopy.requests}</h2>
@@ -178,11 +201,11 @@ function RouteComponent() {
 			{tickets.isPending ? <LoadingCards /> : null}
 			{tickets.isError ? <ErrorState retry={() => tickets.refetch()} /> : null}
 			{tickets.data && items.length === 0 ? (
-				<Card className="rounded-xl border-dashed bg-transparent">
+				<Card className="border-dashed bg-transparent">
 					<Empty>
 						<EmptyHeader>
 							<EmptyMedia variant="icon">
-								<Inbox aria-hidden="true" />
+								<RiInboxLine aria-hidden="true" />
 							</EmptyMedia>
 							<EmptyTitle>{homeCopy.emptyTitle}</EmptyTitle>
 							<EmptyDescription>{homeCopy.emptyDescription}</EmptyDescription>
@@ -204,14 +227,17 @@ function RouteComponent() {
 				</section>
 			) : null}
 			{finishedTickets?.length ? (
-				<details className="group/finished mt-6 rounded-xl border bg-card">
-					<summary className="cursor-pointer rounded-xl px-4 py-4 font-semibold outline-none marker:text-muted-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring sm:px-6">
-						{homeCopy.finished} ({finishedTickets.length})
-					</summary>
-					<div className="grid gap-4 border-t p-4 sm:p-6">
-						{finishedTickets.map(ticketCard)}
-					</div>
-				</details>
+				<Card className="mt-6 py-0">
+					<details className="group/finished">
+						<summary className="cursor-pointer rounded-xl px-4 py-4 font-semibold outline-none marker:text-muted-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring sm:px-6">
+							{homeCopy.finished} ({finishedTickets.length})
+						</summary>
+						<Separator />
+						<div className="grid gap-4 p-4 sm:p-6">
+							{finishedTickets.map(ticketCard)}
+						</div>
+					</details>
+				</Card>
 			) : null}
 		</PageShell>
 	);
