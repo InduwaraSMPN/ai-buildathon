@@ -36,19 +36,19 @@ const steps = [
 function HomePage() {
 	return (
 		<>
-			<section className="hero shell">
+			<section className="hero shell reveal-group">
 				<div className="hero-copy">
-					<p className="eyebrow">AI IT support / one accountable loop</p>
-					<h1>
+					<p className="eyebrow reveal">AI IT support / one accountable loop</p>
+					<h1 className="reveal">
 						From symptom
 						<br />
 						to <em>resolution.</em>
 					</h1>
-					<p className="hero-lede">
+					<p className="hero-lede reveal">
 						Axiōma gives Axel the context and tools to carry an IT ticket from
 						an employee’s report to a verified fix—or a clear handoff.
 					</p>
-					<div className="hero-actions">
+					<div className="hero-actions reveal">
 						<Link className="button" to="/product">
 							See how it works <Arrow />
 						</Link>
@@ -61,10 +61,10 @@ function HomePage() {
 			</section>
 
 			<section className="statement dark-section">
-				<div className="shell statement-grid">
-					<p className="eyebrow">The missing context</p>
-					<h2>Employees report symptoms. Support has to find the cause.</h2>
-					<p>
+				<div className="shell statement-grid reveal-group">
+					<p className="eyebrow reveal">The missing context</p>
+					<h2 className="reveal">Employees report symptoms. Support has to find the cause.</h2>
+					<p className="reveal">
 						The evidence needed to route a ticket and fix it often lives across
 						systems. Axiōma brings investigation and action into the same run,
 						so the path does not end at classification.
@@ -73,13 +73,17 @@ function HomePage() {
 			</section>
 
 			<section className="process shell">
-				<div className="section-heading">
-					<p className="eyebrow">The loop</p>
-					<h2>One ticket. One reasoning surface. A recorded outcome.</h2>
+				<div className="ledger-index" aria-hidden="true">
+					<span>Index 01 — The loop</span>
+					<span>File ref. AX-1042 · 3 stages</span>
 				</div>
-				<ol className="step-grid">
+				<div className="section-heading reveal-group">
+					<p className="eyebrow reveal">The loop</p>
+					<h2 className="reveal">One ticket. One reasoning surface. A recorded outcome.</h2>
+				</div>
+				<ol className="step-grid reveal-group">
 					{steps.map((step) => (
-						<li key={step.number}>
+						<li key={step.number} className="reveal">
 							<span>{step.number}</span>
 							<h3>{step.title}</h3>
 							<p>{step.body}</p>
@@ -88,21 +92,25 @@ function HomePage() {
 				</ol>
 			</section>
 
-			<section className="device-section shell">
+			<section className="device-section shell reveal-group">
 				<div className="device-copy">
-					<p className="eyebrow">Across the boundary</p>
-					<h2>Infrastructure when it is there. The laptop when it is here.</h2>
-					<p>
+					<div className="ledger-index reveal" aria-hidden="true">
+						<span>Index 02 — At the edge</span>
+						<span>axel-cli / device-017</span>
+					</div>
+					<p className="eyebrow reveal">Across the boundary</p>
+					<h2 className="reveal">Infrastructure when it is there. The laptop when it is here.</h2>
+					<p className="reveal">
 						Axel works against connected infrastructure, or reaches the
 						employee’s device through axel-cli. Device actions are typed and the
 						result is read back before the ticket closes.
 					</p>
-					<Link className="text-link" to="/product">
+					<Link className="text-link reveal" to="/product">
 						Explore the ticket flow <Arrow />
 					</Link>
 				</div>
 				<div
-					className="terminal"
+					className="terminal reveal"
 					role="img"
 					aria-label="Illustration of a device action"
 				>
@@ -112,7 +120,7 @@ function HomePage() {
 					</div>
 					<code>
 						<span>$ evidence.read network_state</span>
-						<span className="muted">DNS cache: stale</span>
+						<span className="muted">DNS cache: stale · 10.42.0.17</span>
 						<span>$ action.run flush_dns</span>
 						<span className="accent">✓ state re-read / issue cleared</span>
 					</code>
@@ -126,7 +134,7 @@ function HomePage() {
 
 function TicketVisual() {
 	return (
-		<div className="ticket-visual">
+		<div className="ticket-visual reveal" role="img" aria-label="Work order dossier AX-1042">
 			<div className="ticket-holes" aria-hidden="true" />
 			<div className="ticket-sheet">
 				<div className="ticket-topline">
@@ -145,7 +153,7 @@ function TicketVisual() {
 					<div>
 						<span className="node active">A</span>
 						<strong>Evidence gathered</strong>
-						<small>ImagePullBackOff</small>
+						<small>ImagePullBackOff · k8s/prod</small>
 					</div>
 					<div>
 						<span className="node">A</span>
@@ -154,10 +162,10 @@ function TicketVisual() {
 					</div>
 				</div>
 				<div className="ticket-note">
-					<span>Axel</span>
+					<span>Axel — 09:42</span>
 					<p>
 						Bad image tag identified. Verifying the intended image before
-						patching.
+						patching. Evidence retained for handoff if fix is not permitted.
 					</p>
 				</div>
 			</div>

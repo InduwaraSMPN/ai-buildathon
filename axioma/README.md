@@ -95,9 +95,3 @@ A logon Scheduled Task as the interactive user, no administrator rights:
 ```powershell
 schtasks /Create /TN "AxelAgent" /SC ONLOGON /RL LIMITED /F /TR "%LOCALAPPDATA%\axioma\axel-cli.exe daemon"
 ```
-
-## Repository layout
-
-Each component is intended to be its own git repository, checked out here side by
-side — the pattern used by `marketrix.ai`, where the workspace repo tracks
-orchestration and gitlinks while each service lives under its own remote.
