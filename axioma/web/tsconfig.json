@@ -2,6 +2,10 @@
 	"include": ["**/*.ts", "**/*.tsx"],
 	"compilerOptions": {
 		"target": "ES2022",
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["./src/*"]
+		},
 		"jsx": "react-jsx",
 		"module": "ESNext",
 		"lib": ["ES2022", "DOM", "DOM.Iterable"],
@@ -15,7 +19,8 @@
 		"noFallthroughCasesInSwitch": true,
 		"resolveJsonModule": true,
 		"esModuleInterop": true,
-		"isolatedModules": true
+		"isolatedModules": true,
+		"ignoreDeprecations": "6.0"
 	},
 	"exclude": ["node_modules", ".output", "dist"]
 }
