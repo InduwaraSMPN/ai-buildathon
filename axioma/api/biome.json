@@ -7,7 +7,13 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"includes": ["**", "!**/dist", "!**/node_modules", "!proto"]
+		"includes": [
+			"**",
+			"!**/dist",
+			"!**/node_modules",
+			"!proto",
+			"!src/db/migrations/meta"
+		]
 	},
 	"formatter": {
 		"enabled": true,

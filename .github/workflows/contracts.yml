@@ -121,8 +121,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm validate
-      - run: pnpm check-types
+      # Vite generates routeTree.gen.ts before TypeScript consumes it.
       - run: pnpm build
+      - run: pnpm check-types
 
   portal:
     runs-on: ubuntu-latest
@@ -142,8 +143,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - run: pnpm validate
-      - run: pnpm check-types
+      # Vite generates routeTree.gen.ts before TypeScript consumes it.
       - run: pnpm build
+      - run: pnpm check-types
 
   web:
     runs-on: ubuntu-latest

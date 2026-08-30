@@ -333,7 +333,9 @@ test("poison inbound mail persists attempts and stops retrying at the cap", asyn
 		assert.equal(row?.attemptCount, 3);
 		assert.equal(row?.status, "failed");
 	} finally {
-		await db.delete(inboundEmails).where(eq(inboundEmails.mailboxId, mailboxId));
+		await db
+			.delete(inboundEmails)
+			.where(eq(inboundEmails.mailboxId, mailboxId));
 		await db.delete(mailboxes).where(eq(mailboxes.id, mailboxId));
 		await db.delete(ticketOrigins).where(eq(ticketOrigins.key, originKey));
 	}

@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { dueRecurrenceOccurrences, occurrenceOrdinalAfter } from "./scheduling";
 import { queueRecurrenceTask } from "./scheduling-runtime";
-import {
-	dueRecurrenceOccurrences,
-	occurrenceOrdinalAfter,
-} from "./scheduling";
 
 const rule = {
 	id: "daily",
