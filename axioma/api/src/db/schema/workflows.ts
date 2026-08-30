@@ -65,11 +65,16 @@ export const workflowExecutions = pgTable(
 		output: jsonb("output"),
 		error: text("error"),
 		startedAt: timestamp("started_at").defaultNow().notNull(),
+		claimedAt: timestamp("claimed_at"),
+		leaseExpiresAt: timestamp("lease_expires_at"),
 		finishedAt: timestamp("finished_at"),
 	},
 	(t) => [
 		index("workflow_executions_workflow_idx").on(t.workflowId, t.startedAt),
 		index("workflow_executions_record_idx").on(t.recordType, t.recordId),
+		index("workflow_executions_expired_lease_idx")
+			.on(t.leaseExpiresAt)
+			.where(sql`${t.status} = 'running'`),
 	],
 );
 
@@ -96,12 +101,16 @@ export const webhookDeliveries = pgTable(
 		responseHeaders: jsonb("response_headers").$type<Record<string, string>>(),
 		responseBody: text("response_body"),
 		lastError: text("last_error"),
+		claimedAt: timestamp("claimed_at"),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		completedAt: timestamp("completed_at"),
 	},
 	(t) => [
 		index("webhook_deliveries_due_idx").on(t.status, t.nextAttemptAt),
 		index("webhook_deliveries_execution_idx").on(t.executionId, t.createdAt),
+		index("webhook_deliveries_delivering_idx")
+			.on(t.claimedAt)
+			.where(sql`${t.status} = 'delivering'`),
 		check(
 			"webhook_deliveries_attempt_count_nonnegative",
 			sql`${t.attemptCount} >= 0`,

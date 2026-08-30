@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -13,11 +13,13 @@ import { fireEvent } from "../workflows/runtime";
 import { elapsedWorkingMs } from "./calendar";
 
 /** Marks each threshold once; the unique event key makes restarts and concurrent sweeps safe. */
-export async function sweepSla(now = new Date()): Promise<number> {
+export async function sweepSla(now = new Date(), limit = 100): Promise<number> {
 	const watches = await db
 		.select()
 		.from(ticketStopwatches)
-		.where(eq(ticketStopwatches.running, true));
+		.where(eq(ticketStopwatches.running, true))
+		.orderBy(asc(ticketStopwatches.startedAt), asc(ticketStopwatches.id))
+		.limit(Math.min(Math.max(limit, 1), 1_000));
 	let marked = 0;
 	for (const watch of watches) {
 		const table = watch.policyType === "sla" ? slas : olas;
@@ -53,33 +55,38 @@ export async function sweepSla(now = new Date()): Promise<number> {
 		if (!rule) continue;
 		const triggerType = rule.triggerType;
 		const idempotencyKey = `${watch.id}:${rule.id}`;
-		const inserted = await db
-			.insert(slaEscalationEvents)
-			.values({
-				id: crypto.randomUUID(),
-				idempotencyKey,
-				ticketId: watch.ticketId,
-				stopwatchId: watch.id,
-				ruleId: rule.id,
-				triggerType,
-				targetType: watch.targetType,
-				reason: `${watch.policyType.toUpperCase()} ${watch.targetType} target ${triggerType === "breach" ? "missed" : "at risk"}`,
-			})
-			.onConflictDoNothing({ target: slaEscalationEvents.idempotencyKey })
-			.returning({ id: slaEscalationEvents.id });
-		if (!inserted.length) continue;
+		const inserted = await db.transaction(async (tx) => {
+			const inserted = await tx
+				.insert(slaEscalationEvents)
+				.values({
+					id: crypto.randomUUID(),
+					idempotencyKey,
+					ticketId: watch.ticketId,
+					stopwatchId: watch.id,
+					ruleId: rule.id,
+					triggerType,
+					targetType: watch.targetType,
+					reason: `${watch.policyType.toUpperCase()} ${watch.targetType} target ${triggerType === "breach" ? "missed" : "at risk"}`,
+				})
+				.onConflictDoNothing({ target: slaEscalationEvents.idempotencyKey })
+				.returning({ id: slaEscalationEvents.id });
+			if (!inserted.length) return false;
+			const reason = `${watch.policyType.toUpperCase()} ${watch.targetType} target ${triggerType === "breach" ? "missed" : "at risk"}`;
+			await tx
+				.update(tickets)
+				.set({ escalationFlag: triggerType, escalationReason: reason })
+				.where(
+					triggerType === "breach"
+						? eq(tickets.id, watch.ticketId)
+						: and(
+								eq(tickets.id, watch.ticketId),
+								sql`${tickets.escalationFlag} <> 'breach'`,
+							),
+				);
+			return true;
+		});
+		if (!inserted) continue;
 		const reason = `${watch.policyType.toUpperCase()} ${watch.targetType} target ${triggerType === "breach" ? "missed" : "at risk"}`;
-		await db
-			.update(tickets)
-			.set({ escalationFlag: triggerType, escalationReason: reason })
-			.where(
-				triggerType === "breach"
-					? eq(tickets.id, watch.ticketId)
-					: and(
-							eq(tickets.id, watch.ticketId),
-							sql`${tickets.escalationFlag} <> 'breach'`,
-						),
-			);
 		await fireEvent({
 			type: `sla.${triggerType}`,
 			source: "sla",

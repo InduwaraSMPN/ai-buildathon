@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { recurringTickets, ticketScheduling, tickets } from "@/db/schema";
 import { capabilityProcedure } from "../orpc";
 import { endFromDuration } from "../scheduling";
-import { generateDueRecurrences } from "../scheduling-runtime";
+import { runRecurrenceSweep } from "../scheduling-runtime";
 
 const requireTicketAccess = async (
 	ticketId: string,
@@ -158,6 +158,6 @@ export const schedulingRouter = {
 	triggerRecurrences: capabilityProcedure(
 		"admin.settings",
 	).triggerRecurrences.handler(({ input }) =>
-		generateDueRecurrences(input.now, input.limit),
+		runRecurrenceSweep(input.now, input.limit),
 	),
 };

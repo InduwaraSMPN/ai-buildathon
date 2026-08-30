@@ -1,8 +1,9 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	serviceSubcategories,
 	ticketAudit,
+	ticketCreationClaims,
 	ticketNumberCounters,
 	ticketNumberHistory,
 	ticketRuleFirings,
@@ -12,6 +13,7 @@ import {
 } from "@/db/schema";
 import type { Impact, Priority, RecordType, Urgency } from "@/shared";
 import { derivePriority } from "@/shared";
+import { writeDynamicFieldValues } from "../dynamic-fields";
 import { evaluateTicketRules } from "../rules";
 import { indexTicket } from "../search/projections";
 import { attachTicketStopwatches } from "../sla/runtime";
@@ -40,6 +42,8 @@ export interface CreateTicketInput {
 	deviceId?: string | null;
 	origin?: string | null;
 	metadata?: Record<string, unknown>;
+	idempotencyKey?: string;
+	customFields?: Record<string, unknown>;
 }
 
 export interface CreatedTicket {
@@ -47,6 +51,22 @@ export interface CreatedTicket {
 	number: string;
 	priority: Priority;
 	settledActions: string[];
+	created: boolean;
+}
+
+async function allocateTicketNumber(recordType: RecordType): Promise<string> {
+	const year = String(new Date().getUTCFullYear());
+	const prefix = recordType === "incident" ? "INC" : "REQ";
+	const [counter] = await db
+		.insert(ticketNumberCounters)
+		.values({ prefix, year, lastValue: 1 })
+		.onConflictDoUpdate({
+			target: [ticketNumberCounters.prefix, ticketNumberCounters.year],
+			set: { lastValue: sql`${ticketNumberCounters.lastValue} + 1` },
+		})
+		.returning({ value: ticketNumberCounters.lastValue });
+	if (!counter) throw new Error("Could not allocate a ticket number");
+	return formatTicketNumber(recordType, Number(year), counter.value);
 }
 
 const normalize = (input: CreateTicketInput) => ({
@@ -71,6 +91,60 @@ export async function createTicketInTransaction(
 	const normalized = normalize(input);
 	if (!normalized.title || !normalized.body)
 		throw new Error("Ticket title and body are required");
+
+	let claimId: string | undefined;
+	if (input.idempotencyKey) {
+		const now = new Date();
+		claimId = crypto.randomUUID();
+		const [claimed] = await tx
+			.insert(ticketCreationClaims)
+			.values({
+				id: claimId,
+				reporterId: input.reporterId,
+				idempotencyKey: input.idempotencyKey,
+				expiresAt: new Date(now.getTime() + 24 * 60 * 60_000),
+			})
+			.onConflictDoUpdate({
+				target: [
+					ticketCreationClaims.reporterId,
+					ticketCreationClaims.idempotencyKey,
+				],
+				set: {
+					id: claimId,
+					ticketId: null,
+					expiresAt: new Date(now.getTime() + 24 * 60 * 60_000),
+				},
+				setWhere: sql`${ticketCreationClaims.expiresAt} <= ${now}`,
+			})
+			.returning({ id: ticketCreationClaims.id });
+		if (!claimed) {
+			const [existing] = await tx
+				.select({
+					ticketId: tickets.id,
+					number: tickets.number,
+					priority: tickets.priority,
+				})
+				.from(ticketCreationClaims)
+				.innerJoin(tickets, eq(ticketCreationClaims.ticketId, tickets.id))
+				.where(
+					and(
+						eq(ticketCreationClaims.reporterId, input.reporterId),
+						eq(ticketCreationClaims.idempotencyKey, input.idempotencyKey),
+					),
+				)
+				.limit(1);
+			if (!existing?.number)
+				throw new Error(
+					"Ticket creation with this idempotency key is in progress",
+				);
+			return {
+				...existing,
+				number: existing.number,
+				settledActions: [],
+				created: false,
+			};
+		}
+	}
 
 	const [[subcategory], [defaultStatus]] = await Promise.all([
 		tx
@@ -112,22 +186,7 @@ export async function createTicketInTransaction(
 	const settled = evaluation.ticket;
 	const priority = derivePriority(settled.impact, settled.urgency);
 	const id = crypto.randomUUID();
-	const year = String(new Date().getUTCFullYear());
-	const prefix = settled.recordType === "incident" ? "INC" : "REQ";
-	const [counter] = await tx
-		.insert(ticketNumberCounters)
-		.values({ prefix, year, lastValue: 1 })
-		.onConflictDoUpdate({
-			target: [ticketNumberCounters.prefix, ticketNumberCounters.year],
-			set: { lastValue: sql`${ticketNumberCounters.lastValue} + 1` },
-		})
-		.returning({ value: ticketNumberCounters.lastValue });
-	if (!counter) throw new Error("Could not allocate a ticket number");
-	const number = formatTicketNumber(
-		settled.recordType,
-		Number(year),
-		counter.value,
-	);
+	const number = await allocateTicketNumber(settled.recordType);
 
 	await tx.insert(tickets).values({
 		id,
@@ -182,12 +241,20 @@ export async function createTicketInTransaction(
 					},
 				],
 	);
+	if (Object.keys(input.customFields ?? {}).length)
+		await writeDynamicFieldValues(tx, "ticket", id, input.customFields ?? {});
 	await attachTicketStopwatches(id, priority, new Date(), tx);
+	if (claimId)
+		await tx
+			.update(ticketCreationClaims)
+			.set({ ticketId: id })
+			.where(eq(ticketCreationClaims.id, claimId));
 	return {
 		ticketId: id,
 		number,
 		priority,
 		settledActions: evaluation.settledActions,
+		created: true,
 	};
 }
 
@@ -198,7 +265,7 @@ export async function createTicket(
 	const created = await db.transaction((tx) =>
 		createTicketInTransaction(tx, input),
 	);
-	await finalizeCreatedTicket(created, input);
+	if (created.created) void finalizeCreatedTicket(created, input);
 	return created;
 }
 

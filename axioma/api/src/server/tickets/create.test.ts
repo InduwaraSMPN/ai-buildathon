@@ -5,6 +5,7 @@ import { db } from "@/db";
 import {
 	searchDocuments,
 	ticketAudit,
+	ticketCreationClaims,
 	ticketNumberHistory,
 	ticketStopwatches,
 	tickets,
@@ -68,6 +69,15 @@ test("every intake source applies the shared ticket creation invariants", async 
 			assert.equal(ticket.serviceSubcategoryId, "ss-general");
 			assert.equal(created.number, ticket.number);
 
+			for (let attempt = 0; attempt < 50; attempt++) {
+				const [event] = await db
+					.select({ id: workflowExecutions.id })
+					.from(workflowExecutions)
+					.where(eq(workflowExecutions.recordId, created.ticketId))
+					.limit(1);
+				if (event) break;
+				await new Promise((resolve) => setTimeout(resolve, 10));
+			}
 			const [history, audit, search, event, stopwatches] = await Promise.all([
 				db
 					.select()
@@ -102,7 +112,28 @@ test("every intake source applies the shared ticket creation invariants", async 
 				new Set(["sla", "ola"]),
 			);
 		}
+		const idempotencyKey = crypto.randomUUID();
+		const first = await createTicket({
+			source: "portal",
+			reporterId,
+			idempotencyKey,
+			title: "Idempotent ticket",
+			body: "A sufficiently long ticket body",
+		});
+		const replay = await createTicket({
+			source: "portal",
+			reporterId,
+			idempotencyKey,
+			title: "Idempotent ticket",
+			body: "A sufficiently long ticket body",
+		});
+		ticketIds.push(first.ticketId);
+		assert.equal(replay.ticketId, first.ticketId);
+		assert.equal(replay.created, false);
 	} finally {
+		await db
+			.delete(ticketCreationClaims)
+			.where(eq(ticketCreationClaims.reporterId, reporterId));
 		if (ticketIds.length) {
 			await db
 				.delete(workflowExecutions)

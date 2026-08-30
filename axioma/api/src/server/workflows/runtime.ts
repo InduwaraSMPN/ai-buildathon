@@ -17,11 +17,30 @@ import { assertWorkflowActions, canTriggerWorkflow, signWebhook } from "./core";
 import { deliverWebhook } from "./webhooks";
 
 let notificationMailProvider: MailProvider | undefined;
+const WORKFLOW_LEASE_MS = 60_000;
 
 export function setNotificationMailProvider(
 	provider: MailProvider | undefined,
 ) {
 	notificationMailProvider = provider;
+}
+
+export async function sweepExpiredWorkflowExecutions(now = new Date()) {
+	return db
+		.update(workflowExecutions)
+		.set({
+			status: "failed",
+			error: "Workflow execution lease expired",
+			finishedAt: now,
+			leaseExpiresAt: null,
+		})
+		.where(
+			and(
+				eq(workflowExecutions.status, "running"),
+				sql`${workflowExecutions.leaseExpiresAt} <= ${now}`,
+			),
+		)
+		.returning({ id: workflowExecutions.id });
 }
 
 export async function fireEvent(input: {
@@ -43,6 +62,7 @@ export async function fireEvent(input: {
 		const id = crypto.randomUUID();
 		try {
 			const actions = assertWorkflowActions(workflow.actions);
+			const claimedAt = new Date();
 			await db.insert(workflowExecutions).values({
 				id,
 				workflowId: workflow.id,
@@ -51,8 +71,14 @@ export async function fireEvent(input: {
 				recordId: input.recordId,
 				input: input.payload ?? {},
 				status: "running",
+				claimedAt,
+				leaseExpiresAt: new Date(claimedAt.getTime() + WORKFLOW_LEASE_MS),
 			});
 			for (const action of actions) {
+				await db
+					.update(workflowExecutions)
+					.set({ leaseExpiresAt: new Date(Date.now() + WORKFLOW_LEASE_MS) })
+					.where(eq(workflowExecutions.id, id));
 				switch (action.type) {
 					case "send_webhook": {
 						const webhook = action.value;
@@ -186,7 +212,11 @@ export async function fireEvent(input: {
 			}
 			await db
 				.update(workflowExecutions)
-				.set({ status: "succeeded", finishedAt: new Date() })
+				.set({
+					status: "succeeded",
+					finishedAt: new Date(),
+					leaseExpiresAt: null,
+				})
 				.where(eq(workflowExecutions.id, id));
 			await db
 				.update(workflows)
@@ -199,6 +229,7 @@ export async function fireEvent(input: {
 					status: "failed",
 					error: error instanceof Error ? error.message : String(error),
 					finishedAt: new Date(),
+					leaseExpiresAt: null,
 				})
 				.where(eq(workflowExecutions.id, id));
 			await db

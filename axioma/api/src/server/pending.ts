@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, lte, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -17,7 +17,10 @@ export const nextPendingFollowupAt = (
 	frequencyMinutes: number,
 ) => new Date(lastPendingAt.getTime() + frequencyMinutes * 60_000);
 
-export async function sweepPending(now = new Date()): Promise<number> {
+export async function sweepPending(
+	now = new Date(),
+	limit = 100,
+): Promise<number> {
 	const due = await db
 		.select({ ticket: tickets, reason: pendingReasons })
 		.from(tickets)
@@ -28,7 +31,9 @@ export async function sweepPending(now = new Date()): Promise<number> {
 				eq(ticketStatuses.stateType, "pending"),
 				lte(tickets.pendingUntil, now),
 			),
-		);
+		)
+		.orderBy(asc(tickets.pendingUntil), asc(tickets.id))
+		.limit(Math.min(Math.max(limit, 1), 1_000));
 	let changed = 0;
 	for (const { ticket, reason } of due) {
 		const ordinal = ticket.pendingFollowups + 1;
@@ -37,23 +42,24 @@ export async function sweepPending(now = new Date()): Promise<number> {
 				ticket.status,
 				"resolve",
 			);
-			const resolved = await db
-				.update(tickets)
-				.set({
-					status: resolvedStatus,
-					resolution: `Auto-resolved after ${ticket.pendingFollowups} unanswered follow-ups`,
-					resolutionCode: "no_action_required",
-					resolvedAt: now,
-					pendingReasonId: null,
-					pendingUntil: null,
-					updatedAt: now,
-				})
-				.where(
-					and(eq(tickets.id, ticket.id), eq(tickets.status, ticket.status)),
-				)
-				.returning({ id: tickets.id });
-			if (resolved[0]) {
-				await db.insert(ticketTransitions).values({
+			const resolved = await db.transaction(async (tx) => {
+				const resolved = await tx
+					.update(tickets)
+					.set({
+						status: resolvedStatus,
+						resolution: `Auto-resolved after ${ticket.pendingFollowups} unanswered follow-ups`,
+						resolutionCode: "no_action_required",
+						resolvedAt: now,
+						pendingReasonId: null,
+						pendingUntil: null,
+						updatedAt: now,
+					})
+					.where(
+						and(eq(tickets.id, ticket.id), eq(tickets.status, ticket.status)),
+					)
+					.returning({ id: tickets.id });
+				if (!resolved[0]) return false;
+				await tx.insert(ticketTransitions).values({
 					id: crypto.randomUUID(),
 					ticketId: ticket.id,
 					fromStatus: ticket.status,
@@ -62,45 +68,49 @@ export async function sweepPending(now = new Date()): Promise<number> {
 					actorType: "agent",
 					actorId: "pending-sweep",
 				});
-				await transitionTicketStopwatches(ticket.id, resolvedStatus, now);
-				changed++;
-			}
+				await transitionTicketStopwatches(ticket.id, resolvedStatus, now, tx);
+				return true;
+			});
+			if (resolved) changed++;
 			continue;
 		}
-		const followedUp = await db
-			.update(tickets)
-			.set({
-				pendingFollowups: sql`${tickets.pendingFollowups} + 1`,
-				pendingUntil: nextPendingFollowupAt(
-					now,
-					reason.followupFrequencyMinutes,
-				),
-				updatedAt: now,
-			})
-			.where(
-				and(
-					eq(tickets.id, ticket.id),
-					eq(tickets.status, ticket.status),
-					eq(tickets.pendingFollowups, ticket.pendingFollowups),
-				),
-			)
-			.returning({ id: tickets.id });
-		if (!followedUp[0]) continue;
-		await db.insert(pendingFollowups).values({
-			id: crypto.randomUUID(),
-			ticketId: ticket.id,
-			reasonId: reason.id,
-			ordinal,
+		const followedUp = await db.transaction(async (tx) => {
+			const followedUp = await tx
+				.update(tickets)
+				.set({
+					pendingFollowups: sql`${tickets.pendingFollowups} + 1`,
+					pendingUntil: nextPendingFollowupAt(
+						now,
+						reason.followupFrequencyMinutes,
+					),
+					updatedAt: now,
+				})
+				.where(
+					and(
+						eq(tickets.id, ticket.id),
+						eq(tickets.status, ticket.status),
+						eq(tickets.pendingFollowups, ticket.pendingFollowups),
+					),
+				)
+				.returning({ id: tickets.id });
+			if (!followedUp[0]) return false;
+			await tx.insert(pendingFollowups).values({
+				id: crypto.randomUUID(),
+				ticketId: ticket.id,
+				reasonId: reason.id,
+				ordinal,
+			});
+			await tx.insert(ticketMessages).values({
+				id: crypto.randomUUID(),
+				ticketId: ticket.id,
+				authorId: null,
+				authorType: "staff",
+				body: "We’re still waiting for the information needed to continue.",
+				visibility: "public",
+			});
+			return true;
 		});
-		await db.insert(ticketMessages).values({
-			id: crypto.randomUUID(),
-			ticketId: ticket.id,
-			authorId: null,
-			authorType: "staff",
-			body: "We’re still waiting for the information needed to continue.",
-			visibility: "public",
-		});
-		changed++;
+		if (followedUp) changed++;
 	}
 	return changed;
 }

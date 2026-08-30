@@ -3,25 +3,35 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
-import { and, eq, inArray, max, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, max, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	agentRuns,
 	agentSteps,
+	agentToolCalls,
 	deviceCommands,
 	devices,
+	searchReconciliationState,
+	ticketStatusTransitions,
 	tickets,
 	ticketTransitions,
 } from "@/db/schema";
 import { RESOLUTION_CODES } from "@/shared";
+import {
+	createInboundQueue,
+	leaseDeadline,
+	replayToolResult,
+	runMaintenanceJobs,
+} from "./grpc-core";
 import { ingestInventoryReport } from "./inventory";
 import { sweepPending } from "./pending";
 import { reconcileCoreSearchDocuments } from "./search/projections";
 import { transitionTicketStopwatches } from "./sla/runtime";
 import { sweepPresence, sweepSla } from "./sla/sweep";
 import { findTicketTransition, resolveTicketStatus } from "./tickets";
-import { executeTool } from "./tools";
+import { executeTool, sweepExpiredChangeVerifications } from "./tools";
 import { readContextForTicket } from "./tools/cmdb";
+import { sweepExpiredWorkflowExecutions } from "./workflows/runtime";
 import { sweepWebhookDeliveries } from "./workflows/webhooks";
 
 type Message = Record<string, unknown>;
@@ -50,7 +60,9 @@ type PendingCommand = {
 const OUTBOX_LIMIT = 100;
 const HEARTBEAT_MS = 10_000;
 const STALE_MS = 30_000;
+const RUN_LEASE_MS = 45_000;
 const ENROLMENT_TTL_MS = 10 * 60_000;
+const SEARCH_WATERMARK_KEY = "core";
 const sourceProtoPath = fileURLToPath(
 	new URL("../../proto/axioma.proto", import.meta.url),
 );
@@ -68,7 +80,7 @@ const axioma = (
 	}
 ).axioma.v1;
 
-class Gateway {
+export class Gateway {
 	readonly server = new grpc.Server();
 	private agents = new Map<string, AgentConnection>();
 	private agentOrder: string[] = [];
@@ -80,6 +92,8 @@ class Gateway {
 	private outboxes = new Map<string, DeviceCommand[]>();
 	private pending = new Map<string, PendingCommand>();
 	private heartbeat?: NodeJS.Timeout;
+	private sweepRunning = false;
+	private closed = false;
 
 	constructor() {
 		const agentChannel = axioma.AgentChannel;
@@ -106,17 +120,14 @@ class Gateway {
 				},
 			);
 		});
-		this.heartbeat = setInterval(() => {
-			this.sweep().catch((error) =>
-				console.error("[grpc] sweep failed", error),
-			);
-		}, HEARTBEAT_MS);
-		this.heartbeat.unref();
+		this.closed = false;
+		this.scheduleSweep();
 		console.log(`[grpc] gateway listening on ${address}`);
 	}
 
 	async close() {
-		if (this.heartbeat) clearInterval(this.heartbeat);
+		this.closed = true;
+		if (this.heartbeat) clearTimeout(this.heartbeat);
 		for (const item of this.pending.values()) {
 			clearTimeout(item.timer);
 			item.reject(new Error("gateway shutting down"));
@@ -154,7 +165,11 @@ class Gateway {
 			);
 		const run = await db
 			.update(agentRuns)
-			.set({ model: selected.connection.model || null })
+			.set({
+				model: selected.connection.model || null,
+				workerId: selected.workerId,
+				leaseExpiresAt: leaseDeadline(new Date(), RUN_LEASE_MS),
+			})
 			.where(
 				and(eq(agentRuns.id, input.runId), eq(agentRuns.status, "running")),
 			)
@@ -198,12 +213,14 @@ class Gateway {
 		);
 	}
 
-	async cancelRun(runId: string, reason = "run cancelled") {
+	async cancelRun(
+		runId: string,
+		reason = "run cancelled",
+		leaseExpiredBefore?: Date,
+	) {
 		const workerId = this.runAgents.get(runId);
 		const agent = workerId ? this.agents.get(workerId) : undefined;
-		if (agent) agent.stream.write({ cancelRun: { runId, reason } });
-		this.runAgents.delete(runId);
-		let transitionedTicketId: string | undefined;
+		let cancelled = false;
 		await db.transaction(async (tx) => {
 			const activeTicket = (
 				await tx
@@ -216,13 +233,31 @@ class Gateway {
 			const run = (
 				await tx
 					.update(agentRuns)
-					.set({ status: "failed", outcome: reason, endedAt: new Date() })
-					.where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+					.set({
+						status: "failed",
+						outcome: reason,
+						leaseExpiresAt: null,
+						endedAt: new Date(),
+					})
+					.where(
+						and(
+							eq(agentRuns.id, runId),
+							eq(agentRuns.status, "running"),
+							leaseExpiredBefore
+								? lt(agentRuns.leaseExpiresAt, leaseExpiredBefore)
+								: undefined,
+						),
+					)
 					.returning({ ticketId: agentRuns.ticketId })
 			)[0];
 			if (!run) return;
+			cancelled = true;
 			if (!activeTicket) throw new Error(`ticket not found for run: ${runId}`);
-			const nextStatus = await resolveTicketStatus(activeTicket.status, "fail");
+			const nextStatus = await resolveTicketStatus(
+				activeTicket.status,
+				"fail",
+				tx,
+			);
 			const ticket = (
 				await tx
 					.update(tickets)
@@ -236,7 +271,6 @@ class Gateway {
 					.returning({ id: tickets.id })
 			)[0];
 			if (ticket) {
-				transitionedTicketId = run.ticketId;
 				await tx.insert(ticketTransitions).values({
 					id: crypto.randomUUID(),
 					ticketId: run.ticketId,
@@ -246,17 +280,17 @@ class Gateway {
 					actorType: "agent",
 					actorId: runId,
 				});
+				await transitionTicketStopwatches(
+					run.ticketId,
+					nextStatus,
+					new Date(),
+					tx,
+				);
 			}
 		});
-		if (transitionedTicketId) {
-			const current = (
-				await db
-					.select({ status: tickets.status })
-					.from(tickets)
-					.where(eq(tickets.id, transitionedTicketId))
-			)[0];
-			if (current)
-				await transitionTicketStopwatches(transitionedTicketId, current.status);
+		if (cancelled) {
+			if (agent) agent.stream.write({ cancelRun: { runId, reason } });
+			this.runAgents.delete(runId);
 		}
 	}
 
@@ -398,25 +432,14 @@ class Gateway {
 	private connectAgent(stream: Duplex) {
 		let workerId = "";
 		let generation: symbol | undefined;
-		let messages = Promise.resolve();
 		const cleanup = () => this.removeAgent(workerId, generation);
-		stream.on("data", (message: Message) => {
-			messages = messages
-				.then(async () => {
-					const registered = await this.onAgentMessage(
-						stream,
-						message,
-						workerId,
-					);
-					if (registered) ({ workerId, generation } = registered);
-				})
-				.catch((error) => {
-					console.error("[grpc] agent message failed", error);
-					stream.destroy(
-						error instanceof Error ? error : new Error(String(error)),
-					);
-				});
-		});
+		stream.on(
+			"data",
+			createInboundQueue(stream, async (message) => {
+				const registered = await this.onAgentMessage(stream, message, workerId);
+				if (registered) ({ workerId, generation } = registered);
+			}),
+		);
 		stream.on("error", (error) => {
 			cleanup();
 			console.error("[grpc] agent stream error", error.message);
@@ -452,6 +475,14 @@ class Gateway {
 			return { workerId, generation };
 		}
 		if (!workerId) throw new Error("agent must send hello before messages");
+		if (message.runAccepted) {
+			await this.renewRunLease(
+				String((message.runAccepted as Record<string, unknown>).runId),
+				workerId,
+				true,
+			);
+			return;
+		}
 		if (message.heartbeat) {
 			stream.write({ heartbeat: { unixMs: String(Date.now()) } });
 			return;
@@ -466,6 +497,7 @@ class Gateway {
 		}
 		if (message.runUpdate)
 			await this.persistRunUpdate(
+				stream,
 				message.runUpdate as Record<string, unknown>,
 				workerId,
 			);
@@ -476,10 +508,13 @@ class Gateway {
 		request: Record<string, unknown>,
 		workerId: string,
 	) {
+		const runId = String(request.runId);
+		const callId = String(request.callId).trim();
 		try {
-			const runId = String(request.runId);
+			if (!callId) throw new Error("tool request call_id is required");
 			if (this.runAgents.get(runId) !== workerId)
 				throw new Error(`run ${runId} is not assigned to worker ${workerId}`);
+			await this.renewRunLease(runId, workerId);
 			const run = (
 				await db
 					.select({ ticketId: agentRuns.ticketId, status: agentRuns.status })
@@ -503,20 +538,55 @@ class Gateway {
 					throw new Error("device tool must target the ticket device");
 			}
 			const stepId = await this.resolveStepId(runId, request, toolName);
-			const currentTicket = (
-				await db
-					.select({ status: tickets.status })
-					.from(tickets)
-					.where(eq(tickets.id, run.ticketId))
-					.limit(1)
-			)[0];
-			if (!currentTicket) throw new Error(`ticket not found: ${run.ticketId}`);
-			const resolvingStatus = await findTicketTransition(
-				currentTicket.status,
-				"firstTool",
-			);
-			if (resolvingStatus) {
-				const beganResolving = await db
+			const claimed = await db
+				.insert(agentToolCalls)
+				.values({
+					id: crypto.randomUUID(),
+					runId,
+					callId,
+				})
+				.onConflictDoNothing({
+					target: [agentToolCalls.runId, agentToolCalls.callId],
+				})
+				.returning({ id: agentToolCalls.id });
+			if (!claimed[0]) {
+				const existing = (
+					await db
+						.select({
+							status: agentToolCalls.status,
+							result: agentToolCalls.result,
+							error: agentToolCalls.error,
+						})
+						.from(agentToolCalls)
+						.where(
+							and(
+								eq(agentToolCalls.runId, runId),
+								eq(agentToolCalls.callId, callId),
+							),
+						)
+						.limit(1)
+				)[0];
+				if (!existing) throw new Error("tool call ledger conflict without row");
+				stream.write(replayToolResult(runId, callId, existing));
+				return;
+			}
+			await db.transaction(async (tx) => {
+				const currentTicket = (
+					await tx
+						.select({ status: tickets.status })
+						.from(tickets)
+						.where(eq(tickets.id, run.ticketId))
+						.limit(1)
+				)[0];
+				if (!currentTicket)
+					throw new Error(`ticket not found: ${run.ticketId}`);
+				const resolvingStatus = await findTicketTransition(
+					currentTicket.status,
+					"firstTool",
+					tx,
+				);
+				if (!resolvingStatus) return;
+				const beganResolving = await tx
 					.update(tickets)
 					.set({ status: resolvingStatus })
 					.where(
@@ -526,19 +596,23 @@ class Gateway {
 						),
 					)
 					.returning({ id: tickets.id });
-				if (beganResolving[0]) {
-					await db.insert(ticketTransitions).values({
-						id: crypto.randomUUID(),
-						ticketId: run.ticketId,
-						fromStatus: currentTicket.status,
-						toStatus: resolvingStatus,
-						action: "firstTool",
-						actorType: "agent",
-						actorId: runId,
-					});
-					await transitionTicketStopwatches(run.ticketId, resolvingStatus);
-				}
-			}
+				if (!beganResolving[0]) return;
+				await tx.insert(ticketTransitions).values({
+					id: crypto.randomUUID(),
+					ticketId: run.ticketId,
+					fromStatus: currentTicket.status,
+					toStatus: resolvingStatus,
+					action: "firstTool",
+					actorType: "agent",
+					actorId: runId,
+				});
+				await transitionTicketStopwatches(
+					run.ticketId,
+					resolvingStatus,
+					new Date(),
+					tx,
+				);
+			});
 			const output = await executeTool(toolName, input, {
 				runId,
 				ticketId: run.ticketId,
@@ -551,23 +625,51 @@ class Gateway {
 				output !== null &&
 				"ok" in output &&
 				output.ok === false;
+			const error = structuredFailure ? JSON.stringify(output) : null;
+			await db
+				.update(agentToolCalls)
+				.set({
+					status: structuredFailure ? "failed" : "succeeded",
+					result: structuredFailure ? null : output,
+					error,
+					finishedAt: new Date(),
+				})
+				.where(
+					and(
+						eq(agentToolCalls.runId, runId),
+						eq(agentToolCalls.callId, callId),
+						eq(agentToolCalls.status, "in_progress"),
+					),
+				);
 			stream.write({
 				toolResult: {
 					runId,
-					callId: request.callId,
+					callId,
 					ok: !structuredFailure,
 					...(structuredFailure
-						? { error: JSON.stringify(output) }
+						? { error: error ?? "tool call failed" }
 						: { outputJson: JSON.stringify(output) }),
 				},
 			});
 		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (runId && callId)
+				await db
+					.update(agentToolCalls)
+					.set({ status: "failed", error: message, finishedAt: new Date() })
+					.where(
+						and(
+							eq(agentToolCalls.runId, runId),
+							eq(agentToolCalls.callId, callId),
+							eq(agentToolCalls.status, "in_progress"),
+						),
+					);
 			stream.write({
 				toolResult: {
-					runId: request.runId,
-					callId: request.callId,
+					runId,
+					callId,
 					ok: false,
-					error: error instanceof Error ? error.message : String(error),
+					error: message,
 				},
 			});
 		}
@@ -576,41 +678,34 @@ class Gateway {
 	private connectDevice(stream: Duplex) {
 		let deviceId = "";
 		let generation: symbol | undefined;
-		let messages = Promise.resolve();
-		stream.on("data", (message: Message) => {
-			messages = messages
-				.then(async () => {
-					if (message.hello) {
-						const hello = message.hello as Record<string, unknown>;
-						deviceId = String(hello.deviceId);
-						generation = Symbol(deviceId);
-						await this.registerDevice(deviceId, generation, stream, hello);
-					} else if (message.heartbeat && deviceId) {
-						const connection = this.devices.get(deviceId);
-						if (connection) connection.lastSeen = Date.now();
-						await db
-							.update(devices)
-							.set({ lastSeenAt: new Date() })
-							.where(eq(devices.id, deviceId));
-					} else if (message.result && deviceId) {
-						await this.completeCommand(
-							deviceId,
-							message.result as Record<string, unknown>,
-						);
-					} else if (message.inventory && deviceId) {
-						await ingestInventoryReport(
-							deviceId,
-							message.inventory as Record<string, unknown>,
-						);
-					}
-				})
-				.catch((error) => {
-					console.error("[grpc] device message failed", error);
-					stream.destroy(
-						error instanceof Error ? error : new Error(String(error)),
+		stream.on(
+			"data",
+			createInboundQueue(stream, async (message) => {
+				if (message.hello) {
+					const hello = message.hello as Record<string, unknown>;
+					deviceId = String(hello.deviceId);
+					generation = Symbol(deviceId);
+					await this.registerDevice(deviceId, generation, stream, hello);
+				} else if (message.heartbeat && deviceId) {
+					const connection = this.devices.get(deviceId);
+					if (connection) connection.lastSeen = Date.now();
+					await db
+						.update(devices)
+						.set({ lastSeenAt: new Date() })
+						.where(eq(devices.id, deviceId));
+				} else if (message.result && deviceId) {
+					await this.completeCommand(
+						deviceId,
+						message.result as Record<string, unknown>,
 					);
-				});
-		});
+				} else if (message.inventory && deviceId) {
+					await ingestInventoryReport(
+						deviceId,
+						message.inventory as Record<string, unknown>,
+					);
+				}
+			}),
+		);
 		stream.on("error", (error) =>
 			console.error("[grpc] device stream error", error.message),
 		);
@@ -715,6 +810,8 @@ class Gateway {
 		if (!deviceId || this.devices.get(deviceId)?.generation !== generation)
 			return;
 		this.devices.delete(deviceId);
+		this.sequences.delete(deviceId);
+		this.outboxes.delete(deviceId);
 		await db
 			.update(devices)
 			.set({ connected: "offline", lastSeenAt: new Date() })
@@ -776,13 +873,32 @@ class Gateway {
 	}
 
 	private async persistRunUpdate(
+		stream: Duplex,
 		update: Record<string, unknown>,
 		workerId: string,
 	) {
 		const runId = String(update.runId);
-		if (this.runAgents.get(runId) !== workerId)
-			throw new Error(`run ${runId} is not assigned to worker ${workerId}`);
 		const ordinal = Number(update.ordinal);
+		if (this.runAgents.get(runId) !== workerId) {
+			if (update.status) {
+				const committed = (
+					await db
+						.select({ status: agentRuns.status, workerId: agentRuns.workerId })
+						.from(agentRuns)
+						.where(eq(agentRuns.id, runId))
+						.limit(1)
+				)[0];
+				if (
+					committed?.workerId === workerId &&
+					committed.status !== "running"
+				) {
+					stream.write({ terminalAck: { runId, ordinal } });
+					return;
+				}
+			}
+			throw new Error(`run ${runId} is not assigned to worker ${workerId}`);
+		}
+		await this.renewRunLease(runId, workerId);
 		const parse = (value: unknown) => {
 			if (!value) return null;
 			try {
@@ -830,27 +946,29 @@ class Gateway {
 				)
 			)
 				throw new Error(`invalid resolution code: ${resolutionCode}`);
-			this.runAgents.delete(runId);
-			const run = (
-				await db
-					.select({ ticketId: agentRuns.ticketId })
-					.from(agentRuns)
-					.where(eq(agentRuns.id, runId))
-					.limit(1)
-			)[0];
-			const finished = await db
-				.update(agentRuns)
-				.set({
-					status: status as "resolved" | "escalated" | "failed" | "exhausted",
-					outcome: String(update.outcome || "") || null,
-					promptTokens: Number(update.promptTokens) || 0,
-					completionTokens: Number(update.completionTokens) || 0,
-					...(update.model ? { model: String(update.model) } : {}),
-					endedAt: new Date(),
-				})
-				.where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
-				.returning({ id: agentRuns.id });
-			if (run && finished[0]) {
+			await db.transaction(async (tx) => {
+				const run = (
+					await tx
+						.select({ ticketId: agentRuns.ticketId })
+						.from(agentRuns)
+						.where(eq(agentRuns.id, runId))
+						.limit(1)
+				)[0];
+				if (!run) throw new Error(`run not found: ${runId}`);
+				const finished = await tx
+					.update(agentRuns)
+					.set({
+						status: status as "resolved" | "escalated" | "failed" | "exhausted",
+						outcome: String(update.outcome || "") || null,
+						promptTokens: Number(update.promptTokens) || 0,
+						completionTokens: Number(update.completionTokens) || 0,
+						...(update.model ? { model: String(update.model) } : {}),
+						leaseExpiresAt: null,
+						endedAt: new Date(),
+					})
+					.where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+					.returning({ id: agentRuns.id });
+				if (!finished[0]) return;
 				const resolved = status === "resolved";
 				const action =
 					status === "failed"
@@ -861,52 +979,53 @@ class Gateway {
 								? "resolve"
 								: "escalate";
 				const currentTicket = (
-					await db
+					await tx
 						.select({ status: tickets.status })
 						.from(tickets)
 						.where(eq(tickets.id, run.ticketId))
 						.limit(1)
 				)[0];
-				const fromStatus = currentTicket?.status;
-				const toStatus = fromStatus
-					? await resolveTicketStatus(fromStatus, action)
-					: null;
-				const changed =
-					fromStatus && toStatus
-						? await db
-								.update(tickets)
-								.set({
-									status: toStatus,
-									resolution: String(update.outcome || "") || null,
-									resolutionCode: resolved
-										? (resolutionCode as (typeof RESOLUTION_CODES)[number])
-										: undefined,
-									resolvedAt: resolved ? new Date() : undefined,
-									progressMarker: resolved
-										? "verifying_fix"
-										: "handing_to_person",
-								})
-								.where(
-									and(
-										eq(tickets.id, run.ticketId),
-										eq(tickets.status, fromStatus),
-									),
-								)
-								.returning({ id: tickets.id })
-						: [];
-				if (changed[0] && fromStatus && toStatus) {
-					await db.insert(ticketTransitions).values({
-						id: crypto.randomUUID(),
-						ticketId: run.ticketId,
-						fromStatus,
-						toStatus,
-						action,
-						actorType: "agent",
-						actorId: runId,
-					});
-					await transitionTicketStopwatches(run.ticketId, toStatus);
-				}
-			}
+				if (!currentTicket)
+					throw new Error(`ticket not found: ${run.ticketId}`);
+				const fromStatus = currentTicket.status;
+				const toStatus = await resolveTicketStatus(fromStatus, action, tx);
+				const changed = await tx
+					.update(tickets)
+					.set({
+						status: toStatus,
+						resolution: String(update.outcome || "") || null,
+						resolutionCode: resolved
+							? (resolutionCode as (typeof RESOLUTION_CODES)[number])
+							: undefined,
+						resolvedAt: resolved ? new Date() : undefined,
+						progressMarker: resolved ? "verifying_fix" : "handing_to_person",
+					})
+					.where(
+						and(eq(tickets.id, run.ticketId), eq(tickets.status, fromStatus)),
+					)
+					.returning({ id: tickets.id });
+				if (!changed[0])
+					throw new Error(
+						`ticket changed during terminal update: ${run.ticketId}`,
+					);
+				await tx.insert(ticketTransitions).values({
+					id: crypto.randomUUID(),
+					ticketId: run.ticketId,
+					fromStatus,
+					toStatus,
+					action,
+					actorType: "agent",
+					actorId: runId,
+				});
+				await transitionTicketStopwatches(
+					run.ticketId,
+					toStatus,
+					new Date(),
+					tx,
+				);
+			});
+			this.runAgents.delete(runId);
+			stream.write({ terminalAck: { runId, ordinal } });
 		}
 	}
 
@@ -934,6 +1053,30 @@ class Gateway {
 		)[0];
 		if (!step) throw new Error(`source step not found: ${runId}:${ordinal}`);
 		return step.id;
+	}
+
+	private async renewRunLease(
+		runId: string,
+		workerId: string,
+		accepted = false,
+	) {
+		const now = new Date();
+		const renewed = await db
+			.update(agentRuns)
+			.set({
+				workerId,
+				leaseExpiresAt: leaseDeadline(now, RUN_LEASE_MS),
+				...(accepted ? { acceptedAt: now } : {}),
+			})
+			.where(
+				and(
+					eq(agentRuns.id, runId),
+					eq(agentRuns.status, "running"),
+					eq(agentRuns.workerId, workerId),
+				),
+			)
+			.returning({ id: agentRuns.id });
+		if (!renewed[0]) throw new Error(`run ${runId} lease cannot be renewed`);
 	}
 
 	private selectAgent() {
@@ -982,54 +1125,119 @@ class Gateway {
 	}
 
 	private async reconcileOrphans() {
-		const orphanedRuns = await db
-			.select({ ticketId: agentRuns.ticketId, status: tickets.status })
-			.from(agentRuns)
-			.innerJoin(tickets, eq(agentRuns.ticketId, tickets.id))
-			.where(eq(agentRuns.status, "running"));
-		await db
-			.update(deviceCommands)
-			.set({
-				status: "timed_out",
-				error: "gateway restarted before dispatch",
-				completedAt: new Date(),
-			})
-			.where(inArray(deviceCommands.status, ["pending", "dispatched"]));
-		await db
-			.update(agentRuns)
-			.set({
-				status: "failed",
-				outcome: "gateway restarted during run",
-				endedAt: new Date(),
-			})
-			.where(eq(agentRuns.status, "running"));
-		for (const orphan of orphanedRuns) {
-			const failedStatus = await resolveTicketStatus(orphan.status, "fail");
-			await db
+		const now = new Date();
+		await db.transaction(async (tx) => {
+			await tx
+				.update(deviceCommands)
+				.set({
+					status: "timed_out",
+					error: "gateway restarted before dispatch",
+					completedAt: now,
+				})
+				.where(inArray(deviceCommands.status, ["pending", "dispatched"]));
+			const orphanedRuns = await tx
+				.update(agentRuns)
+				.set({
+					status: "failed",
+					outcome: "gateway restarted during run",
+					leaseExpiresAt: null,
+					endedAt: now,
+				})
+				.where(eq(agentRuns.status, "running"))
+				.returning({ ticketId: agentRuns.ticketId });
+			if (!orphanedRuns.length) return;
+			const ids = orphanedRuns.map(({ ticketId }) => ticketId);
+			await tx
 				.update(tickets)
 				.set({
-					status: failedStatus,
+					status: sql`(
+						select ${ticketStatusTransitions.toStatus}
+						from ${ticketStatusTransitions}
+						where ${ticketStatusTransitions.fromStatus} = ${tickets.status}
+							and ${ticketStatusTransitions.action} = 'fail'
+					)`,
 					resolution: "gateway restarted during run",
 					progressMarker: "handing_to_person",
 				})
 				.where(
 					and(
-						eq(tickets.id, orphan.ticketId),
-						eq(tickets.status, orphan.status),
+						inArray(tickets.id, ids),
+						sql`exists (
+							select 1 from ${ticketStatusTransitions}
+							where ${ticketStatusTransitions.fromStatus} = ${tickets.status}
+								and ${ticketStatusTransitions.action} = 'fail'
+						)`,
 					),
 				);
-		}
+		});
+	}
+
+	private scheduleSweep() {
+		if (this.closed) return;
+		this.heartbeat = setTimeout(async () => {
+			if (this.sweepRunning) return this.scheduleSweep();
+			this.sweepRunning = true;
+			try {
+				await this.sweep();
+			} catch (error) {
+				console.error("[grpc] sweep failed", error);
+			} finally {
+				this.sweepRunning = false;
+				this.scheduleSweep();
+			}
+		}, HEARTBEAT_MS);
+		this.heartbeat.unref();
+	}
+
+	private async reconcileSearch(now: Date) {
+		const watermark = (
+			await db
+				.select({
+					lastReconciledAt: searchReconciliationState.lastReconciledAt,
+				})
+				.from(searchReconciliationState)
+				.where(eq(searchReconciliationState.key, SEARCH_WATERMARK_KEY))
+				.limit(1)
+		)[0]?.lastReconciledAt;
+		await reconcileCoreSearchDocuments(db, watermark ?? new Date(0));
+		await db
+			.insert(searchReconciliationState)
+			.values({ key: SEARCH_WATERMARK_KEY, lastReconciledAt: now })
+			.onConflictDoUpdate({
+				target: searchReconciliationState.key,
+				set: { lastReconciledAt: now },
+			});
+	}
+
+	private async expireRunLeases(now: Date) {
+		const expired = await db
+			.select({ id: agentRuns.id })
+			.from(agentRuns)
+			.where(
+				and(eq(agentRuns.status, "running"), lt(agentRuns.leaseExpiresAt, now)),
+			);
+		for (const { id } of expired)
+			await this.cancelRun(id, "agent run lease expired", now);
 	}
 
 	private async sweep() {
 		const now = Date.now();
-		await Promise.all([
-			sweepSla(new Date(now)),
-			sweepPending(new Date(now)),
-			sweepPresence(new Date(now)),
-			sweepWebhookDeliveries(db, 25, fetch, new Date(now)),
-			reconcileCoreSearchDocuments(db, new Date(now - HEARTBEAT_MS * 2)),
-		]);
+		const jobs = [
+			["sla", () => sweepSla(new Date(now))],
+			["pending", () => sweepPending(new Date(now))],
+			["presence", () => sweepPresence(new Date(now))],
+			["webhooks", () => sweepWebhookDeliveries(db, 25, fetch, new Date(now))],
+			["workflow leases", () => sweepExpiredWorkflowExecutions(new Date(now))],
+			["search", () => this.reconcileSearch(new Date(now))],
+			["run leases", () => this.expireRunLeases(new Date(now))],
+			[
+				"change verification",
+				() => sweepExpiredChangeVerifications(new Date(now)),
+			],
+		] as const;
+		await runMaintenanceJobs(jobs, (name, reason) =>
+			console.error(`[grpc] ${name} sweep failed`, reason),
+		);
 		for (const { stream } of this.agents.values()) {
 			try {
 				stream.write({ heartbeat: { unixMs: String(now) } });

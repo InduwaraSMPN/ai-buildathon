@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNotNull, lte } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
 import { changes, changeTransitions, tickets } from "@/db/schema";
@@ -43,11 +43,6 @@ const device = (input: z.ZodType, verifiedBy?: string): ToolHandler => ({
 	run: (value, ctx) => ctx.dispatchDevice("", value),
 });
 
-const pendingVerification = new Map<
-	string,
-	{ tool: string; changeId?: string }
->();
-
 export const tools: Record<string, ToolHandler> = {
 	knowledge_search: { input: knowledgeSearchInput, run: knowledgeSearch },
 	ticket_read_messages: {
@@ -74,6 +69,42 @@ export const tools: Record<string, ToolHandler> = {
 	cmdb_impact: { input: impactInput, run: cmdbImpact },
 };
 
+export async function sweepExpiredChangeVerifications(now = new Date()) {
+	return db.transaction(async (tx) => {
+		const expired = await tx
+			.update(changes)
+			.set({
+				status: "failed",
+				workEndAt: now,
+				pirWasSuccessful: false,
+				pirActualEndAt: now,
+				pirFollowUp: "Post-change verification deadline expired.",
+				verificationDeadlineAt: null,
+			})
+			.where(
+				and(
+					eq(changes.status, "in_progress"),
+					isNotNull(changes.verificationDeadlineAt),
+					lte(changes.verificationDeadlineAt, now),
+				),
+			)
+			.returning({ id: changes.id, runId: changes.sourceRunId });
+		if (expired.length)
+			await tx.insert(changeTransitions).values(
+				expired.map(({ id, runId }) => ({
+					id: crypto.randomUUID(),
+					changeId: id,
+					fromStatus: "in_progress" as const,
+					toStatus: "failed" as const,
+					actorType: "agent" as const,
+					actorId: runId,
+					runId,
+				})),
+			);
+		return expired.length;
+	});
+}
+
 export async function executeTool(
 	name: string,
 	raw: unknown,
@@ -85,8 +116,23 @@ export async function executeTool(
 			`Unknown tool ${name}. Registered tools: ${Object.keys(tools).join(", ")}`,
 		);
 	const input = handler.input.parse(raw);
-	const pending = pendingVerification.get(ctx.runId);
-	const verifies = pending?.tool === name;
+	const pending =
+		name === "cluster_read_deployment"
+			? (
+					await db
+						.select({ id: changes.id })
+						.from(changes)
+						.where(
+							and(
+								eq(changes.sourceRunId, ctx.runId),
+								eq(changes.status, "in_progress"),
+								isNotNull(changes.verificationDeadlineAt),
+							),
+						)
+						.limit(1)
+				)[0]
+			: undefined;
+	const verifies = Boolean(pending);
 	const marker = verifies
 		? "verifying_fix"
 		: name === "cluster_patch_image" ||
@@ -108,12 +154,11 @@ export async function executeTool(
 		dispatchDevice: (_ignored, value) => ctx.dispatchDevice(name, value),
 	});
 	if (verifies) {
-		pendingVerification.delete(ctx.runId);
-		const changeId = pending?.changeId;
+		const changeId = pending?.id;
 		if (changeId) {
 			const completedAt = new Date();
 			await db.transaction(async (tx) => {
-				await tx
+				const [completed] = await tx
 					.update(changes)
 					.set({
 						status: "completed",
@@ -122,8 +167,13 @@ export async function executeTool(
 						pirActualEndAt: completedAt,
 						pirReview: JSON.stringify(output),
 						pirLessonsLearned: "Explicit post-change verification succeeded.",
+						verificationDeadlineAt: null,
 					})
-					.where(eq(changes.id, changeId));
+					.where(
+						and(eq(changes.id, changeId), eq(changes.status, "in_progress")),
+					)
+					.returning({ id: changes.id });
+				if (!completed) return;
 				await tx.insert(changeTransitions).values({
 					id: crypto.randomUUID(),
 					changeId,
@@ -136,13 +186,6 @@ export async function executeTool(
 				});
 			});
 		}
-	}
-	if (handler.verifiedBy) {
-		const changeId =
-			output && typeof output === "object" && "changeId" in output
-				? String(output.changeId)
-				: undefined;
-		pendingVerification.set(ctx.runId, { tool: handler.verifiedBy, changeId });
 	}
 	return output;
 }

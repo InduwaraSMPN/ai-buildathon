@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
 	index,
 	integer,
@@ -30,6 +30,9 @@ export const agentRuns = pgTable(
 		status: text("status", { enum: RUN_STATUSES }).notNull().default("running"),
 		model: text("model"),
 		outcome: text("outcome"),
+		workerId: text("worker_id"),
+		acceptedAt: timestamp("accepted_at"),
+		leaseExpiresAt: timestamp("lease_expires_at"),
 
 		promptTokens: integer("prompt_tokens"),
 		completionTokens: integer("completion_tokens"),
@@ -37,7 +40,12 @@ export const agentRuns = pgTable(
 		startedAt: timestamp("started_at").defaultNow().notNull(),
 		endedAt: timestamp("ended_at"),
 	},
-	(t) => [index("agent_runs_ticket_idx").on(t.ticketId, t.startedAt)],
+	(t) => [
+		index("agent_runs_ticket_idx").on(t.ticketId, t.startedAt),
+		index("agent_runs_expired_lease_idx")
+			.on(t.leaseExpiresAt)
+			.where(sql`${t.status} = 'running'`),
+	],
 );
 
 /**
@@ -66,6 +74,25 @@ export const agentSteps = pgTable(
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
 	(t) => [uniqueIndex("agent_steps_run_ordinal_uidx").on(t.runId, t.ordinal)],
+);
+
+export const agentToolCalls = pgTable(
+	"agent_tool_calls",
+	{
+		id: text("id").primaryKey(),
+		runId: text("run_id")
+			.notNull()
+			.references(() => agentRuns.id, { onDelete: "cascade" }),
+		callId: text("call_id").notNull(),
+		status: text("status", { enum: ["in_progress", "succeeded", "failed"] })
+			.notNull()
+			.default("in_progress"),
+		result: jsonb("result"),
+		error: text("error"),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		finishedAt: timestamp("finished_at"),
+	},
+	(t) => [uniqueIndex("agent_tool_calls_run_call_uidx").on(t.runId, t.callId)],
 );
 
 export const agentRunsRelations = relations(agentRuns, ({ one, many }) => ({

@@ -61,7 +61,7 @@ export async function processReceivedEmail(
 	input: ReceivedEmail,
 	attachmentStore?: AttachmentStore,
 ): Promise<string | undefined> {
-	const inboundEmailId = crypto.randomUUID();
+	let inboundEmailId: string = crypto.randomUUID();
 	try {
 		const result = await database.transaction(
 			async (
@@ -93,17 +93,46 @@ export async function processReceivedEmail(
 					.onConflictDoNothing()
 					.returning({ id: inboundEmails.id });
 				if (!claimed) {
-					await tx.insert(mailboxActivityLog).values({
-						id: crypto.randomUUID(),
-						mailboxId: input.mailbox.id,
-						decision: "duplicate_ignored",
-						reason: `provider message ${input.message.providerMessageId} was already processed`,
-					});
-					return {
-						ticketId: undefined,
-						created: undefined,
-						createdReporterId: undefined,
-					};
+					const [existing] = await tx
+						.select({
+							id: inboundEmails.id,
+							status: inboundEmails.status,
+							attemptCount: inboundEmails.attemptCount,
+						})
+						.from(inboundEmails)
+						.where(
+							and(
+								eq(inboundEmails.mailboxId, input.mailbox.id),
+								eq(
+									inboundEmails.providerMessageId,
+									input.message.providerMessageId,
+								),
+							),
+						)
+						.limit(1);
+					if (existing?.status === "failed" && existing.attemptCount < 3) {
+						inboundEmailId = existing.id;
+						await tx
+							.update(inboundEmails)
+							.set({ status: "received", lastError: null, processedAt: null })
+							.where(eq(inboundEmails.id, existing.id));
+					} else {
+						await tx.insert(mailboxActivityLog).values({
+							id: crypto.randomUUID(),
+							mailboxId: input.mailbox.id,
+							inboundEmailId: existing?.id,
+							decision: "duplicate_ignored",
+							reason:
+								existing?.status === "failed"
+									? `provider message ${input.message.providerMessageId} exceeded the retry limit`
+									: `provider message ${input.message.providerMessageId} was already processed`,
+						});
+						return {
+							ticketId: undefined,
+							created: undefined,
+							createdReporterId: undefined,
+						};
+					}
 				}
 
 				if (input.attachments?.length && !attachmentStore)
@@ -238,8 +267,8 @@ export async function processReceivedEmail(
 				return { ticketId, created, createdReporterId };
 			},
 		);
-		if (result.created && result.createdReporterId)
-			await finalizeCreatedTicket(result.created, {
+		if (result.created?.created && result.createdReporterId)
+			void finalizeCreatedTicket(result.created, {
 				reporterId: result.createdReporterId,
 			});
 		return result.ticketId;
@@ -262,11 +291,23 @@ export async function processReceivedEmail(
 						),
 					),
 					status: "failed",
+					attemptCount: 1,
+					lastError: reason,
 					receivedAt: input.receivedAt,
 					processedAt: new Date(),
 				})
-				.onConflictDoNothing()
-				.returning({ id: inboundEmails.id });
+				.onConflictDoUpdate({
+					target: [inboundEmails.mailboxId, inboundEmails.providerMessageId],
+					set: {
+						attemptCount: sql`${inboundEmails.attemptCount} + 1`,
+						lastError: reason,
+						processedAt: new Date(),
+					},
+				})
+				.returning({
+					id: inboundEmails.id,
+					attemptCount: inboundEmails.attemptCount,
+				});
 			await tx.insert(mailboxActivityLog).values({
 				id: crypto.randomUUID(),
 				mailboxId: input.mailbox.id,

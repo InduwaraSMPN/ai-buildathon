@@ -6,6 +6,7 @@ import { retryDelayMs } from "./core";
 type Db = ReturnType<typeof createDb>;
 type Delivery = typeof webhookDeliveries.$inferSelect;
 const RESPONSE_LIMIT = 64 * 1024;
+const DELIVERY_LEASE_MS = 30_000;
 
 export function webhookAttemptResult(
 	attempt: number,
@@ -83,15 +84,27 @@ export async function deliverWebhook(
 		.update(webhookDeliveries)
 		.set({
 			status: "delivering",
+			claimedAt: now,
 			attemptCount: sql`${webhookDeliveries.attemptCount} + 1`,
 		})
 		.where(
 			and(
 				eq(webhookDeliveries.id, id),
-				inArray(webhookDeliveries.status, ["pending", "retrying"]),
 				or(
-					sql`${webhookDeliveries.nextAttemptAt} is null`,
-					lte(webhookDeliveries.nextAttemptAt, now),
+					and(
+						inArray(webhookDeliveries.status, ["pending", "retrying"]),
+						or(
+							sql`${webhookDeliveries.nextAttemptAt} is null`,
+							lte(webhookDeliveries.nextAttemptAt, now),
+						),
+					),
+					and(
+						eq(webhookDeliveries.status, "delivering"),
+						lte(
+							webhookDeliveries.claimedAt,
+							new Date(now.getTime() - DELIVERY_LEASE_MS),
+						),
+					),
 				),
 				sql`${webhookDeliveries.attemptCount} < ${webhookDeliveries.maxAttempts}`,
 			),
@@ -105,12 +118,13 @@ export async function deliverWebhook(
 		delivery.attemptCount,
 		delivery.maxAttempts,
 		error,
-		now,
+		new Date(),
 	);
 	const [updated] = await db
 		.update(webhookDeliveries)
 		.set({
 			...result,
+			claimedAt: null,
 			responseStatus,
 			responseHeaders,
 			responseBody,
@@ -126,7 +140,7 @@ export async function deliverWebhook(
 	return updated;
 }
 
-export async function sweepWebhookDeliveries(
+async function sweepWebhookDeliveriesUnqueued(
 	db: Db,
 	limit = 25,
 	fetcher: typeof fetch = fetch,
@@ -137,10 +151,21 @@ export async function sweepWebhookDeliveries(
 		.from(webhookDeliveries)
 		.where(
 			and(
-				inArray(webhookDeliveries.status, ["pending", "retrying"]),
 				or(
-					sql`${webhookDeliveries.nextAttemptAt} is null`,
-					lte(webhookDeliveries.nextAttemptAt, now),
+					and(
+						inArray(webhookDeliveries.status, ["pending", "retrying"]),
+						or(
+							sql`${webhookDeliveries.nextAttemptAt} is null`,
+							lte(webhookDeliveries.nextAttemptAt, now),
+						),
+					),
+					and(
+						eq(webhookDeliveries.status, "delivering"),
+						lte(
+							webhookDeliveries.claimedAt,
+							new Date(now.getTime() - DELIVERY_LEASE_MS),
+						),
+					),
 				),
 				sql`${webhookDeliveries.attemptCount} < ${webhookDeliveries.maxAttempts}`,
 			),
@@ -151,4 +176,21 @@ export async function sweepWebhookDeliveries(
 		due.map(({ id }) => deliverWebhook(db, id, fetcher, now)),
 	);
 	return results.filter((row): row is Delivery => row !== undefined);
+}
+
+let sweepQueue = Promise.resolve();
+export function sweepWebhookDeliveries(
+	db: Db,
+	limit = 25,
+	fetcher: typeof fetch = fetch,
+	now = new Date(),
+) {
+	const run = sweepQueue.then(() =>
+		sweepWebhookDeliveriesUnqueued(db, limit, fetcher, now),
+	);
+	sweepQueue = run.then(
+		() => undefined,
+		() => undefined,
+	);
+	return run;
 }

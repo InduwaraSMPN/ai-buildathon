@@ -1,6 +1,7 @@
 import {
 	boolean,
 	index,
+	integer,
 	jsonb,
 	pgTable,
 	text,
@@ -67,6 +68,8 @@ export const inboundEmails = pgTable(
 		}),
 		receivedAt: timestamp("received_at").notNull(),
 		processedAt: timestamp("processed_at"),
+		attemptCount: integer("attempt_count").notNull().default(0),
+		lastError: text("last_error"),
 	},
 	(t) => [
 		uniqueIndex("inbound_emails_mailbox_provider_uidx").on(

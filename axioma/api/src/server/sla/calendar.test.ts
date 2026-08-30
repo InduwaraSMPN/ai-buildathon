@@ -54,3 +54,47 @@ test("calendar timezone, not process timezone, defines working hours", async () 
 	const to = new Date("2026-08-31T14:00:00.000Z");
 	assert.equal(await elapsedWorkingMs(from, to, "test", loader(base)), HOUR);
 });
+
+test("rejects reversed working hours", async () => {
+	const calendar = {
+		...base,
+		hours: [{ weekday: 1, startTime: "17:00:00", endTime: "09:00:00" }],
+	};
+	await assert.rejects(
+		elapsedWorkingMs(
+			new Date("2026-08-31T13:00:00.000Z"),
+			new Date("2026-08-31T14:00:00.000Z"),
+			"test",
+			loader(calendar),
+		),
+		/after they start/,
+	);
+});
+
+test("rejects semantically equal working hours with different precision", async () => {
+	const calendar = {
+		...base,
+		hours: [{ weekday: 1, startTime: "09:00", endTime: "09:00:00" }],
+	};
+	await assert.rejects(
+		elapsedWorkingMs(
+			new Date("2026-08-31T13:00:00.000Z"),
+			new Date("2026-08-31T14:00:00.000Z"),
+			"test",
+			loader(calendar),
+		),
+		/after they start/,
+	);
+});
+
+test("caps calendar traversal at 366 days", async () => {
+	await assert.rejects(
+		elapsedWorkingMs(
+			new Date("2025-01-01T00:00:00.000Z"),
+			new Date("2027-01-01T00:00:00.000Z"),
+			"test",
+			loader(base),
+		),
+		/exceeds 366 days/,
+	);
+});

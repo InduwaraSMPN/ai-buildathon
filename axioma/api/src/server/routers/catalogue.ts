@@ -254,6 +254,7 @@ export const catalogueRouter = {
 			const submissionId = crypto.randomUUID();
 			const created = await createTicketInTransaction(tx, {
 				source: "catalogue",
+				idempotencyKey: input.idempotencyKey,
 				reporterId: context.userId,
 				title: input.title,
 				body: input.body,
@@ -262,6 +263,14 @@ export const catalogueRouter = {
 				serviceSubcategoryId: selected.subcategory.id,
 			});
 			const ticketId = created.ticketId;
+			if (!created.created) {
+				const [approval] = await tx
+					.select()
+					.from(approvals)
+					.where(eq(approvals.ticketId, ticketId))
+					.limit(1);
+				return { ticketId, approval: approval ?? null, created };
+			}
 			/* numbering is owned by createTicketInTransaction */
 			await tx.insert(formSubmissions).values({
 				id: submissionId,
@@ -295,7 +304,10 @@ export const catalogueRouter = {
 			}
 			return { ticketId, approval, created };
 		});
-		await finalizeCreatedTicket(result.created, { reporterId: context.userId });
+		if (result.created.created)
+			void finalizeCreatedTicket(result.created, {
+				reporterId: context.userId,
+			});
 		return result;
 	}),
 	listApprovals: capabilityProcedure("approval.read").listApprovals.handler(

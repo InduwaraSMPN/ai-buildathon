@@ -7,6 +7,7 @@ import {
 	pgTable,
 	text,
 	timestamp,
+	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 import {
@@ -125,6 +126,29 @@ export const tickets = pgTable(
 			foreignColumns: [serviceSubcategories.id, serviceSubcategories.serviceId],
 			name: "tickets_subcategory_service_fk",
 		}).onDelete("restrict"),
+	],
+);
+
+export const ticketCreationClaims = pgTable(
+	"ticket_creation_claims",
+	{
+		id: text("id").primaryKey(),
+		reporterId: text("reporter_id")
+			.notNull()
+			.references(() => user.id, { onDelete: "cascade" }),
+		idempotencyKey: text("idempotency_key").notNull(),
+		ticketId: text("ticket_id").references(() => tickets.id, {
+			onDelete: "cascade",
+		}),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+		expiresAt: timestamp("expires_at").notNull(),
+	},
+	(t) => [
+		uniqueIndex("ticket_creation_claims_reporter_key_uidx").on(
+			t.reporterId,
+			t.idempotencyKey,
+		),
+		index("ticket_creation_claims_expiry_idx").on(t.expiresAt),
 	],
 );
 

@@ -204,8 +204,8 @@ export const mailRouter = {
 				createdTicket: created,
 			};
 		});
-		if ("createdTicket" in result && result.createdTicket)
-			await finalizeCreatedTicket(result.createdTicket, {
+		if ("createdTicket" in result && result.createdTicket?.created)
+			void finalizeCreatedTicket(result.createdTicket, {
 				reporterId: context.userId,
 			});
 		return {

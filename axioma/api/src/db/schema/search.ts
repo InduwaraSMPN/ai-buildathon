@@ -9,6 +9,14 @@ import {
 } from "drizzle-orm/pg-core";
 
 /** Denormalized, authorization-neutral search projection. Authorization is applied at query time. */
+export const searchReconciliationState = pgTable(
+	"search_reconciliation_state",
+	{
+		key: text("key").primaryKey(),
+		lastReconciledAt: timestamp("last_reconciled_at").notNull(),
+	},
+);
+
 export const searchDocuments = pgTable(
 	"search_documents",
 	{

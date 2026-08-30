@@ -4,6 +4,7 @@ import {
 	dueRecurrenceOccurrences,
 	endFromDuration,
 	isVisibleInDefaultQueue,
+	occurrenceOrdinalAfter,
 } from "./scheduling";
 
 test("work end is derived from a non-negative duration", () => {
@@ -61,6 +62,46 @@ test("monthly recurrence clamps to the last day without drifting", () => {
 			"2026-02-28T12:00:00.000Z",
 			"2026-03-31T12:00:00.000Z",
 		],
+	);
+});
+
+test("recurrence backlog is bounded and resumes from its cursor", () => {
+	const rule = {
+		id: "daily",
+		frequency: "daily" as const,
+		interval: 1,
+		startsAt: new Date("2026-01-01T00:00:00.000Z"),
+	};
+	const first = dueRecurrenceOccurrences(
+		rule,
+		new Date("2026-01-10T00:00:00.000Z"),
+		new Set(),
+		3,
+	);
+	assert.equal(first.length, 3);
+	const ordinal = occurrenceOrdinalAfter(rule, first.at(-1)?.occursAt ?? null);
+	assert.equal(
+		dueRecurrenceOccurrences(
+			rule,
+			new Date("2026-01-10T00:00:00.000Z"),
+			new Set(),
+			3,
+			ordinal,
+		)[0]?.occursAt.toISOString(),
+		"2026-01-04T00:00:00.000Z",
+	);
+});
+
+test("monthly recurrence cursor survives clamped month ends", () => {
+	const rule = {
+		id: "month-end-cursor",
+		frequency: "monthly" as const,
+		interval: 1,
+		startsAt: new Date("2026-01-31T12:00:00.000Z"),
+	};
+	assert.equal(
+		occurrenceOrdinalAfter(rule, new Date("2026-02-28T12:00:00.000Z")),
+		2,
 	);
 });
 

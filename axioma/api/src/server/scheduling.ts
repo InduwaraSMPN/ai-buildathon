@@ -41,26 +41,55 @@ export function dueRecurrenceOccurrences(
 	now: Date,
 	existingKeys: ReadonlySet<string> = new Set(),
 	limit = 1_000,
+	startOrdinal = 0,
 ): DueOccurrence[] {
 	assertRule(rule);
 	assertDate(now, "now");
 	if (!Number.isSafeInteger(limit) || limit < 1)
 		throw new RangeError("limit must be a positive safe integer");
+	if (!Number.isSafeInteger(startOrdinal) || startOrdinal < 0)
+		throw new RangeError("startOrdinal must be a non-negative safe integer");
 	if (now < rule.startsAt) return [];
 
-	const last = rule.until && rule.until < now ? rule.until : now;
+	const horizon = new Date();
+	horizon.setUTCFullYear(horizon.getUTCFullYear() + 1);
+	const last = [rule.until, now, horizon]
+		.filter((date): date is Date => Boolean(date))
+		.reduce((earliest, date) => (date < earliest ? date : earliest));
 	const result: DueOccurrence[] = [];
-	for (let ordinal = 0; ; ordinal++) {
+	for (let ordinal = startOrdinal; ; ordinal++) {
 		const occursAt = occurrenceAt(rule, ordinal);
 		if (occursAt > last) break;
 		const idempotencyKey = `${rule.id}:${occursAt.toISOString()}`;
 		if (!existingKeys.has(idempotencyKey)) {
-			if (result.length === limit)
-				throw new RangeError("due recurrence occurrence limit exceeded");
+			if (result.length === limit) break;
 			result.push({ recurringTicketId: rule.id, occursAt, idempotencyKey });
 		}
 	}
 	return result;
+}
+
+export function occurrenceOrdinalAfter(
+	rule: RecurrenceRule,
+	lastOccurrence: Date | null,
+): number {
+	if (!lastOccurrence || lastOccurrence < rule.startsAt) return 0;
+	const elapsedDays = Math.floor(
+		(lastOccurrence.getTime() - rule.startsAt.getTime()) / 86_400_000,
+	);
+	let ordinal =
+		rule.frequency === "monthly"
+			? Math.floor(
+					((lastOccurrence.getUTCFullYear() - rule.startsAt.getUTCFullYear()) *
+						12 +
+						(lastOccurrence.getUTCMonth() - rule.startsAt.getUTCMonth())) /
+						rule.interval,
+				)
+			: Math.floor(
+					elapsedDays / (rule.interval * (rule.frequency === "weekly" ? 7 : 1)),
+				);
+	while (occurrenceAt(rule, ordinal) <= lastOccurrence) ordinal++;
+	return ordinal;
 }
 
 function occurrenceAt(rule: RecurrenceRule, ordinal: number): Date {

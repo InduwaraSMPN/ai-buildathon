@@ -47,6 +47,7 @@ import {
 	PRIORITIES,
 	RECORD_TYPES,
 	RESOLUTION_CODES,
+	type StateType,
 	TICKET_ROUTES,
 } from "@/shared";
 import {
@@ -120,7 +121,7 @@ const ticketSelection = {
 	serviceSubcategoryName: sql<string>`(select name from ${serviceSubcategories} where id = ${tickets.serviceSubcategoryId})`,
 	status: tickets.status,
 	statusLabel: sql<string>`(select label from ${ticketStatuses} where key = ${tickets.status})`,
-	statusStateType: sql<string>`(select state_type from ${ticketStatuses} where key = ${tickets.status})`,
+	statusStateType: sql<StateType>`(select state_type from ${ticketStatuses} where key = ${tickets.status})`,
 	statusColour: sql<
 		string | null
 	>`(select colour from ${ticketStatuses} where key = ${tickets.status})`,
@@ -215,6 +216,8 @@ export const ticketsRouter = {
 			const createdCore = await createTicket({
 				source: "portal",
 				reporterId: context.userId,
+				idempotencyKey: input.idempotencyKey,
+				customFields: input.customFields,
 				title: input.title,
 				body: input.body,
 				serviceId: input.serviceId,
@@ -224,16 +227,10 @@ export const ticketsRouter = {
 				urgency: input.urgency,
 				deviceId,
 			});
-			if (Object.keys(input.customFields).length)
-				await writeDynamicFieldValues(
-					db,
-					"ticket",
-					createdCore.ticketId,
-					input.customFields,
-				);
 			let created = await findTicket(createdCore.ticketId);
 			if (!created) throw new ORPCError("INTERNAL_SERVER_ERROR");
 			if (
+				createdCore.created &&
 				env.AXIOMA_AUTO_DISPATCH &&
 				grpcGateway.hasWorker() &&
 				!createdCore.settledActions.includes("route_human")
@@ -1120,121 +1117,126 @@ export const ticketsRouter = {
 		} else if (input.action === "unpend") {
 			pendingUntil = null;
 		}
-		const changed = await db
-			.update(tickets)
-			.set({
-				status: nextStatus,
-				recordType:
-					input.action === "reclassify"
-						? preserveUndefined(input.recordType, current.recordType)
-						: current.recordType,
-				impact,
-				urgency,
-				priority: derivePriority(impact, urgency),
-				serviceId,
-				serviceSubcategoryId,
-				route:
-					input.action === "assign"
-						? preserveUndefined(input.route, current.route)
-						: input.action === "escalate"
-							? input.route
-							: current.route,
-				assigneeId:
-					input.action === "assign"
-						? preserveUndefined(input.assigneeId, current.assigneeId)
-						: current.assigneeId,
-				ownerId:
-					input.action === "assign"
-						? preserveUndefined(input.ownerId, current.ownerId)
-						: current.ownerId,
-				teamId:
-					input.action === "assign"
-						? preserveUndefined(input.teamId, current.teamId)
-						: current.teamId,
-				resolution:
-					input.action === "resolve" ? input.resolution : current.resolution,
-				resolutionCode:
-					input.action === "resolve"
-						? input.resolutionCode
-						: input.action === "reopen"
-							? null
-							: current.resolutionCode,
-				escalationNote:
-					input.action === "escalate" ? input.note : current.escalationNote,
-				escalationFlag: ["reopen", "pend", "unpend"].includes(input.action)
-					? "none"
-					: current.escalationFlag,
-				escalationReason: ["reopen", "pend", "unpend"].includes(input.action)
-					? null
-					: current.escalationReason,
-				progressMarker:
-					input.action === "escalate"
-						? "handing_to_person"
-						: input.action === "reopen"
-							? null
-							: current.progressMarker,
-				resolvedAt:
-					input.action === "resolve"
-						? now
-						: input.action === "reopen"
-							? null
-							: current.resolvedAt,
-				closedAt:
-					input.action === "close"
-						? now
-						: input.action === "reopen"
-							? null
-							: current.closedAt,
-				reopenedAt: input.action === "reopen" ? now : current.reopenedAt,
-				pendingReasonId:
-					input.action === "pend"
-						? input.reasonId
-						: input.action === "unpend"
-							? null
-							: current.pendingReasonId,
-				pendingUntil,
-				lastPendingAt: input.action === "pend" ? now : current.lastPendingAt,
-				pendingFollowups:
-					input.action === "pend" ? 0 : current.pendingFollowups,
-				lastHumanTransitionAt: now,
-				updatedAt: now,
-			})
-			.where(and(eq(tickets.id, input.id), eq(tickets.status, current.status)))
-			.returning({ id: tickets.id });
-		if (!changed[0])
-			throw new ORPCError("CONFLICT", {
-				message: "Ticket changed while it was being updated",
-			});
-		if (nextStatus !== current.status)
-			await transitionTicketStopwatches(input.id, nextStatus, now);
-		if (input.action === "add_detail")
-			await db.insert(ticketMessages).values({
-				id: crypto.randomUUID(),
-				ticketId: input.id,
-				authorId: context.userId,
-				authorType: "reporter",
-				body: input.note,
-				visibility: "public",
-			});
-		if (input.action === "close")
-			await db
-				.insert(ticketCsatResponses)
-				.values({
+		await db.transaction(async (tx) => {
+			const changed = await tx
+				.update(tickets)
+				.set({
+					status: nextStatus,
+					recordType:
+						input.action === "reclassify"
+							? preserveUndefined(input.recordType, current.recordType)
+							: current.recordType,
+					impact,
+					urgency,
+					priority: derivePriority(impact, urgency),
+					serviceId,
+					serviceSubcategoryId,
+					route:
+						input.action === "assign"
+							? preserveUndefined(input.route, current.route)
+							: input.action === "escalate"
+								? input.route
+								: current.route,
+					assigneeId:
+						input.action === "assign"
+							? preserveUndefined(input.assigneeId, current.assigneeId)
+							: current.assigneeId,
+					ownerId:
+						input.action === "assign"
+							? preserveUndefined(input.ownerId, current.ownerId)
+							: current.ownerId,
+					teamId:
+						input.action === "assign"
+							? preserveUndefined(input.teamId, current.teamId)
+							: current.teamId,
+					resolution:
+						input.action === "resolve" ? input.resolution : current.resolution,
+					resolutionCode:
+						input.action === "resolve"
+							? input.resolutionCode
+							: input.action === "reopen"
+								? null
+								: current.resolutionCode,
+					escalationNote:
+						input.action === "escalate" ? input.note : current.escalationNote,
+					escalationFlag: ["reopen", "pend", "unpend"].includes(input.action)
+						? "none"
+						: current.escalationFlag,
+					escalationReason: ["reopen", "pend", "unpend"].includes(input.action)
+						? null
+						: current.escalationReason,
+					progressMarker:
+						input.action === "escalate"
+							? "handing_to_person"
+							: input.action === "reopen"
+								? null
+								: current.progressMarker,
+					resolvedAt:
+						input.action === "resolve"
+							? now
+							: input.action === "reopen"
+								? null
+								: current.resolvedAt,
+					closedAt:
+						input.action === "close"
+							? now
+							: input.action === "reopen"
+								? null
+								: current.closedAt,
+					reopenedAt: input.action === "reopen" ? now : current.reopenedAt,
+					pendingReasonId:
+						input.action === "pend"
+							? input.reasonId
+							: input.action === "unpend"
+								? null
+								: current.pendingReasonId,
+					pendingUntil,
+					lastPendingAt: input.action === "pend" ? now : current.lastPendingAt,
+					pendingFollowups:
+						input.action === "pend" ? 0 : current.pendingFollowups,
+					lastHumanTransitionAt: now,
+					updatedAt: now,
+				})
+				.where(
+					and(eq(tickets.id, input.id), eq(tickets.status, current.status)),
+				)
+				.returning({ id: tickets.id });
+			if (!changed[0])
+				throw new ORPCError("CONFLICT", {
+					message: "Ticket changed while it was being updated",
+				});
+			if (nextStatus !== current.status)
+				await transitionTicketStopwatches(input.id, nextStatus, now, tx);
+			if (input.action === "add_detail")
+				await tx.insert(ticketMessages).values({
 					id: crypto.randomUUID(),
 					ticketId: input.id,
-					token: `${crypto.randomUUID()}${crypto.randomUUID()}`,
-				})
-				.onConflictDoNothing({ target: ticketCsatResponses.ticketId });
-		if (nextStatus !== current.status)
-			await db.insert(ticketTransitions).values({
-				id: crypto.randomUUID(),
-				ticketId: input.id,
-				fromStatus: current.status,
-				toStatus: nextStatus,
-				action: input.action,
-				actorType: "human",
-				actorId: context.userId,
-			});
+					authorId: context.userId,
+					authorType: "reporter",
+					body: input.note,
+					visibility: "public",
+				});
+			if (input.action === "close")
+				await tx
+					.insert(ticketCsatResponses)
+					.values({
+						id: crypto.randomUUID(),
+						ticketId: input.id,
+						token: `${crypto.randomUUID()}${crypto.randomUUID()}`,
+					})
+					.onConflictDoNothing({ target: ticketCsatResponses.ticketId });
+			if (nextStatus !== current.status)
+				await tx.insert(ticketTransitions).values({
+					id: crypto.randomUUID(),
+					ticketId: input.id,
+					fromStatus: current.status,
+					toStatus: nextStatus,
+					action: input.action,
+					actorType: "human",
+					actorId: context.userId,
+				});
+			return changed;
+		});
 		const updated = await findTicket(input.id);
 		if (!updated) throw new ORPCError("NOT_FOUND");
 		try {
@@ -1253,7 +1255,9 @@ export const ticketsRouter = {
 				fromStatus: current.status,
 				toStatus: nextStatus,
 			},
-		});
+		}).catch((error) =>
+			console.error("[tickets] workflow dispatch failed", error),
+		);
 		const changes = auditChanges(
 			{
 				recordType: current.recordType,

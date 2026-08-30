@@ -89,7 +89,7 @@ export async function patchImage(input: z.infer<typeof patchImageInput>) {
 export async function pollRollout(
 	namespace: string,
 	name: string,
-	ceilingMs = 90_000,
+	ceilingMs = 15_000,
 ) {
 	const observations: Awaited<ReturnType<typeof readDeployment>>[] = [];
 	const deadline = Date.now() + ceilingMs;

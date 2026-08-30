@@ -15,6 +15,10 @@ import {
 	startRecurrenceSweep,
 } from "@/server/scheduling-runtime";
 
+process.on("unhandledRejection", (reason) =>
+	console.error("[process] unhandled rejection", reason),
+);
+
 if (env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL) {
 	const found = await bootstrapAdministrator(env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL);
 	console.log(
@@ -44,24 +48,29 @@ if (env.AXIOMA_MAIL_OUTBOUND_URL)
 	});
 await Promise.all([grpcGateway.listen(), startMailRuntime()]);
 startRecurrenceSweep();
-const knowledgeGapSweep = setInterval(
-	() =>
-		sweepKnowledgeGaps().catch((error) =>
-			console.error("[knowledge] gap sweep failed", error),
-		),
-	24 * 60 * 60_000,
-);
-void sweepKnowledgeGaps().catch((error) =>
-	console.error("[knowledge] initial gap sweep failed", error),
-);
-knowledgeGapSweep.unref();
+let knowledgeGapSweep: NodeJS.Timeout | undefined;
+let knowledgeGapSweepClosed = false;
+const scheduleKnowledgeGapSweep = (delay = 0) => {
+	knowledgeGapSweep = setTimeout(async () => {
+		try {
+			await sweepKnowledgeGaps();
+		} catch (error) {
+			console.error("[knowledge] gap sweep failed", error);
+		} finally {
+			if (!knowledgeGapSweepClosed) scheduleKnowledgeGapSweep(24 * 60 * 60_000);
+		}
+	}, delay);
+	knowledgeGapSweep.unref();
+};
+scheduleKnowledgeGapSweep();
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.once(signal, () => {
-		clearInterval(knowledgeGapSweep);
+		knowledgeGapSweepClosed = true;
+		if (knowledgeGapSweep) clearTimeout(knowledgeGapSweep);
 		closeRecurrenceSweep();
-		void Promise.all([grpcGateway.close(), closeMailRuntime()]).finally(() =>
-			process.exit(0),
-		);
+		void Promise.all([grpcGateway.close(), closeMailRuntime()])
+			.catch((error) => console.error("[shutdown] cleanup failed", error))
+			.finally(() => process.exit(0));
 	});
 }

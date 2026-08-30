@@ -40,11 +40,18 @@ export function createMailboxPoller(options: PollerOptions): MailboxPoller {
 	const poll = async () => {
 		for (const mailbox of await options.listMailboxes()) {
 			for (const incoming of await options.provider.poll(mailbox)) {
-				await options.process({ ...incoming, mailbox });
-				await options.provider.acknowledge?.(
-					mailbox,
-					incoming.message.providerMessageId,
-				);
+				try {
+					await options.process({ ...incoming, mailbox });
+					await options.provider.acknowledge?.(
+						mailbox,
+						incoming.message.providerMessageId,
+					);
+				} catch (error) {
+					(
+						options.onError ??
+						((cause) => console.error("[mail] message failed", cause))
+					)(error);
+				}
 			}
 		}
 	};

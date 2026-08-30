@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { and, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { inboundEmails, mailboxes, ticketOrigins } from "@/db/schema";
+import { processReceivedEmail } from "./db";
 import {
 	autoReplySuppressionReason,
 	findTicketReference,
@@ -275,9 +279,64 @@ test("mailbox poller never acknowledges failed processing", async () => {
 		},
 		process: async () => Promise.reject(new Error("database unavailable")),
 	});
-	await assert.rejects(poller.start(), /database unavailable/);
+	await poller.start();
 	await poller.close();
 	assert.equal(acknowledged, false);
+});
+
+test("poison inbound mail persists attempts and stops retrying at the cap", async () => {
+	const mailboxId = crypto.randomUUID();
+	const providerMessageId = crypto.randomUUID();
+	const originKey = `poison-${mailboxId}`;
+	await db.insert(ticketOrigins).values({
+		id: crypto.randomUUID(),
+		key: originKey,
+		name: "Poison test",
+	});
+	await db.insert(mailboxes).values({
+		id: mailboxId,
+		address: `${mailboxId}@example.test`,
+		name: "Poison test",
+		ticketOrigin: originKey,
+	});
+	const input = {
+		mailbox: { id: mailboxId, ticketOrigin: originKey },
+		message: message({ providerMessageId }),
+		receivedAt: new Date(),
+		attachments: [
+			{
+				filename: "note.txt",
+				contentType: "text/plain",
+				content: new Uint8Array([1]),
+			},
+		],
+	};
+	try {
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			await assert.rejects(processReceivedEmail(db, input), /attachment store/);
+			const [row] = await db
+				.select()
+				.from(inboundEmails)
+				.where(
+					and(
+						eq(inboundEmails.mailboxId, mailboxId),
+						eq(inboundEmails.providerMessageId, providerMessageId),
+					),
+				);
+			assert.equal(row?.attemptCount, attempt);
+		}
+		assert.equal(await processReceivedEmail(db, input), undefined);
+		const [row] = await db
+			.select()
+			.from(inboundEmails)
+			.where(eq(inboundEmails.providerMessageId, providerMessageId));
+		assert.equal(row?.attemptCount, 3);
+		assert.equal(row?.status, "failed");
+	} finally {
+		await db.delete(inboundEmails).where(eq(inboundEmails.mailboxId, mailboxId));
+		await db.delete(mailboxes).where(eq(mailboxes.id, mailboxId));
+		await db.delete(ticketOrigins).where(eq(ticketOrigins.key, originKey));
+	}
 });
 
 test("inbound attachment preparation rejects executable names", async () => {

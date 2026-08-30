@@ -1,6 +1,9 @@
 import { ORPCError } from "@orpc/server";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
+
+type TicketDatabase = Pick<typeof db, "select">;
+
 import { ticketStatusTransitions } from "@/db/schema";
 import type { RunStatus, TicketStatus } from "@/shared";
 
@@ -56,9 +59,10 @@ export async function canRerun(
 export async function findTicketTransition(
 	status: TicketStatus,
 	action: TicketTransition,
+	database: TicketDatabase = db,
 ): Promise<TicketStatus | undefined> {
 	return (
-		await db
+		await database
 			.select({ toStatus: ticketStatusTransitions.toStatus })
 			.from(ticketStatusTransitions)
 			.where(
@@ -75,9 +79,10 @@ export async function findTicketTransition(
 export async function resolveTicketStatus(
 	status: TicketStatus,
 	action: TicketTransition,
+	database: TicketDatabase = db,
 ): Promise<TicketStatus> {
 	return (
-		(await findTicketTransition(status, action)) ??
+		(await findTicketTransition(status, action, database)) ??
 		throwInvalidTransition(status, action)
 	);
 }

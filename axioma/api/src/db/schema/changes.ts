@@ -1,4 +1,4 @@
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import {
 	boolean,
 	index,
@@ -106,6 +106,7 @@ export const changes = pgTable(
 		sourceStepId: text("source_step_id").references(() => agentSteps.id, {
 			onDelete: "set null",
 		}),
+		verificationDeadlineAt: timestamp("verification_deadline_at"),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
 			.defaultNow()
@@ -124,6 +125,9 @@ export const changes = pgTable(
 		index("changes_source_run_idx").on(t.sourceRunId),
 		index("changes_source_step_idx").on(t.sourceStepId),
 		index("changes_created_by_id_idx").on(t.createdById),
+		index("changes_verification_deadline_idx")
+			.on(t.verificationDeadlineAt)
+			.where(sql`${t.status} = 'in_progress'`),
 	],
 );
 

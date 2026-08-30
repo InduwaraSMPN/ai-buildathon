@@ -127,6 +127,7 @@ export const catalogueContract = {
 	createCatalogueRequest: oc
 		.input(
 			z.object({
+				idempotencyKey: z.uuid(),
 				subcategoryId: id,
 				formId: id,
 				values: z.record(z.string(), z.unknown()),

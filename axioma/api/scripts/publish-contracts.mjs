@@ -30,6 +30,9 @@ const BANNER = `// GENERATED — do not edit.
 const CONTRACT_TARGETS = ["portal", "dashboard"].map((n) =>
 	join(workspace, n, "src/sdk/contracts"),
 );
+const SHARED_TARGETS = ["portal", "dashboard"].map((n) =>
+	join(workspace, n, "src/sdk/shared.ts"),
+);
 const PROTO_TARGETS = ["agent", "cli"].map((n) => join(workspace, n, "proto"));
 const check = process.argv.includes("--check");
 
@@ -71,12 +74,28 @@ async function mirrorContracts() {
 			const output = join(target, relative);
 			await mkdir(dirname(output), { recursive: true });
 			const body = await readFile(join(source, relative));
-			await writeOrCheck(
-				output,
-				relative.endsWith(".ts") ? `${BANNER}\n${body.toString("utf8")}` : body,
-			);
+			const generated = `${BANNER}\n${body.toString("utf8").trimEnd()}${
+				relative === "shared.ts"
+					? '\n\nexport { STATE_TYPES } from "../shared";'
+					: ""
+			}\n`;
+			await writeOrCheck(output, relative.endsWith(".ts") ? generated : body);
 		}
 		console.log(`contracts ${check ? "verified" : "->"} ${target}`);
+	}
+
+	const shared = await readFile(join(apiRoot, "src/shared/index.ts"));
+	const contractShared = await readFile(
+		join(apiRoot, "src/contracts/shared.ts"),
+	);
+	for (const target of SHARED_TARGETS) {
+		await mkdir(dirname(target), { recursive: true });
+		await writeOrCheck(target, `${BANNER}\n${shared.toString("utf8")}`);
+		await writeOrCheck(
+			join(dirname(target), "contracts/shared.ts"),
+			`${BANNER}\n${contractShared.toString("utf8").trimEnd()}\n\nexport { STATE_TYPES } from "../shared";\n`,
+		);
+		console.log(`shared vocabulary ${check ? "verified" : "->"} ${target}`);
 	}
 }
 

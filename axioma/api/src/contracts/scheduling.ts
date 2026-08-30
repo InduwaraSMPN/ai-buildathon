@@ -71,7 +71,13 @@ export const schedulingContract = {
 	triggerRecurrences: oc
 		.input(
 			z.object({
-				now: z.coerce.date().default(() => new Date()),
+				now: z.coerce
+					.date()
+					.refine(
+						(value) => value <= new Date(Date.now() + 366 * 86_400_000),
+						"now cannot be more than one year in the future",
+					)
+					.default(() => new Date()),
 				limit: z.number().int().min(1).max(1000).default(100),
 			}),
 		)
@@ -79,6 +85,7 @@ export const schedulingContract = {
 			z.object({
 				created: z.number().int().nonnegative(),
 				skipped: z.number().int().nonnegative(),
+				truncated: z.boolean(),
 			}),
 		),
 };

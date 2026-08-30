@@ -15,6 +15,7 @@ export type WorkingCalendar = {
 export type CalendarLoader = (calendarId: string) => Promise<WorkingCalendar>;
 
 const partsFormatters = new Map<string, Intl.DateTimeFormat>();
+const MAX_FORMATTERS = 64;
 
 function formatter(timezone: string) {
 	let value = partsFormatters.get(timezone);
@@ -31,6 +32,8 @@ function formatter(timezone: string) {
 			minute: "2-digit",
 			second: "2-digit",
 		});
+		if (partsFormatters.size >= MAX_FORMATTERS)
+			partsFormatters.delete(partsFormatters.keys().next().value ?? "");
 		partsFormatters.set(timezone, value);
 	}
 	return value;
@@ -129,11 +132,15 @@ function validate(calendar: WorkingCalendar) {
 	for (const hour of calendar.hours) {
 		if (hour.weekday < 0 || hour.weekday > 6)
 			throw new Error(`Invalid calendar weekday: ${hour.weekday}`);
-		if (
-			timeParts(hour.startTime).hour > 23 ||
-			timeParts(hour.endTime).hour > 23
-		)
+		const start = timeParts(hour.startTime);
+		const end = timeParts(hour.endTime);
+		if (start.hour > 23 || end.hour > 23)
 			throw new Error("Invalid calendar hour");
+		const milliseconds = (value: typeof start) =>
+			((value.hour * 60 + value.minute) * 60 + value.second) * 1_000 +
+			value.millisecond;
+		if (milliseconds(start) >= milliseconds(end))
+			throw new Error("Calendar working hours must end after they start");
 	}
 }
 
@@ -186,18 +193,21 @@ export async function elapsedWorkingMs(
 	const calendar = await load(calendarId);
 	validate(calendar);
 	let total = 0;
+	let days = 0;
 	for (
 		let date = dateKey(from, calendar.timezone),
 			last = dateKey(to, calendar.timezone);
 		date <= last;
 		date = nextDate(date)
-	)
+	) {
+		if (++days > 366) throw new RangeError("Calendar range exceeds 366 days");
 		for (const interval of intervals(date, calendar))
 			total += Math.max(
 				0,
 				Math.min(to.getTime(), interval.end.getTime()) -
 					Math.max(from.getTime(), interval.start.getTime()),
 			);
+	}
 	return total;
 }
 
@@ -214,7 +224,10 @@ export async function addWorkingMs(
 	validate(calendar);
 	let remaining = ms;
 	let cursor = new Date(from);
+	let days = 0;
 	for (let date = dateKey(from, calendar.timezone); ; date = nextDate(date)) {
+		if (++days > 366)
+			throw new RangeError("Calendar duration exceeds 366 days");
 		for (const interval of intervals(date, calendar)) {
 			const start = new Date(
 				Math.max(cursor.getTime(), interval.start.getTime()),

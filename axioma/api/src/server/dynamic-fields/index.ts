@@ -8,7 +8,9 @@ import {
 	dynamicFieldValues,
 } from "@/db/schema/dynamic-fields";
 
-export type DynamicFieldsDb = ReturnType<typeof createDb>;
+type Database = ReturnType<typeof createDb>;
+type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
+export type DynamicFieldsDb = Database | Transaction;
 export type FieldDefinition = typeof dynamicFields.$inferSelect;
 export type NewFieldDefinition = Pick<
 	typeof dynamicFields.$inferInsert,
@@ -264,7 +266,7 @@ export async function writeDynamicFieldValues(
 		if (values[key] !== null) validateFieldValue(definition, values[key]);
 	}
 
-	await db.transaction(async (tx) => {
+	const persist = async (tx: DynamicFieldsDb) => {
 		for (const key of keys) {
 			const definition = byKey.get(key);
 			if (!definition) continue;
@@ -288,8 +290,10 @@ export async function writeDynamicFieldValues(
 					});
 			}
 		}
-	});
-	if (objectType === "asset") {
+	};
+	if ("$client" in db) await db.transaction(persist);
+	else await persist(db);
+	if (objectType === "asset" && "$client" in db) {
 		const { indexAsset } = await import("../search/projections");
 		await indexAsset(db, objectId);
 	}

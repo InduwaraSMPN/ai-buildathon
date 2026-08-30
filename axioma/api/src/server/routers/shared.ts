@@ -128,6 +128,7 @@ export async function startTicketRun(
 		channelOrigin[0]?.origin,
 	);
 	const runId = crypto.randomUUID();
+	const transitionId = crypto.randomUUID();
 	await db.transaction(async (tx) => {
 		const changed = await tx
 			.update(tickets)
@@ -144,7 +145,7 @@ export async function startTicketRun(
 			});
 		await tx.insert(agentRuns).values({ id: runId, ticketId });
 		await tx.insert(ticketTransitions).values({
-			id: crypto.randomUUID(),
+			id: transitionId,
 			ticketId,
 			fromStatus: ticket.status,
 			toStatus: nextStatus,
@@ -188,6 +189,9 @@ export async function startTicketRun(
 					updatedAt: new Date(),
 				})
 				.where(and(eq(tickets.id, ticketId), eq(tickets.status, nextStatus)));
+			await tx
+				.delete(ticketTransitions)
+				.where(eq(ticketTransitions.id, transitionId));
 		});
 		throw new ORPCError("SERVICE_UNAVAILABLE", {
 			message: error instanceof Error ? error.message : "Axel is not connected",

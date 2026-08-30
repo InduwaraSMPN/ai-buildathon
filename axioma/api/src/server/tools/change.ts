@@ -55,6 +55,7 @@ export async function patchImageWithChange(
 			approvalAt: now,
 			workStartAt: now,
 			pirActualStartAt: now,
+			verificationDeadlineAt: new Date(now.getTime() + 5 * 60_000),
 			sourceRunId: ctx.runId,
 			sourceStepId: ctx.stepId,
 		});

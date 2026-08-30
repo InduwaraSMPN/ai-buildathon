@@ -16,7 +16,7 @@ import { resolveContractSla } from "../contracts";
 import { elapsedWorkingMs } from "./calendar";
 import { transitionStopwatch } from "./stopwatch";
 
-type StopwatchDatabase = Pick<typeof db, "select" | "insert">;
+type StopwatchDatabase = Pick<typeof db, "select" | "insert" | "update">;
 
 export async function attachTicketStopwatches(
 	ticketId: string,
@@ -101,9 +101,10 @@ export async function transitionTicketStopwatches(
 	ticketId: string,
 	toStatus: string,
 	at = new Date(),
+	database: StopwatchDatabase = db,
 ): Promise<void> {
 	const status = (
-		await db
+		await database
 			.select({
 				pausesSla: ticketStatuses.pausesSla,
 				stateType: ticketStatuses.stateType,
@@ -113,14 +114,14 @@ export async function transitionTicketStopwatches(
 			.limit(1)
 	)[0];
 	if (!status) return;
-	const watches = await db
+	const watches = await database
 		.select()
 		.from(ticketStopwatches)
 		.where(eq(ticketStopwatches.ticketId, ticketId));
 	for (const watch of watches) {
 		const table = watch.policyType === "sla" ? slas : olas;
 		const policy = (
-			await db
+			await database
 				.select({ calendarId: table.calendarId })
 				.from(table)
 				.where(eq(table.id, watch.policyId))
@@ -139,7 +140,7 @@ export async function transitionTicketStopwatches(
 			at,
 			await elapsedWorkingMs(watch.startedAt, at, policy.calendarId),
 		);
-		await db
+		await database
 			.update(ticketStopwatches)
 			.set(next)
 			.where(
