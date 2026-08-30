@@ -8,14 +8,16 @@ import logging
 import random
 import time
 import uuid
+from collections import OrderedDict
 from collections.abc import AsyncIterator
+from contextlib import suppress
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import ClassVar
 
 import grpc
 
-from axel import __version__, model, tools
+from axel import __version__, tools
 from axel.config import config
 from axel.loop import RunContext, Step, StepKind, run
 from axel.pb import axioma_pb2 as pb
@@ -29,7 +31,7 @@ _KIND = {
     StepKind.OBSERVATION: pb.RunUpdate.KIND_OBSERVATION,
     StepKind.DECISION: pb.RunUpdate.KIND_DECISION,
 }
-_RETAINED_TERMINALS: dict[str, pb.AgentMessage] = {}
+_RETAINED_TERMINALS: OrderedDict[str, tuple[float, pb.AgentMessage]] = OrderedDict()
 
 
 def _worker_id(path: Path | None = None) -> str:
@@ -68,7 +70,9 @@ class HealthHandler(BaseHTTPRequestHandler):
 class Connection:
     def __init__(self, worker_id: str = "") -> None:
         self.worker_id = worker_id
-        self.outbound: asyncio.Queue[pb.AgentMessage | None] = asyncio.Queue()
+        self.outbound: asyncio.Queue[pb.AgentMessage | None] = asyncio.Queue(
+            maxsize=config.outbound_queue_size
+        )
         self.pending: dict[str, asyncio.Future[object]] = {}
         self.runs: dict[str, asyncio.Task[None]] = {}
         self.closing = False
@@ -81,8 +85,8 @@ class Connection:
         )
         _set_if_present(hello, worker_id=self.worker_id)
         yield pb.AgentMessage(hello=hello)
-        for run_id, message in list(_RETAINED_TERMINALS.items()):
-            _RETAINED_TERMINALS.pop(run_id, None)
+        _prune_retained_terminals()
+        for _, message in list(_RETAINED_TERMINALS.values()):
             yield message
         while (message := await self.outbound.get()) is not None:
             yield message
@@ -94,9 +98,27 @@ class Connection:
             if start.run_id in self.runs:
                 LOG.warning("ignoring duplicate run %s", start.run_id)
                 return
+            if len(self.runs) >= config.max_concurrent_runs:
+                LOG.warning("rejecting run %s: concurrent run limit reached", start.run_id)
+                await self._send(
+                    pb.AgentMessage(
+                        run_update=pb.RunUpdate(
+                            run_id=start.run_id,
+                            ordinal=1,
+                            kind=pb.RunUpdate.KIND_TERMINAL,
+                            status="failed",
+                            outcome="agent busy",
+                            error="concurrent run limit reached",
+                        )
+                    )
+                )
+                return
+            await self._send(pb.AgentMessage(run_accepted=pb.RunAccepted(run_id=start.run_id)))
             task = asyncio.create_task(self.execute(start), name=f"run-{start.run_id}")
             self.runs[start.run_id] = task
-            task.add_done_callback(lambda _task, run_id=start.run_id: self.runs.pop(run_id, None))
+            task.add_done_callback(
+                lambda done, run_id=start.run_id: self._run_done(run_id, done)
+            )
         elif payload == "tool_result":
             result = message.tool_result
             future = self.pending.pop(result.call_id, None)
@@ -114,8 +136,43 @@ class Connection:
             task = self.runs.get(message.cancel_run.run_id)
             if task:
                 task.cancel(message.cancel_run.reason)
+        elif payload == "terminal_ack":
+            ack = message.terminal_ack
+            retained = _RETAINED_TERMINALS.get(ack.run_id)
+            if retained is not None and retained[1].run_update.ordinal == ack.ordinal:
+                _RETAINED_TERMINALS.pop(ack.run_id, None)
         elif payload == "heartbeat":
             return
+
+    def _run_done(self, run_id: str, task: asyncio.Task[None]) -> None:
+        self.runs.pop(run_id, None)
+        if not task.cancelled() and (exc := task.exception()) is not None:
+            LOG.error("run %s task crashed", run_id, exc_info=(type(exc), exc, exc.__traceback__))
+
+    async def _send(self, message: pb.AgentMessage) -> None:
+        if (
+            message.WhichOneof("payload") == "run_update"
+            and message.run_update.kind == pb.RunUpdate.KIND_TERMINAL
+        ):
+            _retain_terminal(message.run_update.run_id, message)
+        if self.closing:
+            raise ConnectionError("API connection is closing")
+        try:
+            await asyncio.wait_for(
+                self.outbound.put(message), timeout=config.outbound_enqueue_timeout_seconds
+            )
+        except TimeoutError as exc:
+            self.closing = True
+            while not self.outbound.empty():
+                queued = self.outbound.get_nowait()
+                if (
+                    queued is not None
+                    and queued.WhichOneof("payload") == "run_update"
+                    and queued.run_update.kind == pb.RunUpdate.KIND_TERMINAL
+                ):
+                    _retain_terminal(queued.run_update.run_id, queued)
+            self.outbound.put_nowait(None)
+            raise ConnectionError("outbound gRPC queue remained full") from exc
 
     async def execute(self, start: pb.StartRun) -> None:
         ordinal = 0
@@ -136,7 +193,7 @@ class Connection:
                 error=step.error or "",
             )
             _set_if_present(update, evidence=getattr(step, "evidence", None))
-            await self.outbound.put(pb.AgentMessage(run_update=update))
+            await self._send(pb.AgentMessage(run_update=update))
             return ordinal
 
         async def call_tool(name: str, payload: dict, source_step_ordinal: int) -> object:
@@ -145,7 +202,7 @@ class Connection:
             call_id = uuid.uuid4().hex
             future = asyncio.get_running_loop().create_future()
             self.pending[call_id] = future
-            await self.outbound.put(
+            await self._send(
                 pb.AgentMessage(
                     tool_request=pb.ToolRequest(
                         run_id=start.run_id,
@@ -181,7 +238,7 @@ class Connection:
             body=start.body,
             device_id=start.device_id or None,
             context_json=start.context_json,
-            think=model.think,
+            think=_think,
             call_tool=call_tool,
             report=report,
             record_type=record_type,
@@ -218,35 +275,35 @@ class Connection:
         except Exception as exc:  # noqa: BLE001
             LOG.exception("run %s failed", start.run_id)
             status, outcome, error = "failed", "agent run failed", str(exc)
-        ordinal += 1
-        update = pb.RunUpdate(
-            run_id=start.run_id,
-            ordinal=ordinal,
-            kind=pb.RunUpdate.KIND_TERMINAL,
-            status=status,
-            outcome=outcome,
-            error=error,
-            resolution_code=getattr(result, "resolution_code", ""),
-        )
-        _set_if_present(
-            update,
-            prompt_tokens=getattr(result, "prompt_tokens", ctx.prompt_tokens),
-            completion_tokens=getattr(result, "completion_tokens", ctx.completion_tokens),
-            model=getattr(result, "model", ctx.model),
-            evidence=terminal_evidence,
-        )
-        message = pb.AgentMessage(run_update=update)
-        if self.closing:
-            _RETAINED_TERMINALS[start.run_id] = message
-        else:
-            self.outbound.put_nowait(message)
+        try:
+            ordinal += 1
+            update = pb.RunUpdate(
+                run_id=start.run_id,
+                ordinal=ordinal,
+                kind=pb.RunUpdate.KIND_TERMINAL,
+                status=status,
+                outcome=outcome,
+                error=error,
+                resolution_code=getattr(result, "resolution_code", ""),
+            )
+            _set_if_present(
+                update,
+                prompt_tokens=getattr(result, "prompt_tokens", ctx.prompt_tokens),
+                completion_tokens=getattr(result, "completion_tokens", ctx.completion_tokens),
+                model=getattr(result, "model", ctx.model),
+                evidence=terminal_evidence,
+            )
+            message = pb.AgentMessage(run_update=update)
+            with suppress(ConnectionError):
+                await self._send(message)
+        except Exception:  # noqa: BLE001
+            LOG.exception("failed to construct or queue terminal for run %s", start.run_id)
+            raise
         if cancelled is not None:
             raise cancelled
 
     async def send_heartbeat(self) -> None:
-        await self.outbound.put(
-            pb.AgentMessage(heartbeat=pb.Heartbeat(unix_ms=int(time.time() * 1000)))
-        )
+        await self._send(pb.AgentMessage(heartbeat=pb.Heartbeat(unix_ms=int(time.time() * 1000))))
 
     async def heartbeat(self) -> None:
         while True:
@@ -262,7 +319,15 @@ class Connection:
                 future.set_exception(ConnectionError("API connection lost"))
         if self.runs:
             await asyncio.gather(*self.runs.values(), return_exceptions=True)
-        await self.outbound.put(None)
+        while not self.outbound.empty():
+            queued = self.outbound.get_nowait()
+            if (
+                queued is not None
+                and queued.WhichOneof("payload") == "run_update"
+                and queued.run_update.kind == pb.RunUpdate.KIND_TERMINAL
+            ):
+                _retain_terminal(queued.run_update.run_id, queued)
+        self.outbound.put_nowait(None)
 
 
 async def connect_forever(connected: asyncio.Event) -> None:
@@ -271,13 +336,14 @@ async def connect_forever(connected: asyncio.Event) -> None:
     while True:
         connection = Connection(worker_id)
         heartbeat: asyncio.Task[None] | None = None
+        connected_at: float | None = None
         try:
             async with grpc.aio.insecure_channel(config.api_grpc_host) as channel:
                 await asyncio.wait_for(channel.channel_ready(), timeout=10)
                 stream = pb_grpc.AgentChannelStub(channel).Connect(connection.requests())
                 heartbeat = asyncio.create_task(connection.heartbeat())
                 connected.set()
-                delay = config.reconnect_base_seconds
+                connected_at = time.monotonic()
                 async for message in stream:
                     await connection.handle(message)
         except asyncio.CancelledError:
@@ -292,9 +358,39 @@ async def connect_forever(connected: asyncio.Event) -> None:
                 heartbeat.cancel()
                 await asyncio.gather(heartbeat, return_exceptions=True)
             await connection.close()
+        if (
+            connected_at is not None
+            and time.monotonic() - connected_at >= config.reconnect_stable_seconds
+        ):
+            delay = config.reconnect_base_seconds
         wait = min(delay, config.reconnect_cap_seconds)
         await asyncio.sleep(random.uniform(wait / 2, wait))
         delay = min(delay * 2, config.reconnect_cap_seconds)
+
+
+async def _think(*args: object, **kwargs: object) -> object:
+    from axel.model import think
+
+    return await think(*args, **kwargs)
+
+
+def _retain_terminal(run_id: str, message: pb.AgentMessage) -> None:
+    _prune_retained_terminals()
+    retained = _RETAINED_TERMINALS.get(run_id)
+    if retained is not None and retained[1].run_update.ordinal >= message.run_update.ordinal:
+        return
+    _RETAINED_TERMINALS[run_id] = (time.monotonic(), message)
+    _RETAINED_TERMINALS.move_to_end(run_id)
+    while len(_RETAINED_TERMINALS) > config.retained_terminal_limit:
+        _RETAINED_TERMINALS.popitem(last=False)
+
+
+def _prune_retained_terminals() -> None:
+    cutoff = time.monotonic() - config.retained_terminal_max_age_seconds
+    for run_id, (retained_at, _) in list(_RETAINED_TERMINALS.items()):
+        if retained_at >= cutoff:
+            break
+        _RETAINED_TERMINALS.pop(run_id, None)
 
 
 def _proto_value(message: object, name: str) -> str:

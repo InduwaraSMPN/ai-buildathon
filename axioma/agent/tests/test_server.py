@@ -21,6 +21,8 @@ async def test_hello_reports_worker_and_registry_capabilities() -> None:
 
 
 async def test_terminal_reports_provider_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    server._RETAINED_TERMINALS.clear()
+
     async def finished(_ctx):
         return RunResult(RunStatus.RESOLVED, "fixed", 7, 3, "provider/model", "fixed")
 
@@ -30,6 +32,7 @@ async def test_terminal_reports_provider_model(monkeypatch: pytest.MonkeyPatch) 
 
     terminal = await connection.outbound.get()
     assert terminal is not None
+    assert server._RETAINED_TERMINALS["run-1"][1] == terminal
     assert terminal.run_update.model == "provider/model"
     assert terminal.run_update.resolution_code == "fixed"
     assert (terminal.run_update.prompt_tokens, terminal.run_update.completion_tokens) == (7, 3)
@@ -93,7 +96,7 @@ async def test_disconnect_retains_terminal_for_next_connection(
     await connection.close()
 
     assert task.cancelled()
-    assert server._RETAINED_TERMINALS["run-1"].run_update.status == "failed"
+    assert server._RETAINED_TERMINALS["run-1"][1].run_update.status == "failed"
 
     next_connection = server.Connection("worker-1")
     messages = next_connection.requests()
@@ -101,7 +104,96 @@ async def test_disconnect_retains_terminal_for_next_connection(
     replay = await anext(messages)
     await messages.aclose()
     assert replay.run_update.run_id == "run-1"
+    assert "run-1" in server._RETAINED_TERMINALS
+
+
+async def test_start_run_is_accepted_before_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    started = asyncio.Event()
+
+    async def running(_ctx):
+        started.set()
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(server, "run", running)
+    connection = server.Connection("worker-1")
+    start = pb.StartRun(run_id="run-1", ticket_id="ticket-1", title="T", body="B")
+    await connection.handle(pb.ApiMessage(start_run=start))
+
+    accepted = await connection.outbound.get()
+    assert accepted is not None
+    assert accepted.run_accepted.run_id == "run-1"
+    await started.wait()
+    await connection.close()
+
+
+def test_retaining_duplicate_does_not_overwrite_newer_terminal() -> None:
+    server._RETAINED_TERMINALS.clear()
+    newer = pb.AgentMessage(
+        run_update=pb.RunUpdate(run_id="run-1", ordinal=8, kind=pb.RunUpdate.KIND_TERMINAL)
+    )
+    older = pb.AgentMessage(
+        run_update=pb.RunUpdate(run_id="run-1", ordinal=7, kind=pb.RunUpdate.KIND_TERMINAL)
+    )
+    server._retain_terminal("run-1", newer)
+    server._retain_terminal("run-1", older)
+    assert server._RETAINED_TERMINALS["run-1"][1].run_update.ordinal == 8
+
+
+async def test_terminal_ack_removes_only_matching_retained_terminal() -> None:
+    server._RETAINED_TERMINALS.clear()
+    message = pb.AgentMessage(
+        run_update=pb.RunUpdate(run_id="run-1", ordinal=7, kind=pb.RunUpdate.KIND_TERMINAL)
+    )
+    server._retain_terminal("run-1", message)
+    connection = server.Connection("worker-1")
+
+    await connection.handle(pb.ApiMessage(terminal_ack=pb.TerminalAck(run_id="run-1", ordinal=6)))
+    assert "run-1" in server._RETAINED_TERMINALS
+    await connection.handle(pb.ApiMessage(terminal_ack=pb.TerminalAck(run_id="run-1", ordinal=7)))
     assert "run-1" not in server._RETAINED_TERMINALS
+
+
+async def test_replayed_terminal_survives_generator_close() -> None:
+    server._RETAINED_TERMINALS.clear()
+    message = pb.AgentMessage(
+        run_update=pb.RunUpdate(run_id="run-1", kind=pb.RunUpdate.KIND_TERMINAL)
+    )
+    server._retain_terminal("run-1", message)
+    messages = server.Connection("worker-1").requests()
+    await anext(messages)  # hello
+    assert (await anext(messages)).run_update.run_id == "run-1"
+    await messages.aclose()
+    assert "run-1" in server._RETAINED_TERMINALS
+
+
+async def test_concurrent_run_limit_returns_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "max_concurrent_runs", 1)
+    connection = server.Connection("worker-1")
+    connection.runs["busy"] = asyncio.create_task(asyncio.sleep(60))
+    start = pb.StartRun(run_id="run-2", ticket_id="ticket-1", title="T", body="B")
+    await connection.handle(pb.ApiMessage(start_run=start))
+
+    rejected = await connection.outbound.get()
+    assert rejected is not None
+    assert rejected.run_update.status == "failed"
+    assert rejected.run_update.error == "concurrent run limit reached"
+    await connection.close()
+
+
+async def test_close_does_not_block_on_full_queue(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "outbound_queue_size", 1)
+    connection = server.Connection("worker-1")
+    connection.outbound.put_nowait(pb.AgentMessage(heartbeat=pb.Heartbeat(unix_ms=1)))
+    await asyncio.wait_for(connection.close(), timeout=0.1)
+    assert await connection.outbound.get() is None
+
+
+def test_retained_terminals_are_capped(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(config, "retained_terminal_limit", 2)
+    server._RETAINED_TERMINALS.clear()
+    for run_id in ("run-1", "run-2", "run-3"):
+        server._retain_terminal(run_id, pb.AgentMessage())
+    assert list(server._RETAINED_TERMINALS) == ["run-2", "run-3"]
 
 
 def test_pending_limit_is_configured() -> None:

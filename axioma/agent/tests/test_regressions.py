@@ -58,6 +58,16 @@ def test_evidence_finds_decisive_nested_value_after_large_padding() -> None:
     assert _evidence({"padding": "x" * 2000, "condition": {"message": message}}) == message
 
 
+def test_evidence_scan_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    class WideList(list):
+        def __getitem__(self, key):
+            assert isinstance(key, slice) and key.stop == 2
+            return super().__getitem__(key)
+
+    monkeypatch.setattr(config, "evidence_scan_max_items", 3)
+    assert _evidence(WideList(["first", "second", "failed beyond bound"])) == "first"
+
+
 def test_prompt_accepts_top_level_observation_list() -> None:
     prompt = build_user_prompt(
         title="T",

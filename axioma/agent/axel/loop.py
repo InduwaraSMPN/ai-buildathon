@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
+from itertools import islice
 from typing import Any, Literal, TypedDict
 
 from pydantic import ValidationError
@@ -434,18 +435,25 @@ def _truncate(text: str) -> str:
 
 def _evidence(output: object) -> str | None:
     values: list[str] = []
-
-    def collect(value: object) -> None:
+    stack = [output]
+    scanned_items = scanned_chars = 0
+    while stack and scanned_items < config.evidence_scan_max_items:
+        value = stack.pop()
+        scanned_items += 1
+        remaining_items = config.evidence_scan_max_items - scanned_items
         if isinstance(value, dict):
-            for item in value.values():
-                collect(item)
+            stack.extend(reversed(tuple(islice(value.values(), remaining_items))))
         elif isinstance(value, list):
-            for item in value:
-                collect(item)
+            stack.extend(reversed(value[:remaining_items]))
         elif value is not None:
-            values.extend(line.strip() for line in str(value).splitlines() if line.strip())
+            text = str(value)
+            remaining = config.evidence_scan_max_chars - scanned_chars
+            if remaining <= 0:
+                break
+            text = text[:remaining]
+            scanned_chars += len(text)
+            values.extend(line.strip() for line in text.splitlines() if line.strip())
 
-    collect(output)
     needles = ("Insufficient cpu", "ImagePullBackOff", "Unschedulable", "error", "failed")
     matches = [
         value for value in values if any(needle.lower() in value.lower() for needle in needles)

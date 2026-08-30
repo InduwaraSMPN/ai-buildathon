@@ -41,7 +41,15 @@ class Config(BaseSettings):
 
     reconnect_base_seconds: float = 1.0
     reconnect_cap_seconds: float = 30.0
+    reconnect_stable_seconds: float = 30.0
     max_pending_calls: int = 100
+    max_concurrent_runs: int = 4
+    outbound_queue_size: int = 1000
+    outbound_enqueue_timeout_seconds: float = 10.0
+    retained_terminal_limit: int = 100
+    retained_terminal_max_age_seconds: float = 3600.0
+    evidence_scan_max_items: int = 1000
+    evidence_scan_max_chars: int = 100_000
     config_dir: Path = Path("~/.config/axioma").expanduser()
 
 
