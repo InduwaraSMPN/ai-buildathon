@@ -1,7 +1,7 @@
 # Axiōma Architecture
 
 **Document role:** System design — components, boundaries, and how they connect
-**Related:** [idea.md](idea.md) for product intent, [implementation.md](implementation.md) for layout and build order
+**Related:** [idea.md](idea.md) for product intent · `axioma/README.md` for layout, commands and gates
 
 ## Shape
 
@@ -61,6 +61,45 @@ Three things follow, and they are the reason for the arrangement:
 - Persistence and authority live in one place, so there is no second ORM, no duplicated schema, and no question about which component wrote a row.
 - A run is reproducible from its transcript, because tool name plus validated input is the whole record of what happened.
 - Credentials never leave the API. Compromising the agent yields the ability to *ask* for things, not to do them.
+
+## Invariants
+
+Decisions the codebase currently honours, each verified against the tree. They are cheap to break by
+accident and expensive to restore, so they are recorded here rather than left in the plan documents that
+argued them.
+
+**Behaviour never keys off a name.** Status is data: `ticket_statuses` carries `state_type`, `is_closed`
+and `pauses_sla`, and behaviour reads those flags, never the key. The same rule produces `merged_into_id`
+as a column rather than a merged status, and `snoozed_until` as a timestamp compared at query time rather
+than a snoozed status. The live status table contains neither `merged` nor `snoozed`, and it must stay
+that way — renaming a status is a configuration change, not a code change.
+
+**Elapsed working time, never stored deadlines.** Stopwatches accumulate `accumulated_ms` and `pending_ms`
+against a business-hours calendar. A deadline column cannot express a pause, and the pause is the point.
+There is no deadline column anywhere; do not add one.
+
+**The portal's boundary is enforced by data shape, not client discipline.** `getMyTicket` filters
+visibility in SQL *and* its contract type omits the field; knowledge does the same for audience. A page
+that renders nothing sensitive while fetching it is still a leak. Never add a client-side filter as the
+mechanism.
+
+**Deny by default is structural.** `os` and `authenticatedProcedure` are deliberately not exported from
+`server/orpc.ts`, so a procedure cannot be written without naming a capability, and a test asserts it. Do
+not export them for convenience.
+
+**One vocabulary per concept.** Capability keys are shared between roles and API keys rather than a second
+permission model; one action union is shared by the rules engine and workflows. Two enums for one concept
+drift, and the drift is silent.
+
+**Axel reads more than it writes.** It holds no credentials, asks the API for every side effect, does not
+author knowledge, and does not post into the human conversation. It has exactly one write path beyond its
+own run records: creating a change record when it patches.
+
+**Email threads by reference, never by subject.** Matching is on retained ticket-reference tokens with a
+word boundary. Subject similarity is not threading.
+
+**Multi-tenancy is deferred, not forgotten.** No `tenant_id` exists on any table. Adding one later is a
+known retrofit cost that was accepted deliberately.
 
 ## Contracts
 

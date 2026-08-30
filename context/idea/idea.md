@@ -1,7 +1,7 @@
 # Axiōma
 
 **Document role:** Product context — what we are building and why
-**Related:** [architecture.md](architecture.md) for system design, [implementation.md](implementation.md) for build order and delivery
+**Related:** [architecture.md](architecture.md) for system design and the invariants the code holds
 
 ## Naming
 
@@ -69,13 +69,15 @@ Computer-use is also **installed only where it is needed** rather than shipping 
 
 ### Out, deliberately
 
-- **Authorization and permissions.** Better Auth gives real login and register because step 1 needs identity — who filed this, whose laptop is it. Nothing checks whether a user is allowed to do a thing.
-- **Safeguards on dangerous actions.** No approval gates, no sandboxing, no blast-radius limits. The action set is small and its contents are chosen to be safe, which is not the same as the system being safe.
-- **Multi-tenancy.** One organization.
+- **Sandboxing and blast-radius limits.** The action set is small and its contents are chosen to be safe, which is not the same as the system being safe.
 - **Proactive detection.** Nothing watches for problems. Every interaction starts with a ticket the employee opened.
+- **Multi-tenancy.** One organization; no `tenant_id` on any table.
 - **Connectors beyond Kubernetes.** ITSM, identity, observability, endpoint management — later.
 
-The last two matter most. The first is what makes axel-cli acceptable to install at all; the second keeps the demo honest about what it proves.
+**Since delivered, and no longer out of scope.** Authorization is now real: roles carry capability keys,
+every procedure names one, and deny-by-default is structural rather than conventional. Approval gates
+exist too — change enablement with CAB voting, and catalogue requests that block on a manager's decision.
+`architecture.md` records both, along with the invariants the implementation holds.
 
 ## Scenarios
 
