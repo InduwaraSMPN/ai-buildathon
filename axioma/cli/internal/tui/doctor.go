@@ -43,18 +43,19 @@ type checkResult struct {
 }
 
 type doctorModel struct {
+	ctx    context.Context
 	checks []Check
 	states []checkState
 	next   int
 }
 
 // NewDoctor builds the doctor view over a set of checks.
-func NewDoctor(checks []Check) tea.Model {
+func NewDoctor(ctx context.Context, checks []Check) tea.Model {
 	states := make([]checkState, len(checks))
 	for i, c := range checks {
 		states[i] = checkState{name: c.Name}
 	}
-	return doctorModel{checks: checks, states: states}
+	return doctorModel{ctx: ctx, checks: checks, states: states}
 }
 
 func (m doctorModel) Init() tea.Cmd {
@@ -71,7 +72,7 @@ func (m doctorModel) runNext() tea.Cmd {
 	index := m.next
 	check := m.checks[index]
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(m.ctx, 10*time.Second)
 		defer cancel()
 		detail, err := check.Run(ctx)
 		if err != nil {

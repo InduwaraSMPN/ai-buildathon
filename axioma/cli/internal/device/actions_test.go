@@ -1,11 +1,14 @@
 package device
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -86,6 +89,25 @@ func TestCappedBuffer(t *testing.T) {
 	n, err := buffer.Write([]byte(input))
 	if err != nil || n != len(input) || buffer.Len() != maxCommandOutput || !buffer.overflow {
 		t.Fatalf("n=%d err=%v len=%d overflow=%v", n, err, buffer.Len(), buffer.overflow)
+	}
+}
+
+func TestReadStateCollectsFacetsConcurrently(t *testing.T) {
+	original := facetReader
+	defer func() { facetReader = original }()
+	var active atomic.Int32
+	var concurrent atomic.Bool
+	facetReader = func(_ context.Context, name, _ string) FacetResult {
+		if active.Add(1) > 1 {
+			concurrent.Store(true)
+		}
+		time.Sleep(20 * time.Millisecond)
+		active.Add(-1)
+		return FacetResult{OK: true, Raw: name}
+	}
+	result, err := ReadState(context.Background(), []string{"resolver", "proxy"})
+	if err != nil || !concurrent.Load() || len(result) != 2 {
+		t.Fatalf("result=%#v err=%v concurrent=%v", result, err, concurrent.Load())
 	}
 }
 

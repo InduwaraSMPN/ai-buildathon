@@ -35,25 +35,32 @@ func NewDetector() *Detector {
 
 func (d *Detector) Detect(ctx context.Context) Availability {
 	d.mu.Lock()
-	defer d.mu.Unlock()
 	if time.Since(d.checked) < d.TTL {
-		return d.result
+		result := d.result
+		d.mu.Unlock()
+		return result
 	}
-	d.checked = time.Now()
+	d.mu.Unlock()
+
+	result := d.detect(ctx)
+	d.mu.Lock()
+	d.checked, d.result = time.Now(), result
+	d.mu.Unlock()
+	return result
+}
+
+func (d *Detector) detect(ctx context.Context) Availability {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.URL+"/cmd", bytes.NewBufferString(`{"command":"version","params":{}}`))
 	if err != nil {
-		d.result = Availability{}
-		return d.result
+		return Availability{}
 	}
 	resp, err := d.Client.Do(req)
 	if err != nil {
-		d.result = Availability{}
-		return d.result
+		return Availability{}
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		d.result = Availability{}
-		return d.result
+		return Availability{}
 	}
 	var status struct {
 		Success bool   `json:"success"`
@@ -64,12 +71,13 @@ func (d *Detector) Detect(ctx context.Context) Availability {
 		line := strings.TrimPrefix(scanner.Text(), "data: ")
 		_ = json.Unmarshal([]byte(line), &status)
 	}
-	d.result = Availability{Available: status.Success, Version: status.Version}
-	return d.result
+	return Availability{Available: status.Success, Version: status.Version}
 }
 
+var defaultDetector = NewDetector()
+
 func Check(ctx context.Context) (string, error) {
-	result := NewDetector().Detect(ctx)
+	result := defaultDetector.Detect(ctx)
 	if !result.Available {
 		return "not installed (optional)", nil
 	}

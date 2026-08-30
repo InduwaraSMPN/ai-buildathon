@@ -23,6 +23,7 @@ const (
 	maxBackoff            = 30 * time.Second
 	defaultCommandTimeout = 30 * time.Second
 	maxCommandTimeout     = 5 * time.Minute
+	maxPendingCommands    = 100
 )
 
 type daemonTimings struct {
@@ -38,6 +39,8 @@ var productionTimings = daemonTimings{
 	liveness:  livenessTimeout,
 	stable:    stablePeriod,
 }
+
+var saveDaemonState = SaveDaemonState
 
 type deviceStream interface {
 	Send(*pb.DeviceMessage) error
@@ -61,7 +64,9 @@ func RunDaemon(ctx context.Context, host, version string) error {
 		}
 		started := time.Now()
 		err = connect(ctx, host, &id, productionTimings)
-		_ = SaveDaemonState(DaemonState{GRPCHost: host, LastSeenSequence: id.LastSeenSequence, LastError: errorString(err)})
+		if stateErr := saveDaemonState(DaemonState{GRPCHost: host, LastSeenSequence: id.LastSeenSequence, LastError: errorString(err)}); stateErr != nil {
+			return fmt.Errorf("save daemon state: %w", stateErr)
+		}
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -136,7 +141,9 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 	}}}); err != nil {
 		return fmt.Errorf("send device hello: %w", err)
 	}
-	_ = SaveDaemonState(DaemonState{Connected: true, GRPCHost: host, LastSeenSequence: id.LastSeenSequence})
+	if err := saveDaemonState(DaemonState{Connected: true, GRPCHost: host, LastSeenSequence: id.LastSeenSequence}); err != nil {
+		return terminalError{fmt.Errorf("save daemon state: %w", err)}
+	}
 
 	incoming := make(chan *pb.GatewayMessage)
 	recvErr := make(chan error, 1)
@@ -166,7 +173,9 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 			case <-ctx.Done():
 				return
 			case command := <-jobs:
-				result := executeCommand(ctx, command)
+				commandCtx, cancel := context.WithTimeout(ctx, commandTimeout(command.TimeoutSeconds))
+				result := executeCommand(commandCtx, command)
+				cancel()
 				select {
 				case results <- result:
 				case <-ctx.Done():
@@ -185,7 +194,10 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 				return
 			case <-inventoryJobs:
 				collectedAt := time.Now()
-				payload, err := json.Marshal(collectInventory(ctx))
+				inventoryCtx, cancel := context.WithTimeout(ctx, inventoryTimeout)
+				inventory := collectInventory(inventoryCtx)
+				cancel()
+				payload, err := json.Marshal(inventory)
 				if err != nil {
 					continue
 				}
@@ -271,13 +283,19 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 				outbound = duplicateAck(command)
 				break
 			}
+			if len(pending) >= maxPendingCommands {
+				outbound = rejectedCommand(command, "device command queue is full; command was not accepted")
+				break
+			}
 			// Persistence is the at-most-once boundary: never execute unless the
 			// sequence is durable first.
 			if err := saveSequence(*id, command.Sequence); err != nil {
 				return terminalError{fmt.Errorf("persist sequence %d: %w", command.Sequence, err)}
 			}
 			id.LastSeenSequence = command.Sequence
-			_ = SaveDaemonState(DaemonState{Connected: true, GRPCHost: host, LastSeenSequence: id.LastSeenSequence})
+			if err := saveDaemonState(DaemonState{Connected: true, GRPCHost: host, LastSeenSequence: id.LastSeenSequence}); err != nil {
+				return terminalError{fmt.Errorf("save daemon state: %w", err)}
+			}
 			pending = append(pending, command)
 			continue
 		}
@@ -289,11 +307,15 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 }
 
 func duplicateAck(command *pb.DeviceCommand) *pb.DeviceMessage {
-	return &pb.DeviceMessage{Payload: &pb.DeviceMessage_Result{Result: &pb.CommandResult{
-		CommandId: command.CommandId, Sequence: command.Sequence,
-		Error:      "sequence already accepted; result is unavailable and command was not re-run",
-		OutputJson: `{"duplicate":true,"outcome":"indeterminate"}`,
-	}}}
+	return rejectedCommand(command, "sequence already accepted; result is unavailable and command was not re-run", `{"duplicate":true,"outcome":"indeterminate"}`)
+}
+
+func rejectedCommand(command *pb.DeviceCommand, message string, output ...string) *pb.DeviceMessage {
+	result := &pb.CommandResult{CommandId: command.CommandId, Sequence: command.Sequence, Error: message}
+	if len(output) > 0 {
+		result.OutputJson = output[0]
+	}
+	return &pb.DeviceMessage{Payload: &pb.DeviceMessage_Result{Result: result}}
 }
 
 func resetTimer(timer *time.Timer, duration time.Duration) {

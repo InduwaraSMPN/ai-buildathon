@@ -112,6 +112,22 @@ func TestBackoffResetsOnlyAfterStablePeriod(t *testing.T) {
 	}
 }
 
+func TestServeConnectionSurfacesDaemonStateFailure(t *testing.T) {
+	original := saveDaemonState
+	defer func() { saveDaemonState = original }()
+	saveDaemonState = func(DaemonState) error { return errors.New("read only") }
+	stream := newFakeDeviceStream()
+	defer stream.close()
+	ctx, cancel := context.WithCancel(context.Background())
+	err := serveConnection(ctx, cancel, stream, "test", &Identity{DeviceID: "device"},
+		daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+		func(Identity, uint64) error { return nil }, execute)
+	var terminal terminalError
+	if !errors.As(err, &terminal) || !strings.Contains(err.Error(), "save daemon state") {
+		t.Fatalf("serveConnection returned %v", err)
+	}
+}
+
 func TestServeConnectionClearsEnrollmentCodeWhenClaimed(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	stream := newFakeDeviceStream()
@@ -214,6 +230,47 @@ func TestServeConnectionPersistsBeforeExecuteAndAcknowledgesDuplicate(t *testing
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("serveConnection returned %v", err)
 	}
+}
+
+func TestServeConnectionRejectsCommandsPastPendingCap(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	stream := newFakeDeviceStream()
+	stream.recv = make(chan *pb.GatewayMessage, maxPendingCommands+2)
+	stream.sent = make(chan *pb.DeviceMessage, maxPendingCommands+4)
+	defer stream.close()
+	ctx, cancel := context.WithCancel(context.Background())
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- serveConnection(ctx, cancel, stream, "test", &Identity{DeviceID: "device"},
+			daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+			func(Identity, uint64) error { return nil },
+			func(ctx context.Context, command *pb.DeviceCommand) *pb.CommandResult {
+				if command.Sequence == 1 {
+					close(started)
+					select {
+					case <-release:
+					case <-ctx.Done():
+					}
+				}
+				return &pb.CommandResult{CommandId: command.CommandId, Sequence: command.Sequence, Ok: true}
+			})
+	}()
+	<-stream.sent
+	stream.recv <- gatewayCommand(1)
+	<-started
+	for sequence := uint64(2); sequence <= maxPendingCommands+2; sequence++ {
+		stream.recv <- gatewayCommand(sequence)
+	}
+	result := waitForResult(t, stream.sent)
+	if result.Sequence != maxPendingCommands+2 || !strings.Contains(result.Error, "queue is full") {
+		t.Fatalf("unexpected rejection: %+v", result)
+	}
+	cancel()
+	close(release)
+	stream.close()
+	<-done
 }
 
 func TestServeConnectionDoesNotExecuteWhenPersistenceFails(t *testing.T) {

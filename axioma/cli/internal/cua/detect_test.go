@@ -8,6 +8,26 @@ import (
 	"time"
 )
 
+func TestCheckReusesDefaultDetector(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`data: {"success":true,"package":"1.2.3"}`))
+	}))
+	defer server.Close()
+	original := defaultDetector
+	defer func() { defaultDetector = original }()
+	defaultDetector = &Detector{URL: server.URL, Client: server.Client(), TTL: time.Hour}
+	for range 2 {
+		if got, err := Check(context.Background()); err != nil || got != "available (1.2.3)" {
+			t.Fatalf("Check() = %q, %v", got, err)
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("Check made %d requests", calls)
+	}
+}
+
 func TestDetectorCachesAndRefreshes(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

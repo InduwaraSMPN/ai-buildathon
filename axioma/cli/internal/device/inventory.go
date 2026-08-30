@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 )
 
 // Inventory is collected for the asset register on its own schedule. It is not
@@ -65,8 +66,12 @@ type SoftwareInventory struct {
 	Applications []Software `json:"applications"`
 }
 
+const inventoryTimeout = 2 * time.Minute
+
 // CollectInventory gathers register data independently of diagnostic commands.
-func CollectInventory(ctx context.Context) Inventory {
+func CollectInventory(parent context.Context) Inventory {
+	ctx, cancel := context.WithTimeout(parent, inventoryTimeout)
+	defer cancel()
 	return Inventory{
 		Disks:    readInventory(ctx, "disks"),
 		Hardware: readInventory(ctx, "hardware"),

@@ -155,6 +155,6 @@ func runDoctor(ctx context.Context) error {
 		{Name: "computer-use available", Run: cua.Check},
 	}
 
-	_, err := tea.NewProgram(tui.NewDoctor(checks), tea.WithContext(ctx)).Run()
+	_, err := tea.NewProgram(tui.NewDoctor(ctx, checks), tea.WithContext(ctx)).Run()
 	return err
 }

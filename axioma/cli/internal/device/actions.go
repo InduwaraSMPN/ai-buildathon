@@ -82,6 +82,8 @@ var knownFacets = map[string]bool{
 	"proxy": true, "identity": true, "processes": true,
 }
 
+var facetReader = readFacet
+
 // ReadState preserves the daemon-facing API. Parameterized callers should use
 // ReadStateWithParams so reachability can receive its required target.
 func ReadState(ctx context.Context, facets []string) (map[string]any, error) {
@@ -89,7 +91,13 @@ func ReadState(ctx context.Context, facets []string) (map[string]any, error) {
 }
 
 func ReadStateWithParams(ctx context.Context, facets []string, params map[string]string) (map[string]any, error) {
+	type facetResult struct {
+		name   string
+		result FacetResult
+	}
 	out := make(map[string]any, len(facets))
+	results := make(chan facetResult, len(facets))
+	pending := 0
 	for _, facet := range facets {
 		if !knownFacets[facet] {
 			out[facet] = FacetResult{Error: "unknown facet: " + facet}
@@ -103,7 +111,12 @@ func ReadStateWithParams(ctx context.Context, facets []string, params map[string
 				continue
 			}
 		}
-		out[facet] = readFacet(ctx, facet, target)
+		pending++
+		go func() { results <- facetResult{facet, facetReader(ctx, facet, target)} }()
+	}
+	for range pending {
+		result := <-results
+		out[result.name] = result.result
 	}
 	return out, nil
 }
