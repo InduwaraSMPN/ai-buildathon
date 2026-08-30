@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { useState } from "react";
 import { PageState } from "@/components/support-ui";
 import { CalendarPage } from "@/features/scheduling/components";
 import { orpc } from "@/utils/orpc";
@@ -11,8 +12,8 @@ export const Route = createFileRoute("/_auth/calendar")({
 });
 
 function CalendarRoute() {
-	const from = new Date();
-	const to = new Date(from.getTime() + 90 * 86_400_000);
+	const [from] = useState(() => new Date());
+	const [to] = useState(() => new Date(from.getTime() + 90 * 86_400_000));
 	const query = useQuery(
 		orpc.listCalendar.queryOptions({ input: { from, to } }),
 	);
