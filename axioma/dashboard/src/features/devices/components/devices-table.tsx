@@ -23,7 +23,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { deviceQueries } from "../api/queries";
+import { orpc } from "@/utils/orpc";
 import type { Device } from "../api/types";
 import { DeviceDetailSheet } from "./device-detail-sheet";
 
@@ -120,7 +120,12 @@ export function DevicesTable({
 	deviceId?: string;
 	onSelectDevice: (deviceId?: string) => void;
 }) {
-	const query = useQuery(deviceQueries.all());
+	const query = useQuery(
+		orpc.listDevices.queryOptions({
+			refetchInterval: 5_000,
+			refetchIntervalInBackground: false,
+		}),
+	);
 	const selected = query.data?.find((device) => device.id === deviceId) ?? null;
 	const [filter, setFilter] = useState("");
 	const [sorting, setSorting] = useState<SortingState>([]);
@@ -136,7 +141,7 @@ export function DevicesTable({
 		getPaginationRowModel: getPaginationRowModel(),
 	});
 
-	if (query.isPending)
+	if (query.isPending && query.data == null)
 		return (
 			<PageState
 				kind="loading"
@@ -144,7 +149,7 @@ export function DevicesTable({
 				description="Reading endpoint activity…"
 			/>
 		);
-	if (query.isError)
+	if (query.isError && query.data == null)
 		return (
 			<PageState
 				kind="error"

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { formatSlaTarget } from "./sla-countdown.tsx";
+import { formatSlaTarget } from "./sla-format.ts";
 
 const target = {
 	remainingMs: 90 * 60_000,

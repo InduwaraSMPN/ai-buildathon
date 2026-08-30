@@ -746,16 +746,16 @@ export const ticketsRouter = {
 				.where(inArray(tickets.id, [input.ticketId, input.targetTicketId]));
 			if (found.length !== 2) throw new ORPCError("NOT_FOUND");
 			try {
-				return (
-					await db
-						.insert(ticketLinks)
-						.values({
-							id: crypto.randomUUID(),
-							...input,
-							createdBy: context.userId,
-						})
-						.returning()
-				)[0]!;
+				const [row] = await db
+					.insert(ticketLinks)
+					.values({
+						id: crypto.randomUUID(),
+						...input,
+						createdBy: context.userId,
+					})
+					.returning();
+				if (!row) throw new Error("Ticket link insert failed");
+				return row;
 			} catch (error) {
 				if ((error as { code?: string }).code === "23505")
 					throw new ORPCError("CONFLICT", {
@@ -826,7 +826,9 @@ export const ticketsRouter = {
 					mergedBy: context.userId,
 				});
 			});
-			return (await findTicket(input.sourceTicketId))!;
+			const ticket = await findTicket(input.sourceTicketId);
+			if (!ticket) throw new Error("Merged ticket not found");
+			return ticket;
 		},
 	),
 	unmergeTicket: capabilityProcedure("ticket.reclassify").unmergeTicket.handler(
@@ -866,7 +868,9 @@ export const ticketsRouter = {
 					.set({ undoneAt: new Date(), undoneBy: context.userId })
 					.where(eq(ticketMerges.id, merge.id));
 			});
-			return (await findTicket(input.sourceTicketId))!;
+			const ticket = await findTicket(input.sourceTicketId);
+			if (!ticket) throw new Error("Unmerged ticket not found");
+			return ticket;
 		},
 	),
 	listTicketAudit: capabilityProcedure(
@@ -904,18 +908,18 @@ export const ticketsRouter = {
 		"ticket.reclassify",
 	).addTicketTimeEntry.handler(async ({ context, input }) => {
 		if (!(await findTicket(input.ticketId))) throw new ORPCError("NOT_FOUND");
-		return (
-			await db
-				.insert(ticketTimeEntries)
-				.values({
-					id: crypto.randomUUID(),
-					ticketId: input.ticketId,
-					userId: context.userId,
-					minutes: input.minutes,
-					note: input.note,
-				})
-				.returning()
-		)[0]!;
+		const [row] = await db
+			.insert(ticketTimeEntries)
+			.values({
+				id: crypto.randomUUID(),
+				ticketId: input.ticketId,
+				userId: context.userId,
+				minutes: input.minutes,
+				note: input.note,
+			})
+			.returning();
+		if (!row) throw new Error("Ticket time entry insert failed");
+		return row;
 	}),
 	lookupTicket: capabilityProcedure("ticket.read.all").lookupTicket.handler(
 		async ({ input }) => {
@@ -1064,10 +1068,16 @@ export const ticketsRouter = {
 							.limit(1)
 					)[0]
 				: undefined;
-		if (input.action === "pend" && !pendingReason)
-			throw new ORPCError("BAD_REQUEST", {
-				message: "Unknown pending reason",
-			});
+		let pendingFollowupFrequencyMinutes: number | undefined;
+		let requestedPendingUntil: Date | undefined;
+		if (input.action === "pend") {
+			if (!pendingReason)
+				throw new ORPCError("BAD_REQUEST", {
+					message: "Unknown pending reason",
+				});
+			pendingFollowupFrequencyMinutes = pendingReason.followupFrequencyMinutes;
+			requestedPendingUntil = input.until;
+		}
 		const nextStatus = await resolveTicketStatus(current.status, input.action);
 		const impact =
 			input.action === "reclassify"
@@ -1102,6 +1112,14 @@ export const ticketsRouter = {
 				});
 		}
 		const now = new Date();
+		let pendingUntil = current.pendingUntil;
+		if (pendingFollowupFrequencyMinutes !== undefined) {
+			pendingUntil =
+				requestedPendingUntil ??
+				nextPendingFollowupAt(now, pendingFollowupFrequencyMinutes);
+		} else if (input.action === "unpend") {
+			pendingUntil = null;
+		}
 		const changed = await db
 			.update(tickets)
 			.set({
@@ -1174,16 +1192,7 @@ export const ticketsRouter = {
 						: input.action === "unpend"
 							? null
 							: current.pendingReasonId,
-				pendingUntil:
-					input.action === "pend"
-						? (input.until ??
-							nextPendingFollowupAt(
-								now,
-								pendingReason!.followupFrequencyMinutes,
-							))
-						: input.action === "unpend"
-							? null
-							: current.pendingUntil,
+				pendingUntil,
 				lastPendingAt: input.action === "pend" ? now : current.lastPendingAt,
 				pendingFollowups:
 					input.action === "pend" ? 0 : current.pendingFollowups,

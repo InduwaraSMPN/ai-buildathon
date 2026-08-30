@@ -33,7 +33,6 @@ import {
 	ChartTooltipContent,
 } from "@/components/ui/chart";
 import { orpc } from "@/utils/orpc";
-import { overviewQueries } from "../api/queries";
 
 const DAYS = 30;
 const volumeConfig = {
@@ -46,9 +45,30 @@ const outcomeConfig = {
 } satisfies ChartConfig;
 
 export function OverviewPage() {
-	const query = useQuery(overviewQueries.stats(DAYS));
+	const query = useQuery(
+		orpc.ticketStats.queryOptions({
+			input: { days: DAYS },
+		}),
+	);
 	const arrangement = useQuery(orpc.getDashboardArrangement.queryOptions());
-	if (query.isPending || arrangement.isPending)
+	const blockingError =
+		(query.data == null ? query.error : null) ??
+		(arrangement.data == null ? arrangement.error : null);
+	if (blockingError)
+		return (
+			<PageContainer title="Overview">
+				<PageState
+					kind="error"
+					title="Overview unavailable"
+					description={blockingError.message}
+					onRetry={() => {
+						void query.refetch();
+						void arrangement.refetch();
+					}}
+				/>
+			</PageContainer>
+		);
+	if (query.data == null || arrangement.data == null)
 		return (
 			<PageContainer title="Overview">
 				<PageState
@@ -58,23 +78,6 @@ export function OverviewPage() {
 				/>
 			</PageContainer>
 		);
-	if (query.isError || arrangement.isError)
-		return (
-			<PageContainer title="Overview">
-				<PageState
-					kind="error"
-					title="Overview unavailable"
-					description={
-						(query.error ?? arrangement.error)?.message ?? "Try again shortly."
-					}
-					onRetry={() => {
-						void query.refetch();
-						void arrangement.refetch();
-					}}
-				/>
-			</PageContainer>
-		);
-
 	const stats = query.data;
 	const empty = Object.values(stats.byStatus).every((count) => count === 0);
 	if (empty)

@@ -123,5 +123,6 @@ export async function insertRelationship(db: Db, input: RelationshipInput) {
 		.insert(cmdbObjectRelationships)
 		.values({ ...input, id: input.id ?? crypto.randomUUID() })
 		.returning();
-	return { ok: true as const, relationship: relationship! };
+	if (!relationship) throw new Error("CMDB relationship insert failed");
+	return { ok: true as const, relationship };
 }

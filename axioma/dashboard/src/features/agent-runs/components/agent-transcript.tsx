@@ -15,12 +15,12 @@ import {
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { ticketKeys } from "@/features/tickets/api/queries";
 import type { TicketStatus } from "@/features/tickets/api/types";
-import { agentRunMutations } from "../api/mutations";
-import { agentRunQueries } from "../api/queries";
+import { invalidateTicketQueries } from "@/features/tickets/query-behavior";
+import { orpc } from "@/utils/orpc";
 import type { AgentRun } from "../api/types";
 import { type EscalationDetails, extractEscalationDetails } from "./escalation";
+import { runRefetchInterval } from "./run-polling";
 import { RunSelector } from "./run-selector";
 import { StepCard } from "./step-card";
 
@@ -38,7 +38,11 @@ export function AgentTranscript({
 	const listedRun = runs.find((run) => run.id === selectedId) ?? runs[0];
 	const queriedId = selectedId ?? listedRun?.id ?? "";
 	const runQuery = useQuery({
-		...agentRunQueries.detail(queriedId),
+		...orpc.getRun.queryOptions({
+			input: { id: queriedId },
+			refetchInterval: runRefetchInterval,
+			refetchIntervalInBackground: false,
+		}),
 		enabled: Boolean(queriedId),
 	});
 	const selectedRun = runQuery.data ?? listedRun;
@@ -50,7 +54,7 @@ export function AgentTranscript({
 			listedRun?.status === "running"
 		)
 			void queryClient.invalidateQueries({
-				queryKey: ticketKeys.detail(ticketId),
+				queryKey: orpc.getTicket.key({ input: { id: ticketId } }),
 			});
 	}, [listedRun?.status, queriedStatus, queryClient, ticketId]);
 	const selectorRuns = selectedRun
@@ -58,8 +62,26 @@ export function AgentTranscript({
 			? runs.map((run) => (run.id === selectedRun.id ? selectedRun : run))
 			: [selectedRun, ...runs]
 		: runs;
-	const startMutation = useMutation(agentRunMutations.start(queryClient));
-	const cancelMutation = useMutation(agentRunMutations.cancel(queryClient));
+	const startMutation = useMutation(
+		orpc.startRun.mutationOptions({
+			onSuccess: async () => {
+				await Promise.all([
+					queryClient.invalidateQueries({ queryKey: orpc.getRun.key() }),
+					invalidateTicketQueries(queryClient, orpc, ticketId),
+				]);
+			},
+		}),
+	);
+	const cancelMutation = useMutation(
+		orpc.cancelRun.mutationOptions({
+			onSuccess: async () => {
+				await Promise.all([
+					queryClient.invalidateQueries({ queryKey: orpc.getRun.key() }),
+					invalidateTicketQueries(queryClient, orpc, ticketId),
+				]);
+			},
+		}),
+	);
 
 	const startRun = async () => {
 		try {
@@ -87,7 +109,15 @@ export function AgentTranscript({
 		}
 	};
 
-	if (runQuery.isError)
+	if (runQuery.isPending && queriedId && !selectedRun)
+		return (
+			<PageState
+				kind="loading"
+				title="Loading agent run"
+				description="Retrieving the selected transcript and metrics…"
+			/>
+		);
+	if (runQuery.isError && runQuery.data === undefined && !selectedRun)
 		return (
 			<PageState
 				kind="error"

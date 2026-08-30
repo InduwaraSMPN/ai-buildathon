@@ -27,7 +27,11 @@ export const Route = createRootRoute({
 		],
 		links: [
 			{ rel: "preconnect", href: "https://fonts.googleapis.com" },
-			{ rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+			{
+				rel: "preconnect",
+				href: "https://fonts.gstatic.com",
+				crossOrigin: "anonymous",
+			},
 			{
 				rel: "stylesheet",
 				href: "https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,SOFT,WONK,wght@0,9..144,0..100,0..1,100..900;1,9..144,0..100,0..1,100..900&family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Fragment+Mono:ital@0;1&display=swap",
@@ -47,7 +51,6 @@ function RootComponent() {
 				Skip to content
 			</a>
 			<div className="page-frame">
-				<div className="feed-rail" aria-hidden="true" />
 				<div className="page-sheet">
 					<SiteHeader />
 					<main id="main">

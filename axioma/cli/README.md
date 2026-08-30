@@ -13,6 +13,20 @@ From this directory, with Go and Git available:
 
 The script cross-compiles Windows/amd64 `dist\axel-cli.exe` and stamps the version, Git commit, and UTC build date using Go linker flags. `-Commit` and `-BuildDate` can be supplied explicitly for reproducible release builds.
 
+## Development
+
+`api/proto/axioma.proto` is canonical. The generated bindings in `internal/pb`
+must be regenerated rather than edited, and committed whenever they change.
+Generation requires Go and either `protoc` on `PATH` or `uv` for the pinned
+`grpcio-tools` fallback. The script installs pinned Go protobuf plugins automatically.
+
+```powershell
+pwsh scripts/generate-proto.ps1
+go vet ./...
+go test ./...
+go build ./...
+```
+
 ## Install on Windows (non-admin)
 
 > **Unsigned binary:** `axel-cli.exe` is not code-signed. Windows SmartScreen may warn, and managed-device policy may block it. Signing is not included in this milestone.

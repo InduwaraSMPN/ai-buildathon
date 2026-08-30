@@ -11,10 +11,14 @@ option go_package = "github.com/axioma/cli/internal/pb;pb";
 // agent nor a device can be dialled directly — one is behind whatever network
 // the worker runs on, the other is behind NAT on an employee's laptop.
 //
-// The TypeScript half of the system (portal, dashboard, API) does not use this
-// file. It uses oRPC, where the contract is the TypeScript definition itself and
-// inference runs end to end. This proto exists only where a language boundary
-// forces an explicit wire format.
+// Portal and dashboard talk to the API through oRPC, where the contract is the
+// TypeScript definition itself and inference runs end to end — they do not use
+// this file. The TypeScript API gateway loads this protobuf definition at
+// runtime (src/server/grpc.ts via @grpc/proto-loader loadSync and
+// grpc.loadPackageDefinition, resolving proto/axioma.proto) and serves both
+// channels from it. Python (agent) and Go (CLI/device) require it as the
+// cross-language wire format where a language boundary forces an explicit
+// schema.
 
 // ---------------------------------------------------------------------------
 // Agent back-channel: API <-> Python agent

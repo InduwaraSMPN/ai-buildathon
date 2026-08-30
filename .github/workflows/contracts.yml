@@ -3,9 +3,10 @@ name: contracts
 on:
   pull_request:
   push:
+    branches: [main]
 
 jobs:
-  freshness:
+  contracts:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,19 +23,144 @@ jobs:
           cache-dependency-path: axioma/api/pnpm-lock.yaml
       - run: pnpm --dir api install --frozen-lockfile
       - run: pnpm --dir api contracts:check
+
+  api:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://axioma_test:axioma_test_password@localhost:5432/axioma_test
+      BETTER_AUTH_SECRET: ci-only-better-auth-secret-32-characters-minimum
+      BETTER_AUTH_URL: http://localhost:3000
+      CORS_ORIGIN: http://localhost:3001
+      NODE_ENV: test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_DB: axioma_test
+          POSTGRES_USER: axioma_test
+          POSTGRES_PASSWORD: axioma_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U axioma_test -d axioma_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    defaults:
+      run:
+        working-directory: axioma/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: axioma/api/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm check-types
+      - run: pnpm db:migrate
+      - run: pnpm test
+      - run: pnpm build
+
+  agent:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axioma/agent
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.14'
       - uses: astral-sh/setup-uv@v6
-      - run: bash agent/scripts/generate-proto.sh
-      - run: uv run --directory agent pytest
+        with:
+          enable-cache: true
+          cache-dependency-glob: axioma/agent/uv.lock
+      - run: uv sync --all-extras --frozen
+      - run: bash scripts/generate-proto.sh
+      - run: uv run ruff check axel tests
+      - run: uv run pytest
+
+  cli:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axioma/cli
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: axioma/cli/go.mod
           cache-dependency-path: axioma/cli/go.sum
-      - run: pwsh cli/scripts/generate-proto.ps1
-      - run: git diff --exit-code -- cli/internal/pb
+      - uses: astral-sh/setup-uv@v6
+      - run: pwsh scripts/generate-proto.ps1
+      - run: git diff --exit-code -- internal/pb
+      - run: go vet ./...
       - run: go test ./...
-        working-directory: axioma/cli
-      - run: pnpm --dir api check-types
-      - run: pnpm --dir api test
+      - run: go build ./...
+
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axioma/dashboard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: axioma/dashboard/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm validate
+      - run: pnpm check-types
+      - run: pnpm build
+
+  portal:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axioma/portal
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: axioma/portal/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm validate
+      - run: pnpm check-types
+      - run: pnpm build
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axioma/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.24.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: axioma/web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm check-types
+      - run: pnpm build

@@ -202,7 +202,8 @@ export const assetsRouter = {
 						},
 					})
 					.returning();
-				return history!;
+				if (!history) throw new Error("Asset checkout history insert failed");
+				return history;
 			});
 		},
 	),
@@ -235,7 +236,8 @@ export const assetsRouter = {
 						changes: { note: input.note ?? null },
 					})
 					.returning();
-				return history!;
+				if (!history) throw new Error("Asset check-in history insert failed");
+				return history;
 			});
 		},
 	),
@@ -297,9 +299,10 @@ export const assetsRouter = {
 				.from(softwareProducts)
 				.where(eq(softwareProducts.identityKey, input.identityKey))
 				.limit(1);
+			if (!product) throw new Error("Software product upsert failed");
 			await tx.insert(softwareLicenceEntitlements).values({
 				id: entitlementId,
-				productId: product!.id,
+				productId: product.id,
 				licenceKey: input.licenceKey,
 				seatCount: input.seatCount,
 				validFrom: input.validFrom,
@@ -323,7 +326,8 @@ export const assetsRouter = {
 				eq(softwareLicenceEntitlements.productId, softwareProducts.id),
 			)
 			.where(eq(softwareLicenceEntitlements.id, entitlementId));
-		return { ...row!, allocatedSeats: 0 };
+		if (!row) throw new Error("Software entitlement insert failed");
+		return { ...row, allocatedSeats: 0 };
 	}),
 	allocateSoftwareLicence: capabilityProcedure(
 		"admin.settings",
@@ -386,11 +390,13 @@ export const assetsRouter = {
 		const assetsById = new Map(
 			inventory.map((item) => [item.assetId, item.assetName]),
 		);
-		const results = assessed.installResults.map((item) => ({
-			...item,
-			productName: names.get(item.productId)!,
-			assetName: assetsById.get(item.assetId)!,
-		}));
+		const results = assessed.installResults.map((item) => {
+			const productName = names.get(item.productId);
+			const assetName = assetsById.get(item.assetId);
+			if (productName === undefined || assetName === undefined)
+				throw new Error("Software compliance result references missing data");
+			return { ...item, productName, assetName };
+		});
 		return {
 			summary: {
 				compliant: results.filter((item) => item.status === "compliant").length,

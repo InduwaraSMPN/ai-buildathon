@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createRouterClient } from "@orpc/server";
+import { createRouterClient, ORPCError } from "@orpc/server";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { ticketMessages, tickets, user } from "@/db/schema";
@@ -65,5 +65,48 @@ test("private note excluded getMyTicket", async () => {
 	} finally {
 		await db.delete(tickets).where(eq(tickets.id, ticketId));
 		await db.delete(user).where(eq(user.id, reporterId));
+	}
+});
+
+test("unknown pending reason takes precedence over an invalid transition", async () => {
+	const suffix = crypto.randomUUID();
+	const staffId = `pending-reason-staff-${suffix}`;
+	const ticketId = `pending-reason-ticket-${suffix}`;
+	await db.insert(user).values({
+		id: staffId,
+		name: "Pending reason test",
+		email: `${staffId}@example.test`,
+		kind: "staff",
+	});
+	await db.insert(tickets).values({
+		id: ticketId,
+		reporterId: staffId,
+		title: "Pending reason precedence",
+		body: "Verify validation error precedence.",
+		serviceId: "svc-general",
+		serviceSubcategoryId: "ss-general",
+		status: "closed",
+		closedAt: new Date(),
+	});
+
+	try {
+		const client = createRouterClient(ticketsRouter, {
+			context: context(staffId, ["ticket.reclassify"]),
+		});
+		await assert.rejects(
+			() =>
+				client.updateTicket({
+					id: ticketId,
+					action: "pend",
+					reasonId: `unknown-${suffix}`,
+				}),
+			(error) =>
+				error instanceof ORPCError &&
+				error.code === "BAD_REQUEST" &&
+				error.message === "Unknown pending reason",
+		);
+	} finally {
+		await db.delete(tickets).where(eq(tickets.id, ticketId));
+		await db.delete(user).where(eq(user.id, staffId));
 	}
 });

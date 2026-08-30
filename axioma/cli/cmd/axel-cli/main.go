@@ -65,9 +65,9 @@ func usage() {
 	fmt.Fprint(os.Stderr, `axel-cli — Axioma device agent
 
   daemon    Hold the connection and execute actions. Headless; no terminal UI.
-  status    Show connection state and recent commands.
+  status    Show connection and device state.
   enroll    Register this device with the gateway.
-  doctor    Check connectivity, identity, and action prerequisites.
+  doctor    Check identity, state directory, and local prerequisites.
   version   Print the agent version.
 
 The daemon is installed as a logon Scheduled Task and is not run by hand.

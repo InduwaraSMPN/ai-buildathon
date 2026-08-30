@@ -3,6 +3,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { client } from "@/utils/orpc";
 
+export { serializeDynamicFields } from "./serialize-dynamic-fields";
+
 type Definition = Awaited<
 	ReturnType<typeof client.listTicketFieldDefinitions>
 >[number];
@@ -164,29 +166,4 @@ export function DynamicFields({
 			</div>
 		);
 	});
-}
-
-export function serializeDynamicFields(
-	definitions: Definition[],
-	values: Values,
-): Values {
-	return Object.fromEntries(
-		definitions.flatMap((definition) => {
-			const value = values[definition.key];
-			if (
-				value === "" ||
-				(Array.isArray(value) && value.length === 0) ||
-				value === undefined
-			)
-				return [];
-			return [
-				[
-					definition.key,
-					definition.fieldType === "datetime" && typeof value === "string"
-						? new Date(value).toISOString()
-						: value,
-				],
-			];
-		}),
-	);
 }

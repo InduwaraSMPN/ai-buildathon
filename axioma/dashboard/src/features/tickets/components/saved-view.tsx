@@ -38,6 +38,10 @@ export function SavedViews({
 	const remove = useMutation(
 		orpc.deleteSavedView.mutationOptions({ onSuccess: invalidate }),
 	);
+	const ticketViews =
+		views.data?.filter(
+			(view) => !view.objectType || view.objectType === "ticket",
+		) ?? [];
 	const save = () => {
 		const name = window.prompt("View name")?.trim();
 		if (!name) return;
@@ -47,14 +51,47 @@ export function SavedViews({
 		);
 	};
 
+	if (views.isPending && views.data == null) {
+		return (
+			<nav
+				aria-label="Saved queue views"
+				className="flex flex-wrap items-center gap-1.5"
+			>
+				<p className="text-muted-foreground text-xs" role="status">
+					Loading saved views…
+				</p>
+			</nav>
+		);
+	}
+	if (views.isError && views.data == null) {
+		return (
+			<nav
+				aria-label="Saved queue views"
+				className="flex flex-wrap items-center gap-1.5"
+				role="alert"
+			>
+				<span className="text-destructive text-xs">
+					Could not load saved views.
+				</span>
+				<span className="text-muted-foreground text-xs">
+					{views.error.message}
+				</span>
+				<Button variant="outline" size="sm" onClick={() => views.refetch()}>
+					Try again
+				</Button>
+			</nav>
+		);
+	}
+
 	return (
 		<nav
 			aria-label="Saved queue views"
 			className="flex flex-wrap items-center gap-1.5"
 		>
-			{views.data
-				?.filter((view) => !view.objectType || view.objectType === "ticket")
-				.map((view) => (
+			{ticketViews.length === 0 ? (
+				<p className="text-muted-foreground text-xs">No saved views.</p>
+			) : (
+				ticketViews.map((view) => (
 					<div key={view.id} className="flex items-center">
 						<Button
 							variant="ghost"
@@ -74,7 +111,8 @@ export function SavedViews({
 							</Button>
 						) : null}
 					</div>
-				))}
+				))
+			)}
 			<Button
 				variant="outline"
 				size="sm"

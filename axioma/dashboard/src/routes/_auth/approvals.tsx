@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import { PageState } from "@/components/support-ui";
 import { ApprovalsPage } from "@/features/approvals/components/approvals";
 import { orpc } from "@/utils/orpc";
 
@@ -16,6 +17,25 @@ function ApprovalsRoute() {
 				client.invalidateQueries({ queryKey: orpc.listApprovals.key() }),
 		}),
 	);
+	if (query.isPending && query.data == null) {
+		return (
+			<PageState
+				kind="loading"
+				title="Loading approvals"
+				description="Retrieving approvals…"
+			/>
+		);
+	}
+	if (query.isError && query.data == null) {
+		return (
+			<PageState
+				kind="error"
+				title="Approvals unavailable"
+				description={query.error.message}
+				onRetry={() => query.refetch()}
+			/>
+		);
+	}
 	return (
 		<ApprovalsPage
 			approvals={query.data ?? []}

@@ -17,7 +17,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { deviceQueries } from "../api/queries";
+import { orpc } from "@/utils/orpc";
 import type { Device, DeviceCommand } from "../api/types";
 
 export function DeviceDetailSheet({
@@ -35,8 +35,18 @@ export function DeviceDetailSheet({
 }
 
 function DeviceDetail({ device }: { device: Device }) {
-	const commands = useQuery(deviceQueries.commands(device.id));
-	const inventory = useQuery(deviceQueries.inventory(device.id));
+	const commands = useQuery(
+		orpc.listDeviceCommands.queryOptions({
+			input: { deviceId: device.id, limit: 20 },
+			refetchInterval: 5_000,
+			refetchIntervalInBackground: false,
+		}),
+	);
+	const inventory = useQuery(
+		orpc.readDeviceInventory.queryOptions({
+			input: { deviceId: device.id },
+		}),
+	);
 	const online = Date.now() - device.lastSeenAt.getTime() <= 30_000;
 
 	return (
@@ -109,42 +119,57 @@ function DeviceDetail({ device }: { device: Device }) {
 					/>
 				</dl>
 
-				{inventory.isSuccess && (
-					<section
-						className="space-y-3"
-						aria-labelledby="device-inventory-heading"
-					>
-						<h2 id="device-inventory-heading" className="font-semibold text-sm">
-							Inventory
-						</h2>
-						<p className="text-muted-foreground text-xs">
-							Last reported:{" "}
-							{inventory.data.reportedAt?.toLocaleString() ?? "Never"}
-						</p>
-						<div className="grid gap-3 sm:grid-cols-2">
-							<div>
-								<h3 className="font-medium text-sm">Hardware</h3>
-								<p className="text-sm">
-									{inventory.data.hardware?.model ??
-										inventory.data.hardware?.manufacturer ??
-										"No hardware report"}
-								</p>
-							</div>
-							<div>
-								<h3 className="font-medium text-sm">Disks</h3>
-								<p className="text-sm">
-									{inventory.data.disks.length} reported
-								</p>
-							</div>
-						</div>
-						<div>
-							<h3 className="font-medium text-sm">Software</h3>
-							<p className="text-sm">
-								{inventory.data.software.length} installed applications
+				<section
+					className="space-y-3"
+					aria-labelledby="device-inventory-heading"
+				>
+					<h2 id="device-inventory-heading" className="font-semibold text-sm">
+						Inventory
+					</h2>
+					{inventory.data ? (
+						<>
+							<p className="text-muted-foreground text-xs">
+								Last reported:{" "}
+								{inventory.data.reportedAt?.toLocaleString() ?? "Never"}
 							</p>
-						</div>
-					</section>
-				)}
+							<div className="grid gap-3 sm:grid-cols-2">
+								<div>
+									<h3 className="font-medium text-sm">Hardware</h3>
+									<p className="text-sm">
+										{inventory.data.hardware?.model ??
+											inventory.data.hardware?.manufacturer ??
+											"No hardware report"}
+									</p>
+								</div>
+								<div>
+									<h3 className="font-medium text-sm">Disks</h3>
+									<p className="text-sm">
+										{inventory.data.disks.length} reported
+									</p>
+								</div>
+							</div>
+							<div>
+								<h3 className="font-medium text-sm">Software</h3>
+								<p className="text-sm">
+									{inventory.data.software.length} installed applications
+								</p>
+							</div>
+						</>
+					) : inventory.isPending ? (
+						<PageState
+							kind="loading"
+							title="Loading inventory"
+							description="Reading the latest device inventory…"
+						/>
+					) : inventory.isError ? (
+						<PageState
+							kind="error"
+							title="Inventory unavailable"
+							description={inventory.error.message}
+							onRetry={() => inventory.refetch()}
+						/>
+					) : null}
+				</section>
 
 				<a
 					href={`/tickets/?deviceId=${encodeURIComponent(device.id)}`}
@@ -175,13 +200,13 @@ function DeviceDetail({ device }: { device: Device }) {
 								: "Refreshes every 5 seconds"}
 						</span>
 					</div>
-					{commands.isPending ? (
+					{commands.isPending && commands.data == null ? (
 						<PageState
 							kind="loading"
 							title="Loading commands"
 							description="Reading device command history…"
 						/>
-					) : commands.isError ? (
+					) : commands.isError && commands.data == null ? (
 						<PageState
 							kind="error"
 							title="Commands unavailable"

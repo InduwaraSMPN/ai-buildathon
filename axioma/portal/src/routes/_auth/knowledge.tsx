@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { PageShell } from "@/components/ticket-ui";
+import { LoadingCards, PageShell } from "@/components/ticket-ui";
+import { Button } from "@/components/ui/button";
 import { KnowledgeBrowser } from "@/features/knowledge/components";
 import { orpc } from "@/utils/orpc";
 
@@ -21,6 +22,33 @@ function KnowledgeRoute() {
 			),
 		[articles.data, query],
 	);
+	if (articles.isPending && articles.data == null) {
+		return (
+			<PageShell>
+				<LoadingCards />
+			</PageShell>
+		);
+	}
+	if (articles.isError && articles.data == null) {
+		return (
+			<PageShell>
+				<div
+					className="flex flex-col gap-3 rounded-xl border border-destructive/30 bg-card p-6"
+					role="alert"
+				>
+					<p className="font-semibold">Help articles unavailable</p>
+					<p className="text-muted-foreground text-sm">
+						{articles.error.message}
+					</p>
+					<div>
+						<Button variant="outline" onClick={() => articles.refetch()}>
+							Try again
+						</Button>
+					</div>
+				</div>
+			</PageShell>
+		);
+	}
 	return (
 		<PageShell>
 			<KnowledgeBrowser

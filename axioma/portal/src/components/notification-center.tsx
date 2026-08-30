@@ -25,24 +25,45 @@ export function NotificationCenter() {
 		}),
 	);
 	const unread = query.data?.filter((item) => !item.readAt).length ?? 0;
+	const unreadLabel =
+		query.isPending && query.data == null
+			? "Loading notifications"
+			: query.isError && query.data == null
+				? "Notifications unavailable"
+				: `${unread} unread notifications`;
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				render={
-					<Button
-						variant="ghost"
-						size="icon"
-						aria-label={`${unread} unread notifications`}
-					/>
-				}
+				render={<Button variant="ghost" size="icon" aria-label={unreadLabel} />}
 			>
 				<Bell />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-80 p-2">
 				<DropdownMenuLabel>
-					Notifications {unread ? `(${unread})` : ""}
+					Notifications {query.data && unread ? `(${unread})` : ""}
 				</DropdownMenuLabel>
-				{query.data?.length === 0 ? (
+				{query.isPending && query.data == null ? (
+					<p className="p-2 text-muted-foreground text-xs" role="status">
+						Loading notifications…
+					</p>
+				) : query.isError && query.data == null ? (
+					<div className="p-2" role="alert">
+						<p className="text-destructive text-xs">
+							Could not load notifications
+						</p>
+						<p className="mt-1 text-muted-foreground text-xs">
+							{query.error.message}
+						</p>
+						<Button
+							variant="outline"
+							size="sm"
+							className="mt-2"
+							onClick={() => query.refetch()}
+						>
+							Try again
+						</Button>
+					</div>
+				) : query.data?.length === 0 ? (
 					<p className="p-2 text-muted-foreground text-xs">
 						You’re all caught up.
 					</p>

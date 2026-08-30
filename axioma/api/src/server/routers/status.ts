@@ -92,7 +92,8 @@ export const statusRouter = {
 			.values(input)
 			.onConflictDoUpdate({ target: statusServices.id, set: input })
 			.returning({ id: statusServices.id });
-		return row!;
+		if (!row) throw new Error("Status service upsert failed");
+		return row;
 	}),
 	upsertImpactLevel: capabilityProcedure(
 		"admin.settings",
@@ -102,7 +103,8 @@ export const statusRouter = {
 			.values(input)
 			.onConflictDoUpdate({ target: serviceImpactLevels.key, set: input })
 			.returning({ key: serviceImpactLevels.key });
-		return row!;
+		if (!row) throw new Error("Impact level upsert failed");
+		return row;
 	}),
 	createStatusIncident: capabilityProcedure(
 		"admin.settings",
@@ -115,7 +117,8 @@ export const statusRouter = {
 			.insert(statusIncidents)
 			.values({ id: crypto.randomUUID(), ...input })
 			.returning({ id: statusIncidents.id });
-		return row!;
+		if (!row) throw new Error("Status incident insert failed");
+		return row;
 	}),
 	updateStatusIncident: capabilityProcedure(
 		"admin.settings",
@@ -126,11 +129,8 @@ export const statusRouter = {
 			.where(eq(statusIncidents.id, id))
 			.limit(1);
 		if (!current) throw new ORPCError("NOT_FOUND");
-		if (
-			(input.resolvedAt ?? current.resolvedAt) &&
-			(input.resolvedAt ?? current.resolvedAt)! <
-				(input.startedAt ?? current.startedAt)
-		)
+		const resolvedAt = input.resolvedAt ?? current.resolvedAt;
+		if (resolvedAt && resolvedAt < (input.startedAt ?? current.startedAt))
 			throw new ORPCError("BAD_REQUEST", {
 				message: "Resolution cannot precede start",
 			});
@@ -139,6 +139,7 @@ export const statusRouter = {
 			.set(input)
 			.where(eq(statusIncidents.id, id))
 			.returning({ id: statusIncidents.id });
-		return row!;
+		if (!row) throw new ORPCError("NOT_FOUND");
+		return row;
 	}),
 };

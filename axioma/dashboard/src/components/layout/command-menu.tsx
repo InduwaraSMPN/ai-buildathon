@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { FileSearch } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
 	Command,
 	CommandDialog,
@@ -80,44 +81,69 @@ export function CommandMenu({
 					</span>
 				</div>
 				<CommandList>
-					<CommandEmpty>
-						{results.isFetching
-							? "Searching…"
-							: query
-								? "No results found."
-								: "Type to search records."}
-					</CommandEmpty>
 					{!query ? (
-						<CommandGroup heading="Views">
-							{navigation.map(({ to, label, icon: Icon }) => (
-								<CommandItem key={to} value={to} onSelect={() => go(to)}>
-									<Icon />
-									{label}
-								</CommandItem>
-							))}
-						</CommandGroup>
-					) : null}
-					{Object.entries(groups).map(([type, items]) => (
-						<CommandGroup
-							key={type}
-							heading={labels[type] ?? type.replaceAll("_", " ")}
-						>
-							{items?.map((item) => (
-								<CommandItem
-									key={`${type}:${item.objectId}`}
-									value={`${type}:${item.objectId}`}
-									onSelect={() => item.url && go(item.url)}
-									disabled={!item.url}
+						<>
+							<p className="py-4 text-center text-muted-foreground text-sm">
+								Type to search records.
+							</p>
+							<CommandGroup heading="Views">
+								{navigation.map(({ to, label, icon: Icon }) => (
+									<CommandItem key={to} value={to} onSelect={() => go(to)}>
+										<Icon />
+										{label}
+									</CommandItem>
+								))}
+							</CommandGroup>
+						</>
+					) : results.isError && results.data == null ? (
+						<CommandEmpty>
+							<div role="alert">
+								<p className="text-destructive">Search failed</p>
+								<p className="mt-1 text-muted-foreground text-xs">
+									{results.error.message}
+								</p>
+								<Button
+									variant="outline"
+									size="sm"
+									className="mt-3"
+									onClick={() => results.refetch()}
 								>
-									<FileSearch />
-									<span className="min-w-0 flex-1 truncate">{item.title}</span>
-									<span className="truncate text-muted-foreground">
-										{item.body}
-									</span>
-								</CommandItem>
+									Try again
+								</Button>
+							</div>
+						</CommandEmpty>
+					) : (
+						<>
+							<CommandEmpty>
+								{results.isPending || results.isFetching
+									? "Searching…"
+									: "No results found."}
+							</CommandEmpty>
+							{Object.entries(groups).map(([type, items]) => (
+								<CommandGroup
+									key={type}
+									heading={labels[type] ?? type.replaceAll("_", " ")}
+								>
+									{items?.map((item) => (
+										<CommandItem
+											key={`${type}:${item.objectId}`}
+											value={`${type}:${item.objectId}`}
+											onSelect={() => item.url && go(item.url)}
+											disabled={!item.url}
+										>
+											<FileSearch />
+											<span className="min-w-0 flex-1 truncate">
+												{item.title}
+											</span>
+											<span className="truncate text-muted-foreground">
+												{item.body}
+											</span>
+										</CommandItem>
+									))}
+								</CommandGroup>
 							))}
-						</CommandGroup>
-					))}
+						</>
+					)}
 				</CommandList>
 			</Command>
 		</CommandDialog>

@@ -48,14 +48,14 @@ export const cmdbRouter = {
 					})),
 				);
 		});
+		const [row] = await db
+			.select()
+			.from(cmdbClasses)
+			.where(eq(cmdbClasses.id, id))
+			.limit(1);
+		if (!row) throw new Error("CMDB class insert failed");
 		return {
-			...(
-				await db
-					.select()
-					.from(cmdbClasses)
-					.where(eq(cmdbClasses.id, id))
-					.limit(1)
-			)[0]!,
+			...row,
 			properties: await db
 				.select()
 				.from(cmdbClassProperties)
@@ -105,15 +105,14 @@ export const cmdbRouter = {
 	),
 	createCmdbRelationshipType: capabilityProcedure(
 		"admin.settings",
-	).createCmdbRelationshipType.handler(
-		async ({ input }) =>
-			(
-				await db
-					.insert(cmdbRelationshipTypes)
-					.values({ id: crypto.randomUUID(), ...input })
-					.returning()
-			)[0]!,
-	),
+	).createCmdbRelationshipType.handler(async ({ input }) => {
+		const [row] = await db
+			.insert(cmdbRelationshipTypes)
+			.values({ id: crypto.randomUUID(), ...input })
+			.returning();
+		if (!row) throw new Error("CMDB relationship type insert failed");
+		return row;
+	}),
 	createCmdbObjectRelationship: capabilityProcedure(
 		"admin.settings",
 	).createCmdbObjectRelationship.handler(async ({ input }) => {

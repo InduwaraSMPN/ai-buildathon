@@ -2,19 +2,18 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Info, Send } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
+import z from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
-import {
-	DynamicRequestForm,
-	type RequestFormField,
-	type RequestFormValues,
+import type {
+	RequestFormField,
+	RequestFormValues,
 } from "@/features/request-catalogue/components";
 import {
 	affectedPeopleOptions,
@@ -25,6 +24,10 @@ import {
 	timingValues,
 } from "@/features/tickets/copy";
 import { orpc, queryClient } from "@/utils/orpc";
+import {
+	activeCatalogueFieldKeys,
+	serializeCatalogueValues,
+} from "./catalogue-form-values";
 import { DynamicFields, serializeDynamicFields } from "./dynamic-fields";
 
 const requestDetailsSchema = z.object({
@@ -38,14 +41,21 @@ const requestDetailsSchema = z.object({
 		.trim()
 		.min(10, requestFormCopy.detailsTooShort)
 		.max(10_000, requestFormCopy.detailsTooLong),
+	selectedId: z.string(),
+	values: z.record(
+		z.string(),
+		z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
+	),
 });
 
-const incidentSchema = requestDetailsSchema.extend({
-	affectedPeople: z.enum(["me", "team", "company"]),
-	timing: z.enum(["whenever", "today", "blocked"]),
-	deviceId: z.string(),
-	customFields: z.record(z.string(), z.unknown()),
-});
+const incidentSchema = requestDetailsSchema
+	.pick({ title: true, body: true })
+	.extend({
+		affectedPeople: z.enum(["me", "team", "company"]),
+		timing: z.enum(["whenever", "today", "blocked"]),
+		deviceId: z.string(),
+		customFields: z.record(z.string(), z.unknown()),
+	});
 
 type IncidentValues = z.input<typeof incidentSchema>;
 type Option = { value: string; label: string };
@@ -173,7 +183,7 @@ function IncidentRequestForm({ onSetup }: { onSetup: () => void }) {
 			onSubmit={(event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				form.handleSubmit();
+				void form.handleSubmit().catch(() => undefined);
 			}}
 		>
 			<form.Field name="title">
@@ -336,13 +346,25 @@ function IncidentRequestForm({ onSetup }: { onSetup: () => void }) {
 					{requestFormCopy.cancel}
 				</Link>
 				<form.Subscribe
-					selector={(state) => [state.canSubmit, state.isSubmitting]}
+					selector={(state) => ({
+						canSubmit: state.canSubmit,
+						isSubmitting: state.isSubmitting,
+						title: state.values.title,
+						body: state.values.body,
+					})}
 				>
-					{([canSubmit, isSubmitting]) => (
+					{({ canSubmit, isSubmitting, title, body }) => (
 						<Button
 							type="submit"
 							size="lg"
-							disabled={!canSubmit || isSubmitting}
+							disabled={
+								!canSubmit ||
+								title.trim().length < 3 ||
+								title.trim().length > 160 ||
+								body.trim().length < 10 ||
+								body.trim().length > 10_000 ||
+								isSubmitting
+							}
 						>
 							<Send aria-hidden="true" />{" "}
 							{isSubmitting ? requestFormCopy.sending : requestFormCopy.send}
@@ -399,21 +421,12 @@ function catalogueFields(item: CatalogueItem): RequestFormField[] {
 		});
 }
 
+const catalogueControlClass =
+	"h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60";
+
 function CatalogueRequestForm({ onIncident }: { onIncident: () => void }) {
 	const navigate = useNavigate();
 	const catalogue = useQuery(orpc.listRequestCatalogue.queryOptions());
-	const [selectedId, setSelectedId] = useState("");
-	const [title, setTitle] = useState("");
-	const [body, setBody] = useState("");
-	const [values, setValues] = useState<RequestFormValues>({});
-	const [detailsError, setDetailsError] = useState<string | null>(null);
-	const selected = catalogue.data?.find(
-		(item) => item.subcategory.id === selectedId,
-	);
-	const fields = useMemo(
-		() => (selected ? catalogueFields(selected) : []),
-		[selected],
-	);
 	const createRequest = useMutation(
 		orpc.createCatalogueRequest.mutationOptions({
 			onSuccess: async ({ ticketId }) => {
@@ -426,39 +439,81 @@ function CatalogueRequestForm({ onIncident }: { onIncident: () => void }) {
 			onError: () => toast.error(requestFormCopy.sendError),
 		}),
 	);
+	const form = useForm({
+		defaultValues: {
+			title: "",
+			body: "",
+			selectedId: "",
+			values: {} as RequestFormValues,
+		},
+		validators: {
+			onSubmit: requestDetailsSchema,
+		},
+		onSubmit: async ({ value }) => {
+			const selected = catalogue.data?.find(
+				(item) => item.subcategory.id === value.selectedId,
+			);
+			const formDef = selected?.form;
+			if (!formDef) return;
+			await createRequest.mutateAsync({
+				subcategoryId: selected.subcategory.id,
+				formId: formDef.id,
+				values: serializeCatalogueValues(formDef.fields, value.values),
+				title: value.title.trim(),
+				body: value.body.trim(),
+			});
+		},
+	});
 
 	return (
-		<div className="space-y-7">
-			<div className="space-y-2">
-				<Label htmlFor="catalogue-title">{requestFormCopy.summaryLabel}</Label>
-				<Input
-					id="catalogue-title"
-					value={title}
-					onChange={(event) => setTitle(event.target.value)}
-					maxLength={160}
-					placeholder={requestFormCopy.setupSummaryPlaceholder}
-					aria-invalid={detailsError !== null}
-				/>
-			</div>
-			<div className="space-y-2">
-				<Label htmlFor="catalogue-body">
-					{requestFormCopy.setupDetailsLabel}
-				</Label>
-				<Textarea
-					id="catalogue-body"
-					value={body}
-					onChange={(event) => setBody(event.target.value)}
-					maxLength={10_000}
-					placeholder={requestFormCopy.setupDetailsPlaceholder}
-					className="min-h-40 rounded-md text-sm"
-					aria-invalid={detailsError !== null}
-				/>
-				{detailsError ? (
-					<p className="text-destructive text-sm" role="alert">
-						{detailsError}
-					</p>
-				) : null}
-			</div>
+		<form
+			className="space-y-7"
+			onSubmit={(event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				void form.handleSubmit().catch(() => undefined);
+			}}
+		>
+			<form.Field name="title">
+				{(field) => (
+					<div className="space-y-2">
+						<Label htmlFor={field.name}>{requestFormCopy.summaryLabel}</Label>
+						<Input
+							id={field.name}
+							name={field.name}
+							value={field.state.value}
+							onBlur={field.handleBlur}
+							onChange={(event) => field.handleChange(event.target.value)}
+							maxLength={160}
+							placeholder={requestFormCopy.setupSummaryPlaceholder}
+							className="h-10 rounded-md text-sm"
+							aria-invalid={field.state.meta.errors.length > 0}
+						/>
+						<FieldError errors={field.state.meta.errors} />
+					</div>
+				)}
+			</form.Field>
+			<form.Field name="body">
+				{(field) => (
+					<div className="space-y-2">
+						<Label htmlFor={field.name}>
+							{requestFormCopy.setupDetailsLabel}
+						</Label>
+						<Textarea
+							id={field.name}
+							name={field.name}
+							value={field.state.value}
+							onBlur={field.handleBlur}
+							onChange={(event) => field.handleChange(event.target.value)}
+							maxLength={10_000}
+							placeholder={requestFormCopy.setupDetailsPlaceholder}
+							className="min-h-40 rounded-md text-sm"
+							aria-invalid={field.state.meta.errors.length > 0}
+						/>
+						<FieldError errors={field.state.meta.errors} />
+					</div>
+				)}
+			</form.Field>
 			<PrivacyNotice />
 			<Question
 				legend={requestFormCopy.requestTypeLegend}
@@ -487,76 +542,275 @@ function CatalogueRequestForm({ onIncident }: { onIncident: () => void }) {
 				</div>
 			) : null}
 			{catalogue.data ? (
-				<div className="space-y-2">
-					<Label htmlFor="catalogue-item">
-						{requestFormCopy.catalogueLabel}
-					</Label>
-					<select
-						id="catalogue-item"
-						value={selectedId}
-						onChange={(event) => {
-							setSelectedId(event.target.value);
-							setValues({});
-							setDetailsError(null);
-						}}
-						className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
-					>
-						<option value="">{requestFormCopy.cataloguePlaceholder}</option>
-						{catalogue.data.map((item) => (
-							<option key={item.subcategory.id} value={item.subcategory.id}>
-								{item.subcategory.name}
-							</option>
-						))}
-					</select>
-					{catalogue.data.length === 0 ? (
-						<p className="text-muted-foreground text-sm">
-							{requestFormCopy.catalogueEmpty}
-						</p>
-					) : null}
-				</div>
+				<form.Field name="selectedId">
+					{(field) => (
+						<div className="space-y-2">
+							<Label htmlFor="catalogue-item">
+								{requestFormCopy.catalogueLabel}
+							</Label>
+							<select
+								id="catalogue-item"
+								name={field.name}
+								value={field.state.value}
+								onChange={(event) => {
+									field.handleChange(event.target.value);
+									form.setFieldValue("values", {});
+								}}
+								className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50"
+							>
+								<option value="">{requestFormCopy.cataloguePlaceholder}</option>
+								{catalogue.data.map((item) => (
+									<option key={item.subcategory.id} value={item.subcategory.id}>
+										{item.subcategory.name}
+									</option>
+								))}
+							</select>
+							{catalogue.data.length === 0 ? (
+								<p className="text-muted-foreground text-sm">
+									{requestFormCopy.catalogueEmpty}
+								</p>
+							) : null}
+						</div>
+					)}
+				</form.Field>
 			) : null}
 
-			{selected?.form ? (
-				<DynamicRequestForm
-					fields={fields}
-					values={values}
-					onChange={setValues}
-					submitting={createRequest.isPending}
-					error={createRequest.isError ? requestFormCopy.sendError : null}
-					submitLabel={requestFormCopy.send}
-					onSubmit={async (submittedValues) => {
-						const form = selected.form;
-						if (!form) return;
-						const details = requestDetailsSchema.safeParse({ title, body });
-						if (!details.success) {
-							setDetailsError(
-								details.error.issues[0]?.message ??
-									requestFormCopy.detailsError,
-							);
-							return;
-						}
-						setDetailsError(null);
-						await createRequest.mutateAsync({
-							subcategoryId: selected.subcategory.id,
-							formId: form.id,
-							values: submittedValues,
-							title: details.data.title,
-							body: details.data.body,
-						});
+			<form.Subscribe selector={(state) => state.values.selectedId}>
+				{(selectedId) => {
+					const selected = catalogue.data?.find(
+						(item) => item.subcategory.id === selectedId,
+					);
+					if (!selected) return null;
+					if (!selected.form) {
+						return (
+							<p className="text-muted-foreground text-sm" role="status">
+								{requestFormCopy.catalogueUnavailable}
+							</p>
+						);
+					}
+					const formDef = selected.form;
+					const fields = catalogueFields(selected);
+					return (
+						<form.Field name="values">
+							{(field) => {
+								const activeKeys = activeCatalogueFieldKeys(
+									formDef.fields,
+									field.state.value,
+								);
+								const set = (key: string, value: RequestFormValues[string]) =>
+									field.handleChange({ ...field.state.value, [key]: value });
+								return (
+									<div className="space-y-6">
+										{fields
+											.filter((f) => activeKeys.has(f.key))
+											.map((f) => {
+												const id = `catalogue-${f.key}`;
+												const descriptionId = f.description
+													? `${id}-description`
+													: undefined;
+												const value = field.state.value[f.key];
+												if (f.type === "checkbox") {
+													return (
+														<div key={f.key} className="space-y-1">
+															<label
+																htmlFor={id}
+																className="flex items-start gap-3 text-sm"
+															>
+																<input
+																	id={id}
+																	name={f.key}
+																	type="checkbox"
+																	checked={value === true}
+																	required={f.required}
+																	disabled={f.readOnly}
+																	aria-describedby={descriptionId}
+																	onChange={(event) =>
+																		set(f.key, event.target.checked)
+																	}
+																	className="mt-0.5 size-4 accent-primary"
+																/>
+																<span>
+																	{f.label}
+																	{f.required ? (
+																		<span aria-hidden="true"> *</span>
+																	) : null}
+																</span>
+															</label>
+															{f.description ? (
+																<p
+																	id={descriptionId}
+																	className="pl-7 text-muted-foreground text-xs"
+																>
+																	{f.description}
+																</p>
+															) : null}
+														</div>
+													);
+												}
+												const stringValue =
+													typeof value === "string" || typeof value === "number"
+														? value
+														: "";
+												return (
+													<div key={f.key} className="space-y-2">
+														<label htmlFor={id} className="font-medium text-sm">
+															{f.label}
+															{f.required ? (
+																<span aria-hidden="true"> *</span>
+															) : null}
+														</label>
+														{f.description ? (
+															<p
+																id={descriptionId}
+																className="text-muted-foreground text-xs"
+															>
+																{f.description}
+															</p>
+														) : null}
+														{f.type === "select" || f.type === "multiselect" ? (
+															<select
+																id={id}
+																name={f.key}
+																value={
+																	f.type === "multiselect" &&
+																	Array.isArray(value)
+																		? value
+																		: stringValue
+																}
+																multiple={f.type === "multiselect"}
+																required={f.required}
+																disabled={f.readOnly}
+																aria-describedby={descriptionId}
+																onChange={(event) =>
+																	set(
+																		f.key,
+																		f.type === "multiselect"
+																			? [...event.target.selectedOptions].map(
+																					(option) => option.value,
+																				)
+																			: event.target.value,
+																	)
+																}
+																className={catalogueControlClass}
+															>
+																<option value="">Select an option</option>
+																{f.options?.map((option) => {
+																	const item =
+																		typeof option === "string"
+																			? { label: option, value: option }
+																			: option;
+																	return (
+																		<option key={item.value} value={item.value}>
+																			{item.label}
+																		</option>
+																	);
+																})}
+															</select>
+														) : f.type === "textarea" ? (
+															<textarea
+																id={id}
+																name={f.key}
+																value={String(stringValue)}
+																required={f.required}
+																readOnly={f.readOnly}
+																aria-describedby={descriptionId}
+																minLength={f.minLength}
+																maxLength={f.maxLength}
+																placeholder={f.placeholder}
+																onChange={(event) =>
+																	set(f.key, event.target.value)
+																}
+																className={`${catalogueControlClass} min-h-28 py-2`}
+															/>
+														) : (
+															<input
+																id={id}
+																name={f.key}
+																type={f.type}
+																value={stringValue as string | number}
+																required={f.required}
+																readOnly={f.readOnly}
+																aria-describedby={descriptionId}
+																min={f.min}
+																max={f.max}
+																step={f.step}
+																minLength={f.minLength}
+																maxLength={f.maxLength}
+																placeholder={f.placeholder}
+																onChange={(event) =>
+																	set(
+																		f.key,
+																		f.type === "number"
+																			? event.target.value === ""
+																				? ""
+																				: event.target.valueAsNumber
+																			: event.target.value,
+																	)
+																}
+																className={catalogueControlClass}
+															/>
+														)}
+													</div>
+												);
+											})}
+										{createRequest.isError ? (
+											<p className="text-destructive text-sm" role="alert">
+												{requestFormCopy.sendError}
+											</p>
+										) : null}
+									</div>
+								);
+							}}
+						</form.Field>
+					);
+				}}
+			</form.Subscribe>
+
+			<div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
+				<Link
+					to="/home"
+					className={buttonVariants({ variant: "outline", size: "lg" })}
+				>
+					{requestFormCopy.cancel}
+				</Link>
+				<form.Subscribe
+					selector={(state) => ({
+						canSubmit: state.canSubmit,
+						isSubmitting: state.isSubmitting,
+						title: state.values.title,
+						body: state.values.body,
+						selectedId: state.values.selectedId,
+					})}
+				>
+					{({ canSubmit, isSubmitting, title, body, selectedId }) => {
+						const selected = catalogue.data?.find(
+							(item) => item.subcategory.id === selectedId,
+						);
+						return (
+							<Button
+								type="submit"
+								size="lg"
+								disabled={
+									!canSubmit ||
+									title.trim().length < 3 ||
+									title.trim().length > 160 ||
+									body.trim().length < 10 ||
+									body.trim().length > 10_000 ||
+									!selected?.form ||
+									isSubmitting ||
+									createRequest.isPending
+								}
+							>
+								<Send aria-hidden="true" />{" "}
+								{isSubmitting || createRequest.isPending
+									? requestFormCopy.sending
+									: requestFormCopy.send}
+							</Button>
+						);
 					}}
-				/>
-			) : selected ? (
-				<p className="text-muted-foreground text-sm" role="status">
-					{requestFormCopy.catalogueUnavailable}
-				</p>
-			) : null}
-			<Link
-				to="/home"
-				className={buttonVariants({ variant: "outline", size: "lg" })}
-			>
-				{requestFormCopy.cancel}
-			</Link>
-		</div>
+				</form.Subscribe>
+			</div>
+		</form>
 	);
 }
 

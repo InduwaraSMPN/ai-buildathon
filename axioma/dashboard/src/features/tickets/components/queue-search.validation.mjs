@@ -8,7 +8,7 @@ const normalized = normalizeTicketQueueSearch({
 	status: "open",
 	priority: ["P1", "P2", "bogus"],
 	recordType: "incident",
-	category: ["infrastructure", "unclassified"],
+	serviceId: ["service-1", "service-2", "service-2", ""],
 	route: "unassigned",
 	assigneeId: "user-7",
 	teamId: "team-2",
@@ -26,27 +26,40 @@ const normalized = normalizeTicketQueueSearch({
 assert.equal(normalized.search, "printer");
 assert.deepEqual(normalized.status, ["open"]);
 assert.deepEqual(normalized.priority, ["P1", "P2"]);
-assert.deepEqual(normalized.category, ["infrastructure", null]);
+assert.deepEqual(normalized.recordType, ["incident"]);
+assert.deepEqual(normalized.serviceId, ["service-1", "service-2"]);
+assert.deepEqual(normalized.route, ["unassigned"]);
+assert.equal(normalized.cursor, "next-page");
 assert.equal(normalized.deviceId, "device-7");
 assert.equal(normalized.assigneeId, "user-7");
 assert.equal(normalized.teamId, "team-2");
 assert.equal(normalized.myQueue, true);
 assert.equal(normalized.density, "comfortable");
-assert.deepEqual(toTicketListInput(normalized).priority, ["P1", "P2"]);
-assert.equal(toTicketListInput(normalized).deviceId, "device-7");
-assert.equal(
-	toTicketListInput(normalized).escalatedSince?.toISOString(),
-	"2026-08-27T12:00:00.000Z",
-);
-assert.equal(toTicketListInput(normalized).resolvedAt, true);
-assert.equal(toTicketListInput(normalized).autonomous, true);
-assert.equal(toTicketListInput(normalized).limit, 50);
+const input = toTicketListInput(normalized);
+assert.deepEqual(input.priority, ["P1", "P2"]);
+assert.deepEqual(input.recordType, ["incident"]);
+assert.deepEqual(input.serviceId, ["service-1", "service-2"]);
+assert.deepEqual(input.route, ["unassigned"]);
+assert.equal(input.cursor, "next-page");
+assert.equal(input.deviceId, "device-7");
+assert.equal(input.escalatedSince?.toISOString(), "2026-08-27T12:00:00.000Z");
+assert.equal(input.resolvedAt, true);
+assert.equal(input.autonomous, true);
+assert.equal(input.limit, 50);
 assert.equal(
 	normalizeTicketQueueSearch({ unassigned: "true" }).unassigned,
 	true,
 );
 assert.equal(
 	normalizeTicketQueueSearch({ status: "invalid" }).status,
+	undefined,
+);
+assert.equal(
+	normalizeTicketQueueSearch({ resolvedAt: "false" }).resolvedAt,
+	undefined,
+);
+assert.equal(
+	normalizeTicketQueueSearch({ autonomous: false }).autonomous,
 	undefined,
 );
 console.log("queue search validation passed");

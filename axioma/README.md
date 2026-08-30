@@ -50,9 +50,11 @@ cd api        && pnpm install && pnpm db:start && pnpm db:migrate && pnpm dev   
 cd portal     && pnpm install && pnpm dev                                       # :3001
 cd dashboard  && pnpm install && pnpm dev                                       # :3002
 cd web        && pnpm install && pnpm exec vite dev --port 3003                 # :3003
-cd agent      && uv sync --all-extras && uv run python -m axel.server
+cd agent      && uv sync --all-extras && bash scripts/generate-proto.sh && uv run python -m axel.server
 cd cli        && go build -o bin/axel-cli ./cmd/axel-cli
 ```
+
+On Windows, use `pwsh scripts/generate-proto.ps1` instead of the Bash generation command before starting the agent.
 
 > [!NOTE]
 > `web/package.json` declares port 3000, which collides with the API — the `Tiltfile` overrides it to 3003, so pass the port explicitly when starting it by hand. `CORS_ORIGIN` admits only `http://localhost:3001` and `http://localhost:3002`; serving a frontend anywhere else makes auth cookies fail silently.
@@ -83,10 +85,12 @@ accept the mapping. The checkout is on `D:\`, and `node_modules` on `/mnt/d/` fr
 file I/O, so if development moves into WSL2, move the checkout to the Linux filesystem rather than
 reaching across.
 
-**Protobuf codegen** is wired on both sides. Python needs nothing installed — `grpcio-tools` bundles
-protoc and `agent/scripts/generate-proto.sh` uses it. Go regenerates with `cli/scripts/generate-proto.ps1`,
-which needs `protoc-gen-go` and `protoc-gen-go-grpc` installed once. Generated bindings live in
-`agent/axel/pb/` and `cli/internal/pb/`; rerun the scripts after any proto publish.
+**Protobuf codegen** is wired on both sides. After syncing the agent dependencies, `grpcio-tools`
+provides protoc for `agent/scripts/generate-proto.sh` and `agent/scripts/generate-proto.ps1`. CLI
+generation requires Go and either system `protoc` or `uv` for the pinned `grpcio-tools` fallback;
+`cli/scripts/generate-proto.ps1` installs pinned `protoc-gen-go` and `protoc-gen-go-grpc` binaries
+automatically. Generated bindings live in `agent/axel/pb/` and `cli/internal/pb/`; rerun the scripts
+after any proto publish.
 
 ## Installing axel-cli on a test machine
 

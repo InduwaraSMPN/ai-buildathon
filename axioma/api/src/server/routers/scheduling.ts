@@ -129,7 +129,8 @@ export const schedulingRouter = {
 			.insert(recurringTickets)
 			.values({ id: crypto.randomUUID(), ...input })
 			.returning();
-		return row!;
+		if (!row) throw new Error("Recurrence insert failed");
+		return row;
 	}),
 	updateRecurrence: capabilityProcedure(
 		"admin.settings",

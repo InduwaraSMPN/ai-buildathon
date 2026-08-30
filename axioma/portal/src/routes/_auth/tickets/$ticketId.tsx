@@ -1,8 +1,10 @@
+import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, CircleDot, Monitor, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+import z from "zod";
 import {
 	ErrorState,
 	formatDate,
@@ -36,6 +38,10 @@ import {
 	ConversationCard,
 	CsatCard,
 } from "@/features/tickets/components/conversation-card";
+import {
+	createTicketFormSchemas,
+	submitThenReset,
+} from "@/features/tickets/components/form-validation";
 import { ProgressTimeline } from "@/features/tickets/components/progress-timeline";
 import { ResolutionCard } from "@/features/tickets/components/resolution-card";
 import {
@@ -44,6 +50,9 @@ import {
 	ticketDetailCopy,
 } from "@/features/tickets/copy";
 import { orpc } from "@/utils/orpc";
+
+type DetailValues = { note: string };
+const { addDetail: addDetailSchema } = createTicketFormSchemas(z);
 
 export const Route = createFileRoute("/_auth/tickets/$ticketId")({
 	component: RouteComponent,
@@ -54,7 +63,6 @@ function RouteComponent() {
 	const { ticketId } = Route.useParams();
 	const queryClient = useQueryClient();
 	const [detailHelpOpen, setDetailHelpOpen] = useState(false);
-	const [detailNote, setDetailNote] = useState("");
 	const ticket = useQuery(myTicketQueryOptions(ticketId));
 	const approval = useQuery(
 		orpc.getMyApprovalStatus.queryOptions({ input: { ticketId } }),
@@ -79,6 +87,25 @@ function RouteComponent() {
 			toast.success(ticketDetailCopy.updated);
 		},
 		onError: () => toast.error(ticketDetailCopy.updateError),
+	});
+	const detailForm = useForm({
+		defaultValues: {
+			note: "",
+		} as DetailValues,
+		validators: {
+			onSubmit: addDetailSchema,
+		},
+		onSubmit: ({ value }) =>
+			submitThenReset(
+				() =>
+					updateTicket.mutateAsync({
+						id: ticketId,
+						action: "add_detail",
+						note: value.note.trim(),
+					}),
+				() => detailForm.reset(),
+				() => setDetailHelpOpen(false),
+			),
 	});
 
 	if (ticket.isPending) {
@@ -352,40 +379,64 @@ function RouteComponent() {
 							{ticketDetailCopy.addDetailDescription}
 						</DialogDescription>
 					</DialogHeader>
-					<label htmlFor="detail-note" className="font-medium text-sm">
-						{ticketDetailCopy.additionalDetail}
-					</label>
-					<Textarea
-						id="detail-note"
-						required
-						maxLength={2_000}
-						value={detailNote}
-						onChange={(event) => setDetailNote(event.target.value)}
-						placeholder={ticketDetailCopy.notePlaceholder}
-						className="min-h-24 rounded-md text-sm"
-					/>
-					<DialogFooter>
-						<Button
-							disabled={updateTicket.isPending || !detailNote.trim()}
-							onClick={() =>
-								updateTicket.mutate(
-									{
-										id: data.id,
-										action: "add_detail",
-										note: detailNote.trim(),
-									},
-									{
-										onSuccess: () => {
-											setDetailNote("");
-											setDetailHelpOpen(false);
-										},
-									},
-								)
-							}
-						>
-							{ticketDetailCopy.addDetail}
-						</Button>
-					</DialogFooter>
+					<form
+						className="space-y-4"
+						onSubmit={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							void detailForm.handleSubmit().catch(() => undefined);
+						}}
+					>
+						<detailForm.Field name="note">
+							{(field) => (
+								<div className="space-y-2">
+									<label htmlFor="detail-note" className="font-medium text-sm">
+										{ticketDetailCopy.additionalDetail}
+									</label>
+									<Textarea
+										id="detail-note"
+										name={field.name}
+										value={field.state.value}
+										onBlur={field.handleBlur}
+										onChange={(event) => field.handleChange(event.target.value)}
+										maxLength={2_000}
+										placeholder={ticketDetailCopy.notePlaceholder}
+										className="min-h-24 rounded-md text-sm"
+										aria-invalid={field.state.meta.errors.length > 0}
+									/>
+									{field.state.meta.errors.length ? (
+										<p className="text-destructive text-sm" role="alert">
+											{field.state.meta.errors[0]?.message}
+										</p>
+									) : null}
+								</div>
+							)}
+						</detailForm.Field>
+						<DialogFooter>
+							<detailForm.Subscribe
+								selector={(state) => ({
+									canSubmit: state.canSubmit,
+									isSubmitting: state.isSubmitting,
+									note: state.values.note,
+								})}
+							>
+								{({ canSubmit, isSubmitting, note }) => (
+									<Button
+										type="submit"
+										disabled={
+											!canSubmit ||
+											!note.trim() ||
+											note.trim().length > 2_000 ||
+											isSubmitting ||
+											updateTicket.isPending
+										}
+									>
+										{ticketDetailCopy.addDetail}
+									</Button>
+								)}
+							</detailForm.Subscribe>
+						</DialogFooter>
+					</form>
 				</DialogContent>
 			</Dialog>
 		</PageShell>

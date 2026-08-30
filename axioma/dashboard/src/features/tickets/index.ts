@@ -1,6 +1,3 @@
-export { ticketMutations } from "./api/mutations";
-export { ticketKeys, ticketQueries } from "./api/queries";
-export { ticketService } from "./api/service";
 export type {
 	CreateTicketInput,
 	Ticket,

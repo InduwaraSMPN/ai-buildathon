@@ -1,4 +1,5 @@
 import { useForm } from "@tanstack/react-form";
+import z from "zod";
 import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -37,6 +38,18 @@ export function TicketClassificationForm({
 			urgency: ticket.urgency,
 			serviceId: ticket.serviceId,
 			serviceSubcategoryId: ticket.serviceSubcategoryId,
+		},
+		validators: {
+			onSubmit: z.object({
+				recordType: z.enum(["incident", "service_request"]),
+				impact: z.enum(["high", "medium", "low"]),
+				urgency: z.enum(["high", "medium", "low"]),
+				serviceId: z.string().trim().min(1, "Service is required"),
+				serviceSubcategoryId: z
+					.string()
+					.trim()
+					.min(1, "Subcategory is required"),
+			}),
 		},
 		onSubmit: ({ value }) => onSubmit({ action: "reclassify", ...value }),
 	});

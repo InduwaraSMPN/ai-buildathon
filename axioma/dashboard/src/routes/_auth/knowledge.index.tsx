@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { PageState } from "@/components/support-ui";
 import {
 	KnowledgeArticleEditor,
 	KnowledgePage,
 } from "@/features/knowledge/components/knowledge";
 import { orpc } from "@/utils/orpc";
+import { selectQueryState } from "@/utils/query-state";
 
 export const Route = createFileRoute("/_auth/knowledge/")({
 	component: KnowledgeRoute,
@@ -22,9 +24,29 @@ function KnowledgeRoute() {
 				}),
 		}),
 	);
+	const state = selectQueryState(query);
+	if (state.kind === "loading") {
+		return (
+			<PageState
+				kind="loading"
+				title="Loading knowledge"
+				description="Retrieving knowledge articles…"
+			/>
+		);
+	}
+	if (state.kind === "error") {
+		return (
+			<PageState
+				kind="error"
+				title="Knowledge unavailable"
+				description={state.error?.message ?? "Try again shortly."}
+				onRetry={() => query.refetch()}
+			/>
+		);
+	}
 	return (
 		<KnowledgePage
-			articles={query.data ?? []}
+			articles={state.kind === "content" ? state.data : []}
 			onSelect={(article) =>
 				void navigate({
 					to: "/knowledge/$articleId",

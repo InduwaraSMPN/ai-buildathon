@@ -74,20 +74,19 @@ export const automationRouter = {
 	),
 	createTicketRule: capabilityProcedure(
 		"admin.settings",
-	).createTicketRule.handler(
-		async ({ input }) =>
-			(
-				await db
-					.insert(ticketRules)
-					.values({
-						id: crypto.randomUUID(),
-						...input,
-						criteria: input.criteria as RuleCriterion[],
-						actions: input.actions as RuleAction[],
-					})
-					.returning()
-			)[0]!,
-	),
+	).createTicketRule.handler(async ({ input }) => {
+		const [row] = await db
+			.insert(ticketRules)
+			.values({
+				id: crypto.randomUUID(),
+				...input,
+				criteria: input.criteria as RuleCriterion[],
+				actions: input.actions as RuleAction[],
+			})
+			.returning();
+		if (!row) throw new Error("Ticket rule insert failed");
+		return row;
+	}),
 	updateTicketRule: capabilityProcedure(
 		"admin.settings",
 	).updateTicketRule.handler(async ({ input: { id, ...patch } }) => {
@@ -119,17 +118,18 @@ export const automationRouter = {
 		() => db.select().from(workflows).orderBy(workflows.name),
 	),
 	createWorkflow: capabilityProcedure("admin.settings").createWorkflow.handler(
-		async ({ input }) =>
-			(
-				await db
-					.insert(workflows)
-					.values({
-						id: crypto.randomUUID(),
-						...input,
-						actions: assertWorkflowActions(input.actions ?? []),
-					})
-					.returning()
-			)[0]!,
+		async ({ input }) => {
+			const [row] = await db
+				.insert(workflows)
+				.values({
+					id: crypto.randomUUID(),
+					...input,
+					actions: assertWorkflowActions(input.actions ?? []),
+				})
+				.returning();
+			if (!row) throw new Error("Workflow insert failed");
+			return row;
+		},
 	),
 	updateWorkflow: capabilityProcedure("admin.settings").updateWorkflow.handler(
 		async ({ input: { id, ...patch } }) => {
@@ -216,18 +216,18 @@ export const automationRouter = {
 			)
 		)
 			throw new ORPCError("FORBIDDEN");
-		return (
-			await db
-				.insert(savedViews)
-				.values({
-					id: crypto.randomUUID(),
-					...input,
-					ownerType,
-					ownerId,
-					createdById: context.userId,
-				})
-				.returning()
-		)[0]!;
+		const [row] = await db
+			.insert(savedViews)
+			.values({
+				id: crypto.randomUUID(),
+				...input,
+				ownerType,
+				ownerId,
+				createdById: context.userId,
+			})
+			.returning();
+		if (!row) throw new Error("Saved view insert failed");
+		return row;
 	}),
 	updateSavedView: capabilityProcedure(
 		"ticket.read.all",
@@ -240,13 +240,13 @@ export const automationRouter = {
 			!canAccessSavedView(current, await savedViewContext(context.userId))
 		)
 			throw new ORPCError("NOT_FOUND");
-		return (
-			await db
-				.update(savedViews)
-				.set(patch)
-				.where(eq(savedViews.id, id))
-				.returning()
-		)[0]!;
+		const [row] = await db
+			.update(savedViews)
+			.set(patch)
+			.where(eq(savedViews.id, id))
+			.returning();
+		if (!row) throw new ORPCError("NOT_FOUND");
+		return row;
 	}),
 	deleteSavedView: capabilityProcedure(
 		"ticket.read.all",
@@ -364,25 +364,24 @@ export const automationRouter = {
 		"ticket.read.all",
 		"knowledge.read",
 	).search.handler(({ context, input }) =>
-		searchDocuments(
-			db,
-			input,
-			(document) =>
-				or(
-					and(
-						sql`${document.objectType} = 'ticket'`,
-						sql`exists (select 1 from tickets where id = ${document.objectId} and (reporter_id = ${context.userId} or ${context.capabilities.has("ticket.read.all")}))`,
-					),
-					and(
-						sql`${document.objectType} = 'knowledge_article'`,
-						sql`${context.capabilities.has("knowledge.read")}`,
-					),
-					and(
-						sql`${document.objectType} not in ('ticket', 'knowledge_article')`,
-						sql`${context.capabilities.has("ticket.read.all")}`,
-					),
-				)!,
-		),
+		searchDocuments(db, input, (document) => {
+			const accessFilter = or(
+				and(
+					sql`${document.objectType} = 'ticket'`,
+					sql`exists (select 1 from tickets where id = ${document.objectId} and (reporter_id = ${context.userId} or ${context.capabilities.has("ticket.read.all")}))`,
+				),
+				and(
+					sql`${document.objectType} = 'knowledge_article'`,
+					sql`${context.capabilities.has("knowledge.read")}`,
+				),
+				and(
+					sql`${document.objectType} not in ('ticket', 'knowledge_article')`,
+					sql`${context.capabilities.has("ticket.read.all")}`,
+				),
+			);
+			if (!accessFilter) throw new Error("Search access filter is empty");
+			return accessFilter;
+		}),
 	),
 	getDashboardArrangement: capabilityProcedure(
 		"stats.read",

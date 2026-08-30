@@ -4,9 +4,9 @@ import { useCallback } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { Route } from "@/routes/_auth/tickets.index";
-import { ticketMutations } from "../api/mutations";
-import { ticketQueries } from "../api/queries";
+import { orpc } from "@/utils/orpc";
 import type { TicketListInput, UpdateTicketInput } from "../api/types";
+import { invalidateTicketQueries } from "../query-behavior";
 import { type TicketQueueSearch, toTicketListInput } from "./queue-search";
 import { TicketQueue } from "./ticket-queue";
 
@@ -15,10 +15,19 @@ export function TicketQueuePage() {
 	const { capabilities } = Route.useRouteContext();
 	const navigate = useNavigate({ from: Route.fullPath });
 	const queryClient = useQueryClient();
-	const query = useQuery(ticketQueries.list(toTicketListInput(search)));
+	const query = useQuery(
+		orpc.listTickets.queryOptions({
+			input: toTicketListInput(search),
+			refetchInterval: 15_000,
+			refetchIntervalInBackground: false,
+		}),
+	);
 	const mutation = useMutation(
-		ticketMutations.update(queryClient, {
-			onSuccess: () => toast.success("Ticket updated"),
+		orpc.updateTicket.mutationOptions({
+			onSuccess: async (_data, variables) => {
+				await invalidateTicketQueries(queryClient, orpc, variables.id);
+				toast.success("Ticket updated");
+			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
@@ -55,9 +64,9 @@ export function TicketQueuePage() {
 				result={query.data}
 				search={search}
 				capabilities={capabilities}
-				isPending={query.isPending}
+				isPending={query.isPending && query.data == null}
 				isFetching={query.isFetching}
-				error={query.error}
+				error={query.data == null ? query.error : null}
 				onRetry={() => query.refetch()}
 				onSearchChange={updateSearch}
 				onViewSelect={replaceView}

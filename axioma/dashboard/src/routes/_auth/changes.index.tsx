@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { PageState } from "@/components/support-ui";
 import {
 	ChangeEditor,
 	ChangesPage,
@@ -26,6 +27,34 @@ function ChangesRoute() {
 			},
 		}),
 	);
+	if (
+		(query.isPending && query.data == null) ||
+		(me.isPending && me.data == null)
+	) {
+		return (
+			<PageState
+				kind="loading"
+				title="Loading changes"
+				description="Retrieving changes…"
+			/>
+		);
+	}
+	const error =
+		(query.data == null && query.isError ? query.error : null) ??
+		(me.data == null && me.isError ? me.error : null);
+	if (error) {
+		return (
+			<PageState
+				kind="error"
+				title="Changes unavailable"
+				description={error.message}
+				onRetry={() => {
+					void query.refetch();
+					void me.refetch();
+				}}
+			/>
+		);
+	}
 	return (
 		<ChangesPage
 			changes={query.data ?? []}

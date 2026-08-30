@@ -63,7 +63,9 @@ function HomePage() {
 			<section className="statement dark-section">
 				<div className="shell statement-grid reveal-group">
 					<p className="eyebrow reveal">The missing context</p>
-					<h2 className="reveal">Employees report symptoms. Support has to find the cause.</h2>
+					<h2 className="reveal">
+						Employees report symptoms. Support has to find the cause.
+					</h2>
 					<p className="reveal">
 						The evidence needed to route a ticket and fix it often lives across
 						systems. Axiōma brings investigation and action into the same run,
@@ -79,7 +81,9 @@ function HomePage() {
 				</div>
 				<div className="section-heading reveal-group">
 					<p className="eyebrow reveal">The loop</p>
-					<h2 className="reveal">One ticket. One reasoning surface. A recorded outcome.</h2>
+					<h2 className="reveal">
+						One ticket. One reasoning surface. A recorded outcome.
+					</h2>
 				</div>
 				<ol className="step-grid reveal-group">
 					{steps.map((step) => (
@@ -99,7 +103,9 @@ function HomePage() {
 						<span>axel-cli / device-017</span>
 					</div>
 					<p className="eyebrow reveal">Across the boundary</p>
-					<h2 className="reveal">Infrastructure when it is there. The laptop when it is here.</h2>
+					<h2 className="reveal">
+						Infrastructure when it is there. The laptop when it is here.
+					</h2>
 					<p className="reveal">
 						Axel works against connected infrastructure, or reaches the
 						employee’s device through axel-cli. Device actions are typed and the
@@ -134,7 +140,11 @@ function HomePage() {
 
 function TicketVisual() {
 	return (
-		<div className="ticket-visual reveal" role="img" aria-label="Work order dossier AX-1042">
+		<div
+			className="ticket-visual reveal"
+			role="img"
+			aria-label="Work order dossier AX-1042"
+		>
 			<div className="ticket-holes" aria-hidden="true" />
 			<div className="ticket-sheet">
 				<div className="ticket-topline">

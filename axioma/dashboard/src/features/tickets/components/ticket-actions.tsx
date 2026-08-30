@@ -7,6 +7,7 @@ import {
 	UserRoundCheck,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import z from "zod";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -218,17 +219,33 @@ function NoteForm({
 	onAction: (input: ActionInput) => Promise<unknown>;
 }) {
 	const form = useForm({
-		defaultValues: { note: "", resolutionCode: "fixed" as const },
+		defaultValues: {
+			note: "",
+			resolutionCode: "fixed" as (typeof resolutionCodes)[number][0],
+		},
+		validators: {
+			onSubmit: z.object({
+				note: z
+					.string()
+					.trim()
+					.min(1, `${label} is required`)
+					.max(maxLength, `${label} must be at most ${maxLength} characters`),
+				resolutionCode: z.enum([
+					"fixed",
+					"workaround",
+					"not_reproducible",
+					"duplicate",
+					"no_action_required",
+					"rejected",
+				]),
+			}),
+		},
 		onSubmit: ({ value }) =>
 			onAction({
 				action,
 				resolution: value.note.trim(),
 				resolutionCode: value.resolutionCode,
 			}),
-		validators: {
-			onSubmit: ({ value }) =>
-				value.note.trim() ? undefined : `${label} is required`,
-		},
 	});
 	return (
 		<form
@@ -268,10 +285,11 @@ function NoteForm({
 			<form.Field
 				name="note"
 				validators={{
-					onChange: ({ value }) =>
-						value.trim() ? undefined : `${label} is required`,
-					onSubmit: ({ value }) =>
-						value.trim() ? undefined : `${label} is required`,
+					onChange: z
+						.string()
+						.trim()
+						.min(1, `${label} is required`)
+						.max(maxLength, `${label} must be at most ${maxLength} characters`),
 				}}
 			>
 				{(field) => (
@@ -286,9 +304,7 @@ function NoteForm({
 							onChange={(event) => field.handleChange(event.target.value)}
 							disabled={pending}
 						/>
-						<FieldError>
-							{field.state.meta.errors.map(String).join(", ")}
-						</FieldError>
+						<FieldError errors={field.state.meta.errors} />
 					</Field>
 				)}
 			</form.Field>
@@ -319,16 +335,29 @@ function EscalateForm({
 	>();
 	const form = useForm({
 		defaultValues: { note: "", route: "human_triage" as Route },
+		validators: {
+			onSubmit: z.object({
+				note: z
+					.string()
+					.trim()
+					.min(1, "Escalation reason is required")
+					.max(2_000, "Escalation reason must be at most 2000 characters"),
+				route: z.enum([
+					"unassigned",
+					"infrastructure",
+					"device",
+					"application",
+					"identity",
+					"human_triage",
+				]),
+			}),
+		},
 		onSubmit: ({ value }) =>
 			setConfirmation({
 				action: "escalate",
 				note: value.note.trim(),
 				route: value.route,
 			}),
-		validators: {
-			onSubmit: ({ value }) =>
-				value.note.trim() ? undefined : "Escalation reason is required",
-		},
 	});
 	return (
 		<form
@@ -341,10 +370,11 @@ function EscalateForm({
 			<form.Field
 				name="note"
 				validators={{
-					onChange: ({ value }) =>
-						value.trim() ? undefined : "Escalation reason is required",
-					onSubmit: ({ value }) =>
-						value.trim() ? undefined : "Escalation reason is required",
+					onChange: z
+						.string()
+						.trim()
+						.min(1, "Escalation reason is required")
+						.max(2_000, "Escalation reason must be at most 2000 characters"),
 				}}
 			>
 				{(field) => (
@@ -361,9 +391,7 @@ function EscalateForm({
 							onChange={(event) => field.handleChange(event.target.value)}
 							disabled={pending}
 						/>
-						<FieldError>
-							{field.state.meta.errors.map(String).join(", ")}
-						</FieldError>
+						<FieldError errors={field.state.meta.errors} />
 					</Field>
 				)}
 			</form.Field>
@@ -428,6 +456,21 @@ function AssignForm({
 			assigneeId: ticket.assigneeId ?? "none",
 			ownerId: ticket.ownerId ?? "none",
 			teamId: ticket.teamId ?? "none",
+		},
+		validators: {
+			onSubmit: z.object({
+				route: z.enum([
+					"unassigned",
+					"infrastructure",
+					"device",
+					"application",
+					"identity",
+					"human_triage",
+				]),
+				assigneeId: z.string().trim().min(1, "Assignee is required"),
+				ownerId: z.string().trim().min(1, "Owner is required"),
+				teamId: z.string().trim().min(1, "Team is required"),
+			}),
 		},
 		onSubmit: ({ value }) =>
 			onAction({

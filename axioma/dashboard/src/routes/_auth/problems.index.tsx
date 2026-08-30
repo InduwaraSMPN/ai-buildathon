@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { PageState } from "@/components/support-ui";
 import {
 	ProblemEditor,
 	ProblemsPage,
@@ -20,6 +21,25 @@ function ProblemsRoute() {
 				queryClient.invalidateQueries({ queryKey: orpc.listProblems.key() }),
 		}),
 	);
+	if (query.isPending && query.data == null) {
+		return (
+			<PageState
+				kind="loading"
+				title="Loading problems"
+				description="Retrieving problems…"
+			/>
+		);
+	}
+	if (query.isError && query.data == null) {
+		return (
+			<PageState
+				kind="error"
+				title="Problems unavailable"
+				description={query.error.message}
+				onRetry={() => query.refetch()}
+			/>
+		);
+	}
 	return (
 		<ProblemsPage
 			problems={query.data ?? []}

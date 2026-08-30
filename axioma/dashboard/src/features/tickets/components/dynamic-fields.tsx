@@ -4,6 +4,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { client } from "@/utils/orpc";
 
+export { serializeDynamicFields } from "./serialize-dynamic-fields";
+
 type Definition = Awaited<
 	ReturnType<typeof client.listFieldDefinitions>
 >[number];
@@ -197,26 +199,5 @@ export function DynamicFields({
 				</Button>
 			</div>
 		</section>
-	);
-}
-
-export function serializeDynamicFields(
-	definitions: Definition[],
-	values: Values,
-): Values {
-	return Object.fromEntries(
-		definitions.map((definition) => {
-			const value = values[definition.key];
-			return [
-				definition.key,
-				value === "" ||
-				(Array.isArray(value) && value.length === 0) ||
-				value === undefined
-					? null
-					: definition.fieldType === "datetime" && typeof value === "string"
-						? new Date(value).toISOString()
-						: value,
-			];
-		}),
 	);
 }

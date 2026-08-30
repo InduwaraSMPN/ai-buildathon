@@ -20,13 +20,12 @@ import { TicketImpact } from "@/features/cmdb/components/ticket-impact";
 import { TicketAttachments } from "@/features/documents/components";
 import { Route } from "@/routes/_auth/tickets.$ticketId";
 import { orpc } from "@/utils/orpc";
-import { ticketMutations } from "../api/mutations";
-import { ticketQueries } from "../api/queries";
 import type {
 	TicketDetail as TicketDetailData,
 	TicketOperatorActionInput,
 	UpdateTicketInput,
 } from "../api/types";
+import { invalidateTicketQueries } from "../query-behavior";
 import { DynamicFields, serializeDynamicFields } from "./dynamic-fields";
 import { SlaCountdown } from "./sla-countdown";
 import { TicketActions } from "./ticket-actions";
@@ -34,8 +33,12 @@ import { TicketActivity, TicketConversation } from "./ticket-collaboration";
 
 export function TicketDetailPage({ ticketId }: { ticketId: string }) {
 	const { capabilities } = Route.useRouteContext();
-	const query = useQuery(ticketQueries.detail(ticketId));
-	if (query.isPending)
+	const query = useQuery(
+		orpc.getTicket.queryOptions({
+			input: { id: ticketId },
+		}),
+	);
+	if (query.isPending && query.data === undefined)
 		return (
 			<PageState
 				kind="loading"
@@ -43,7 +46,7 @@ export function TicketDetailPage({ ticketId }: { ticketId: string }) {
 				description="Retrieving ticket details…"
 			/>
 		);
-	if (query.isError)
+	if (query.isError && query.data === undefined)
 		return (
 			<PageState
 				kind="error"
@@ -79,13 +82,19 @@ function TicketDetail({
 			input: { ticketId: ticket.id },
 		}),
 	);
-	const sla = useQuery(ticketQueries.sla(ticket.id));
+	const sla = useQuery(
+		orpc.listTicketSla.queryOptions({
+			input: { ticketId: ticket.id },
+			refetchInterval: 15_000,
+			refetchIntervalInBackground: false,
+		}),
+	);
 	const [customFields, setCustomFields] = useState(ticket.customFields);
 	const customFieldsMutation = useMutation(
 		orpc.setTicketDynamicFields.mutationOptions({
 			onSuccess: async () => {
 				await queryClient.invalidateQueries({
-					queryKey: ticketQueries.detail(ticket.id).queryKey,
+					queryKey: orpc.getTicket.key({ input: { id: ticket.id } }),
 				});
 				toast.success("Custom fields updated");
 			},
@@ -93,8 +102,11 @@ function TicketDetail({
 		}),
 	);
 	const mutation = useMutation(
-		ticketMutations.update(queryClient, {
-			onSuccess: () => toast.success("Ticket updated"),
+		orpc.updateTicket.mutationOptions({
+			onSuccess: async (_data, variables) => {
+				await invalidateTicketQueries(queryClient, orpc, variables.id);
+				toast.success("Ticket updated");
+			},
 			onError: (error) => toast.error(error.message),
 		}),
 	);
