@@ -24,6 +24,18 @@ jobs:
       - run: pnpm --dir api install --frozen-lockfile
       - run: pnpm --dir api contracts:check
 
+  ui:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axioma/ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/publish-ui.mjs --check
+
   api:
     runs-on: ubuntu-latest
     env:
@@ -99,6 +111,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: pwsh scripts/generate-proto.ps1
       - run: git diff --exit-code -- internal/pb
+      - run: "test -z \"$(gofmt -l ./internal ./cmd)\""
       - run: go vet ./...
       - run: go test ./...
       - run: go build ./...
