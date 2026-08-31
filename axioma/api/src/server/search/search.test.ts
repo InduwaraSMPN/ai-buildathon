@@ -8,6 +8,7 @@ import {
 	normalizeSearchQuery,
 	retainAuthorizedResults,
 	SEARCH_OBJECT_TYPES,
+	splitPrefixQuery,
 } from "./index";
 import { canAccessSavedView } from "./views";
 
@@ -17,6 +18,25 @@ test("normalizes Unicode, surrounding whitespace, and term separators", () => {
 		"API gateway timeout",
 	);
 	assert.equal(normalizeSearchQuery(" \n\t "), "");
+});
+
+test("splits the trailing token off for prefix matching", () => {
+	assert.deepEqual(splitPrefixQuery("tic"), { head: "", prefix: "tic" });
+	assert.deepEqual(splitPrefixQuery("gateway tim"), {
+		head: "gateway",
+		prefix: "tim",
+	});
+});
+
+test("keeps websearch operator queries whole", () => {
+	for (const query of ['"exact phrase"', "gateway OR proxy", "gateway -proxy"]) {
+		assert.deepEqual(splitPrefixQuery(query), { head: query, prefix: null });
+	}
+	// A trailing token of only punctuation leaves nothing to prefix-match.
+	assert.deepEqual(splitPrefixQuery("gateway :"), {
+		head: "gateway :",
+		prefix: null,
+	});
 });
 
 test("groups mixed object types without losing result order", () => {

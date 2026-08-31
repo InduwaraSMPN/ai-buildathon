@@ -39,6 +39,26 @@ export function normalizeSearchQuery(query: string): string {
 	return query.normalize("NFKC").trim().replace(/\s+/g, " ");
 }
 
+/**
+ * Splits a normalized query into the part `websearch_to_tsquery` handles and a
+ * trailing token to match as a prefix. Type-ahead sends partial words ("tic"),
+ * which never match a whole lexeme ("ticket") on their own.
+ *
+ * Returns a null prefix when the query uses websearch operators (quotes, `OR`,
+ * leading `-`), because the trailing token is then part of an expression rather
+ * than a word the user is still typing.
+ */
+export function splitPrefixQuery(query: string): {
+	head: string;
+	prefix: string | null;
+} {
+	if (/["]|(^|\s)-|\bOR\b/.test(query)) return { head: query, prefix: null };
+	const words = query.split(" ");
+	const prefix = (words.at(-1) ?? "").replace(/[^\p{L}\p{N}]/gu, "");
+	if (!prefix) return { head: query, prefix: null };
+	return { head: words.slice(0, -1).join(" "), prefix };
+}
+
 export function groupSearchResults<T extends { objectType: string }>(
 	results: readonly T[],
 ): Record<string, T[]> {
@@ -201,7 +221,14 @@ export async function search(
 		setweight(to_tsvector('english', coalesce(${searchDocuments.title}, '')), 'A') ||
 		setweight(to_tsvector('english', coalesce(${searchDocuments.body}, '')), 'B')
 	)`;
-	const tsquery = sql`websearch_to_tsquery('english', ${query})`;
+	const { head, prefix } = splitPrefixQuery(query);
+	// The trailing token is matched as a prefix so type-ahead finds records
+	// before the word is finished; earlier tokens keep websearch's AND semantics.
+	const tsquery = !prefix
+		? sql`websearch_to_tsquery('english', ${query})`
+		: head
+			? sql`(websearch_to_tsquery('english', ${head}) && to_tsquery('english', ${`${prefix}:*`}))`
+			: sql`to_tsquery('english', ${`${prefix}:*`})`;
 	const scope = authorizationScope(searchDocuments);
 	if (!scope)
 		throw new TypeError("authorizationScope must return a SQL filter");
