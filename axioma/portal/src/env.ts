@@ -10,6 +10,7 @@ export const env = createEnv({
 		// requirement instead, where the error can name both the runtime knob and
 		// this build-time variable.
 		VITE_SERVER_URL: z.url().optional(),
+		VITE_SITE_URL: z.url().optional(),
 	},
 	runtimeEnv: (
 		import.meta as ImportMeta & { env: Record<string, string | undefined> }

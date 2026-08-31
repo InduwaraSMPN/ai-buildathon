@@ -18,15 +18,24 @@ export async function createEmbedding(text: string): Promise<number[] | null> {
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
-		if (!response.ok) return null;
+		if (!response.ok) {
+			console.warn(
+				`[search] embedding request failed: HTTP ${response.status}`,
+			);
+			return null;
+		}
 		const body = (await response.json()) as {
 			data?: Array<{ embedding?: number[] }>;
 		};
 		const embedding = body.data?.[0]?.embedding;
-		return embedding?.length === 1536 && embedding.every(Number.isFinite)
-			? embedding
-			: null;
-	} catch {
+		if (embedding?.length === 1536 && embedding.every(Number.isFinite))
+			return embedding;
+		console.warn(
+			"[search] embedding response was missing a valid 1536-value vector",
+		);
+		return null;
+	} catch (error) {
+		console.warn("[search] embedding request failed", error);
 		return null;
 	}
 }

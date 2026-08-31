@@ -119,7 +119,10 @@ const accessSql = (ticketId: string) => sql`(
 		where t.id = ${searchDocuments.objectId} and ts.is_closed = true and t.resolution is not null
 	)) or
 	(${searchDocuments.objectType} = 'agent_run' and exists (
-		select 1 from agent_runs ar where ar.id = ${searchDocuments.objectId}
+		select 1 from agent_runs ar
+		join tickets t on t.id = ar.ticket_id
+		join ticket_statuses ts on ts.key = t.status
+		where ar.id = ${searchDocuments.objectId} and ts.is_closed = true
 		and ar.status in ('resolved','escalated','failed','exhausted') and ar.outcome is not null
 	)) or
 	(${searchDocuments.objectType} = 'document' and exists (
@@ -193,7 +196,15 @@ export async function knowledgeSearch(
 		.map(({ source, id }) => {
 			const item = byKey.get(`${source}:${id}`);
 			if (!item) throw new Error("knowledge rank projection missing");
-			return publicKnowledgeItem({ ...item, source, id });
+			const safe =
+				source === "resolved_ticket" || source === "agent_run"
+					? {
+							...item,
+							title: deidentifyKnowledgeText(item.title),
+							excerpt: deidentifyKnowledgeText(item.excerpt),
+						}
+					: item;
+			return publicKnowledgeItem({ ...safe, source, id });
 		});
 	return {
 		mode:
@@ -298,6 +309,7 @@ export async function knowledgeFetch(
 							"failed",
 							"exhausted",
 						]),
+						sql`exists (select 1 from tickets t join ticket_statuses ts on ts.key = t.status where t.id = ${agentRuns.ticketId} and ts.is_closed = true)`,
 						isNotNull(agentRuns.outcome),
 					),
 				)
@@ -335,13 +347,14 @@ export async function knowledgeFetch(
 			.limit(1)
 	)[0];
 	if (!item) return null;
-	const text =
+	const rawText =
 		item.kind === "file" && item.sha256
 			? decodeStoredText(
 					item.mediaType,
 					await documentStorage.read(item.sha256),
 				)
 			: null;
+	const text = rawText ? deidentifyKnowledgeText(rawText) : null;
 	const { sha256: _, ...result } = item;
 	return { ...result, text };
 }

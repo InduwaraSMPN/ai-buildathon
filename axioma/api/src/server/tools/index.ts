@@ -1,13 +1,13 @@
 import { and, eq, isNotNull, lte } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
-import { changes, changeTransitions, tickets } from "@/db/schema";
+import { agentRuns, changes, changeTransitions, tickets } from "@/db/schema";
 import {
 	defaultEnvironmentConnection,
 	type EnvironmentConnection,
 	type EnvironmentMode,
 } from "@/k8s/client";
-import { changeEnvironment, patchImageWithChange } from "./change";
+import { patchImageWithChange } from "./change";
 import {
 	patchImageInput,
 	readDeployment,
@@ -56,22 +56,6 @@ export type ToolContext = {
 	linkedEnvironments?: ReadonlySet<string>;
 };
 
-// Tool names whose effect is a write. Shadow-mode environments refuse these
-// before any cluster/device call so the transcript still records the attempt.
-const WRITE_EFFECT_TOOLS = new Set([
-	"cluster_patch_image",
-	"device_run_action",
-	"device_computer_use",
-	"cmdb_record_observation",
-	// A proposal touches no device, so listing it here is a judgement rather
-	// than an obvious call. It is listed deliberately: approval dispatches
-	// through an oRPC route that never sees the run's environment, so a shadow
-	// run could otherwise propose a command that a later approval executes for
-	// real. Refusing at proposal time is the only point where the environment
-	// is still known.
-	"device_propose_command",
-]);
-
 /**
  * Enforce the environment contract for a tool call. The resolved run
  * environment is authoritative; an agent-named environment must be both linked
@@ -81,11 +65,12 @@ const WRITE_EFFECT_TOOLS = new Set([
  */
 export function assertEnvironmentAllowed(params: {
 	name: string;
+	effect: "read" | "write";
 	requested: string | undefined;
 	resolved: ResolvedEnvironment;
 	linked: ReadonlySet<string>;
 }): void {
-	const { name, requested, resolved, linked } = params;
+	const { name, effect, requested, resolved, linked } = params;
 	if (requested != null) {
 		if (linked.size > 0 && !linked.has(requested))
 			throw new Error(
@@ -96,69 +81,86 @@ export function assertEnvironmentAllowed(params: {
 				`run targets environment "${resolved.key}"; refusing to target "${requested}"`,
 			);
 	}
-	if (resolved.mode === "shadow" && WRITE_EFFECT_TOOLS.has(name))
+	if (resolved.mode === "shadow" && effect === "write")
 		throw new Error(
 			`environment "${resolved.key}" is in shadow mode; refusing write tool "${name}"`,
 		);
 }
 
-/**
- * A post-change verification read may complete a change only when it observes the
- * same environment the change was applied to. An unknown environment (e.g. after
- * a gateway restart) is tolerated so existing change completion keeps working.
- */
+/** A verification read completes a change only in its persisted run environment. */
 export function sameChangeEnvironment(
-	changeEnvironment: string | undefined,
+	changeEnvironment: string | null | undefined,
 	readEnvironment: string,
 ): boolean {
-	return (
-		changeEnvironment === undefined || changeEnvironment === readEnvironment
-	);
+	return changeEnvironment === readEnvironment;
 }
 
 type ToolHandler = {
 	input: z.ZodType;
+	effect: "read" | "write";
 	verifiedBy?: string;
 	run(input: never, ctx: ToolContext): Promise<unknown>;
 };
 
-const device = (input: z.ZodType, verifiedBy?: string): ToolHandler => ({
+const device = (
+	input: z.ZodType,
+	effect: ToolHandler["effect"],
+	verifiedBy?: string,
+): ToolHandler => ({
 	input,
+	effect,
 	verifiedBy,
 	run: (value, ctx) => ctx.dispatchDevice("", value),
 });
 
 export const tools: Record<string, ToolHandler> = {
-	knowledge_search: { input: knowledgeSearchInput, run: knowledgeSearch },
-	knowledge_fetch: { input: knowledgeFetchInput, run: knowledgeFetch },
+	knowledge_search: {
+		input: knowledgeSearchInput,
+		effect: "read",
+		run: knowledgeSearch,
+	},
+	knowledge_fetch: {
+		input: knowledgeFetchInput,
+		effect: "read",
+		run: knowledgeFetch,
+	},
 	ticket_read_messages: {
 		input: ticketReadMessagesInput,
+		effect: "read",
 		run: ticketReadMessages,
 	},
-	cluster_read_pods: { input: readPodsInput, run: readPods },
+	cluster_read_pods: { input: readPodsInput, effect: "read", run: readPods },
 	cluster_read_deployment: {
 		input: readDeploymentInput,
+		effect: "read",
 		run: readDeployment,
 	},
 	cluster_patch_image: {
 		input: patchImageInput,
+		effect: "write",
 		verifiedBy: "cluster_read_deployment",
 		run: patchImageWithChange,
 	},
-	device_read_state: device(deviceReadInput),
-	device_run_action: device(deviceActionInput, "device_read_state"),
-	device_computer_use: device(deviceComputerUseInput, "device_read_state"),
+	device_read_state: device(deviceReadInput, "read"),
+	device_run_action: device(deviceActionInput, "write", "device_read_state"),
+	device_computer_use: device(
+		deviceComputerUseInput,
+		"write",
+		"device_read_state",
+	),
 	// Writes a proposal and returns. Deliberately has no verifier: it changes
 	// nothing on the device, so there is nothing for a read to confirm.
 	device_propose_command: {
 		input: deviceProposeCommandInput,
+		effect: "write",
 		run: (input, ctx) => proposeDeviceCommand(input, ctx),
 	},
 	cmdb_record_observation: {
 		input: recordObservationInput,
+		effect: "write",
 		run: recordObservation,
 	},
-	cmdb_impact: { input: impactInput, run: cmdbImpact },
+	cmdb_impact: { input: impactInput, effect: "read", run: cmdbImpact },
 };
 
 export async function sweepExpiredChangeVerifications(now = new Date()) {
@@ -218,13 +220,23 @@ export async function executeTool(
 	};
 	const requested = (input as { environment?: string }).environment;
 	const linked = ctx.linkedEnvironments ?? new Set<string>();
-	assertEnvironmentAllowed({ name, requested, resolved, linked });
+	assertEnvironmentAllowed({
+		name,
+		effect: handler.effect,
+		requested,
+		resolved,
+		linked,
+	});
 	const pending =
 		name === "cluster_read_deployment"
 			? (
 					await db
-						.select({ id: changes.id })
+						.select({
+							id: changes.id,
+							environmentKey: agentRuns.environmentKey,
+						})
 						.from(changes)
+						.innerJoin(agentRuns, eq(changes.sourceRunId, agentRuns.id))
 						.where(
 							and(
 								eq(changes.sourceRunId, ctx.runId),
@@ -238,12 +250,9 @@ export async function executeTool(
 	const verifies = Boolean(pending);
 	// A verification read may only discharge a change created in the same
 	// environment; refusing here keeps a cross-cluster read from completing it.
-	if (
-		pending &&
-		!sameChangeEnvironment(changeEnvironment(pending.id), resolved.key)
-	)
+	if (pending && !sameChangeEnvironment(pending.environmentKey, resolved.key))
 		throw new Error(
-			`cannot verify change "${pending.id}" (environment "${changeEnvironment(pending.id)}") with a read against "${resolved.key}"`,
+			`cannot verify change "${pending.id}" (environment "${pending.environmentKey ?? "unknown"}") with a read against "${resolved.key}"`,
 		);
 	const marker = verifies
 		? "verifying_fix"

@@ -87,13 +87,19 @@ export const deviceActionInput = z
 			!DEVICE_GUI_STEPS.includes(
 				input.action as (typeof DEVICE_GUI_STEPS)[number],
 			) || Boolean(input.parameters.control),
-		{ message: "control is required for a GUI step", path: ["parameters", "control"] },
+		{
+			message: "control is required for a GUI step",
+			path: ["parameters", "control"],
+		},
 	)
 	.refine(
 		(input) =>
 			input.action !== "gui_set_control_value" ||
 			input.parameters.value !== undefined,
-		{ message: "value is required for gui_set_control_value", path: ["parameters", "value"] },
+		{
+			message: "value is required for gui_set_control_value",
+			path: ["parameters", "value"],
+		},
 	)
 	.refine(
 		(input) =>
@@ -136,7 +142,10 @@ const FACET_TIMEOUT_SECONDS: Record<string, number> = {
 };
 
 export const deviceReadTimeoutSeconds = (facets: readonly string[]) =>
-	facets.reduce((worst, facet) => Math.max(worst, FACET_TIMEOUT_SECONDS[facet] ?? 30), 30);
+	facets.reduce(
+		(worst, facet) => Math.max(worst, FACET_TIMEOUT_SECONDS[facet] ?? 30),
+		30,
+	);
 
 // The facet that observes each action's effect. device_run_action names
 // device_read_state as its verifier, and the loop enforces that obligation

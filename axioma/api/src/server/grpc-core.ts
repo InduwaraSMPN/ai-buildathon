@@ -12,14 +12,16 @@ export function createInboundQueue(
 	let tail = Promise.resolve();
 	let depth = 0;
 	let paused = false;
+	let refused = false;
 	return (message: Record<string, unknown>) => {
 		if (++depth >= limit && !paused) {
 			paused = true;
 			stream.pause();
 		}
 		tail = tail
-			.then(() => handle(message))
+			.then(() => (refused ? undefined : handle(message)))
 			.catch((error) => {
+				refused = true;
 				stream.destroy(
 					error instanceof Error ? error : new Error(String(error)),
 				);

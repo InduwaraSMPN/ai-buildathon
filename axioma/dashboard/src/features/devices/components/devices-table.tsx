@@ -1,29 +1,8 @@
-import { RiArrowUpDownLine as ArrowUpDown } from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
-import {
-	createColumnHelper,
-	flexRender,
-	getCoreRowModel,
-	getFilteredRowModel,
-	getPaginationRowModel,
-	getSortedRowModel,
-	type SortingState,
-	useReactTable,
-} from "@tanstack/react-table";
-import { useState } from "react";
+import { createColumnHelper } from "@tanstack/react-table";
+import { DataTable } from "@/components/data-table";
 import { PageState, timeAgo } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { orpc } from "@/utils/orpc";
 import type { Device } from "../api/types";
 import { DeviceDetailSheet } from "./device-detail-sheet";
@@ -32,6 +11,7 @@ const column = createColumnHelper<Device>();
 const columns = [
 	column.accessor("hostname", {
 		header: "Device",
+		size: 22,
 		cell: ({ row }) => {
 			const online =
 				!row.original.revokedAt &&
@@ -65,6 +45,7 @@ const columns = [
 		{
 			id: "user",
 			header: "User",
+			size: 20,
 			cell: ({ row }) => (
 				<div>
 					<p>{row.original.ownerName ?? "Unassigned"}</p>
@@ -82,6 +63,7 @@ const columns = [
 		{
 			id: "platform",
 			header: "Platform",
+			size: 18,
 			cell: ({ row }) => (
 				<div>
 					<p>
@@ -96,6 +78,7 @@ const columns = [
 	),
 	column.accessor("lastCommand", {
 		header: "Last command",
+		size: 16,
 		cell: ({ getValue }) => {
 			const command = getValue();
 			return command ? (
@@ -110,6 +93,7 @@ const columns = [
 	}),
 	column.accessor("credentialStatus", {
 		header: "Credential",
+		size: 12,
 		cell: ({ row, getValue }) => (
 			<Badge variant={row.original.revokedAt ? "destructive" : "outline"}>
 				{getValue()}
@@ -118,6 +102,7 @@ const columns = [
 	}),
 	column.accessor("lastSeenAt", {
 		header: "Last seen",
+		size: 12,
 		cell: ({ getValue }) => {
 			const value = getValue();
 			return (
@@ -144,19 +129,6 @@ export function DevicesTable({
 		}),
 	);
 	const selected = query.data?.find((device) => device.id === deviceId) ?? null;
-	const [filter, setFilter] = useState("");
-	const [sorting, setSorting] = useState<SortingState>([]);
-	const table = useReactTable({
-		data: query.data ?? [],
-		columns,
-		state: { globalFilter: filter, sorting },
-		onGlobalFilterChange: setFilter,
-		onSortingChange: setSorting,
-		getCoreRowModel: getCoreRowModel(),
-		getFilteredRowModel: getFilteredRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
-	});
 
 	if (query.isPending && query.data == null)
 		return (
@@ -177,111 +149,21 @@ export function DevicesTable({
 		);
 
 	return (
-		<div className="space-y-3">
-			<label className="block max-w-sm" htmlFor="devices-filter">
-				<span className="sr-only">Filter devices</span>
-				<Input
-					id="devices-filter"
-					value={filter}
-					onChange={(event) => setFilter(event.target.value)}
-					placeholder="Filter hostname, user, or platform…"
-				/>
-			</label>
-			{table.getRowModel().rows.length === 0 ? (
-				<PageState
-					kind="empty"
-					title="No devices found"
-					description={
-						filter
-							? "No device matches this filter."
-							: "No devices are enrolled."
-					}
-				/>
-			) : (
-				<Card>
-					<CardContent className="px-0">
-						<Table>
-						<TableHeader>
-							{table.getHeaderGroups().map((group) => (
-								<TableRow key={group.id}>
-									{group.headers.map((header) => (
-										<TableHead key={header.id}>
-											{header.isPlaceholder ? null : (
-												<Button
-													variant="ghost"
-													size="xs"
-													onClick={header.column.getToggleSortingHandler()}
-												>
-													{flexRender(
-														header.column.columnDef.header,
-														header.getContext(),
-													)}
-													<ArrowUpDown aria-hidden="true" />
-												</Button>
-											)}
-										</TableHead>
-									))}
-								</TableRow>
-							))}
-						</TableHeader>
-						<TableBody>
-							{table.getRowModel().rows.map((row) => (
-								<TableRow
-									key={row.id}
-									tabIndex={0}
-									className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-									onClick={() => onSelectDevice(row.original.id)}
-									onKeyDown={(event) => {
-										if (event.key === "Enter" || event.key === " ") {
-											event.preventDefault();
-											onSelectDevice(row.original.id);
-										}
-									}}
-									aria-label={`View ${row.original.hostname} device details`}
-								>
-									{row.getVisibleCells().map((cell) => (
-										<TableCell key={cell.id}>
-											{flexRender(
-												cell.column.columnDef.cell,
-												cell.getContext(),
-											)}
-										</TableCell>
-									))}
-								</TableRow>
-							))}
-						</TableBody>
-						</Table>
-					</CardContent>
-				</Card>
-			)}
-			<div className="flex items-center justify-between text-muted-foreground text-xs">
-				<span className="tabular-nums">
-					Page {table.getState().pagination.pageIndex + 1} of{" "}
-					{table.getPageCount() || 1}
-				</span>
-				<div className="flex gap-2">
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => table.previousPage()}
-						disabled={!table.getCanPreviousPage()}
-					>
-						Previous
-					</Button>
-					<Button
-						variant="outline"
-						size="sm"
-						onClick={() => table.nextPage()}
-						disabled={!table.getCanNextPage()}
-					>
-						Next
-					</Button>
-				</div>
-			</div>
+		<>
+			<DataTable
+				data={query.data ?? []}
+				columns={columns}
+				filterLabel="Filter devices"
+				filterPlaceholder="Filter hostname, user, or platform…"
+				emptyTitle="No devices found"
+				emptyDescription="No devices are enrolled."
+				onRowClick={(device) => onSelectDevice(device.id)}
+				rowLabel={(device) => `View ${device.hostname} device details`}
+			/>
 			<DeviceDetailSheet
 				device={selected}
 				onOpenChange={(open) => !open && onSelectDevice()}
 			/>
-		</div>
+		</>
 	);
 }

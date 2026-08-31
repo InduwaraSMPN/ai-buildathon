@@ -5,12 +5,18 @@
 
 import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
+import type { OVERVIEW_WIDGET_KEYS } from "@/contracts/automation";
 import { db } from "@/db";
 import { apiKeys } from "@/db/schema/api-keys";
 import { dashboardWidgets } from "@/db/schema/dashboards";
 import { documentLinks, documents } from "@/db/schema/documents";
-import { environments } from "@/db/schema/environments";
+import {
+	environments,
+	serviceEnvironments,
+	ticketEnvironments,
+} from "@/db/schema/environments";
 import { notifications } from "@/db/schema/notifications";
+import { tickets } from "@/db/schema/tickets";
 import { savedViews } from "@/db/schema/views";
 import {
 	DEMO_USERS,
@@ -64,6 +70,37 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 				updatedAt: daysFromEpoch(1, 9),
 			})
 			.onConflictDoNothing();
+
+		await tx
+			.insert(serviceEnvironments)
+			.values(
+				[
+					"svc-general",
+					"svc-infrastructure",
+					"svc-device",
+					"svc-access",
+				].flatMap((serviceId) => [
+					{ serviceId, environmentId: "demo-env-production" },
+					{ serviceId, environmentId: "demo-env-staging" },
+				]),
+			)
+			.onConflictDoNothing();
+		const firstTicketId = ticketIds[0];
+		if (firstTicketId) {
+			await tx
+				.insert(ticketEnvironments)
+				.values(
+					ticketIds.slice(0, 8).map((ticketId) => ({
+						ticketId,
+						environmentId: "demo-env-staging",
+					})),
+				)
+				.onConflictDoNothing();
+			await tx
+				.update(tickets)
+				.set({ deviceId: "demo-device-01" })
+				.where(eq(tickets.id, firstTicketId));
+		}
 
 		// Documents — ~10 kind:"link" only
 		const documentDefs = [
@@ -287,33 +324,85 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 				.onConflictDoNothing();
 		}
 
-		// Dashboard widgets — 1 arrangement per staff user, 4-6 widgets
-		const staffIds = DEMO_USERS.filter((u) => u.kind === "staff")
-			.map((u) => u.id)
-			.concat(adminId);
-		const uniqueStaff = [...new Set(staffIds)];
-		const widgetKeys = [
-			"ticket_queue",
-			"sla_breaches",
-			"my_assignments",
-			"recent_activity",
-			"knowledge_gaps",
-			"change_calendar",
+		// Dashboard widgets — one arrangement per staff user.
+		//
+		// The keys are the contract's OVERVIEW_WIDGET_KEYS, which the dashboard
+		// also renders from. Seeds write to the table directly rather than through
+		// setDashboardArrangement, so the contract's enum does not check them: a
+		// stored key with no renderer is silently dropped by
+		// orderedOverviewWidgets, and an arrangement that leaves nothing
+		// renderable falls back to the defaults — a wrong key here produces inert
+		// rows, not a visible error. Widths match the dashboard's presentation
+		// table; a mismatched width makes the grid ragged because the two
+		// double-width widgets are laid out first.
+		type WidgetKey = (typeof OVERVIEW_WIDGET_KEYS)[number];
+		const WIDGET_WIDTHS: Record<WidgetKey, 1 | 2> = {
+			priority: 2,
+			confirmation: 1,
+			escalations: 1,
+			"median-ttr": 1,
+			csat: 1,
+			"resolution-rate": 2,
+		};
+
+		// Deliberately varied so the arrangement feature demonstrates something:
+		// identical-to-default arrangements are indistinguishable from the
+		// fallback that renders when nothing is saved at all.
+		const ARRANGEMENTS: WidgetKey[][] = [
+			[
+				"priority",
+				"confirmation",
+				"escalations",
+				"median-ttr",
+				"csat",
+				"resolution-rate",
+			],
+			["resolution-rate", "median-ttr", "csat", "priority"],
+			["priority", "escalations", "confirmation"],
+			[
+				"escalations",
+				"priority",
+				"csat",
+				"resolution-rate",
+				"confirmation",
+				"median-ttr",
+			],
+			["priority", "resolution-rate"],
 		];
-		for (const staffId of uniqueStaff) {
-			for (let i = 0; i < widgetKeys.length; i++) {
-				const key = widgetKeys[i]!;
-				const sanitized = staffId.replace(/[^a-zA-Z0-9]/g, "-");
-				const id = `demo-widget-${sanitized}-${String(i).padStart(2, "0")}`;
+
+		// Admin leads the list so it draws ARRANGEMENTS[0], the full six — it is
+		// the account the demo signs in as, and a trimmed overview there reads as
+		// a half-built page rather than a deliberate arrangement.
+		const staffIds = [
+			adminId,
+			...DEMO_USERS.filter((u) => u.kind === "staff").map((u) => u.id),
+		];
+		const uniqueStaff = [...new Set(staffIds)];
+
+		for (let s = 0; s < uniqueStaff.length; s++) {
+			const staffId = uniqueStaff[s]!;
+			const keys = ARRANGEMENTS[s % ARRANGEMENTS.length]!;
+			const sanitized = staffId.replace(/[^a-zA-Z0-9]/g, "-");
+
+			// setDashboardArrangement replaces a user's whole arrangement rather
+			// than merging, so the seed does the same. It also repairs rows an
+			// earlier run wrote under a stale vocabulary, which an upsert keyed on
+			// id could not do once the key list changed length.
+			await tx
+				.delete(dashboardWidgets)
+				.where(eq(dashboardWidgets.userId, staffId));
+
+			for (let i = 0; i < keys.length; i++) {
+				const key = keys[i]!;
 				await tx
 					.insert(dashboardWidgets)
 					.values({
-						id,
+						id: `demo-widget-${sanitized}-${String(i).padStart(2, "0")}`,
 						userId: staffId,
 						widgetKey: key,
 						position: i,
-						width: i % 3 === 0 ? 2 : 1,
-						settings: { seeded: true, demo: true },
+						width: WIDGET_WIDTHS[key],
+						settings: null,
 						updatedAt: daysFromEpoch(10, 9),
 					})
 					.onConflictDoNothing();

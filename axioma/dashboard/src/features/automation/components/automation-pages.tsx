@@ -301,9 +301,9 @@ export function TicketRulesPage() {
 					description="Create the first rule to automate ticket handling."
 				/>
 			) : (
-				<div className="grid gap-3 lg:grid-cols-2">
+				<div className="grid gap-4 lg:grid-cols-2">
 					{query.data.map((rule) => (
-						<Card key={rule.id}>
+						<Card key={rule.id} className="h-full">
 							<CardHeader>
 								<CardTitle>{rule.name}</CardTitle>
 								<CardDescription>
@@ -316,7 +316,7 @@ export function TicketRulesPage() {
 									</Badge>
 								</CardAction>
 							</CardHeader>
-							<CardFooter className="flex gap-2">
+							<CardFooter className="mt-auto flex gap-2">
 								<Button
 									size="sm"
 									variant="outline"
@@ -437,98 +437,104 @@ export function WorkflowsPage() {
 				</Button>
 			}
 		>
-			{query.isPending ? (
-				<PageState
-					kind="loading"
-					title="Loading workflows"
-					description="Reading workflows…"
-				/>
-			) : query.isError ? (
-				<PageState
-					kind="error"
-					title="Workflows unavailable"
-					description={query.error.message}
-					onRetry={() => query.refetch()}
-				/>
-			) : query.data.length === 0 ? (
-				<PageState
-					kind="empty"
-					title="No workflows"
-					description="Create the first event-driven workflow."
-				/>
-			) : (
-				<div className="grid gap-3 lg:grid-cols-2">
-					{query.data.map((workflow) => (
-						<Card key={workflow.id}>
-							<CardHeader>
-								<CardTitle>{workflow.name}</CardTitle>
-								<CardDescription>
-									{workflow.triggerEvent} · {workflow.conditions.length}{" "}
-									conditions · {workflow.actions.length} actions
-								</CardDescription>
-								<CardAction>
-									<Badge variant={workflow.isActive ? "default" : "secondary"}>
-										{workflow.isActive ? "Active" : "Inactive"}
-									</Badge>
-								</CardAction>
-							</CardHeader>
-							{workflow.lastRunStatus ? (
-								<CardContent>
+			<div className="space-y-6">
+				{query.isPending ? (
+					<PageState
+						kind="loading"
+						title="Loading workflows"
+						description="Reading workflows…"
+					/>
+				) : query.isError ? (
+					<PageState
+						kind="error"
+						title="Workflows unavailable"
+						description={query.error.message}
+						onRetry={() => query.refetch()}
+					/>
+				) : query.data.length === 0 ? (
+					<PageState
+						kind="empty"
+						title="No workflows"
+						description="Create the first event-driven workflow."
+					/>
+				) : (
+					<div className="grid gap-4 lg:grid-cols-2">
+						{query.data.map((workflow) => (
+							<Card key={workflow.id} className="h-full">
+								<CardHeader>
+									<CardTitle>{workflow.name}</CardTitle>
+									<CardDescription>
+										{workflow.triggerEvent} · {workflow.conditions.length}{" "}
+										conditions · {workflow.actions.length} actions
+									</CardDescription>
+									<CardAction>
+										<Badge
+											variant={workflow.isActive ? "default" : "secondary"}
+										>
+											{workflow.isActive ? "Active" : "Inactive"}
+										</Badge>
+									</CardAction>
+								</CardHeader>
+								{workflow.lastRunStatus ? (
+									<CardContent>
+										<Badge variant="outline">
+											Last run: {workflow.lastRunStatus}
+										</Badge>
+									</CardContent>
+								) : null}
+								<CardFooter className="mt-auto flex gap-2">
+									<Button
+										size="sm"
+										variant="outline"
+										onClick={() => setEditingId(workflow.id)}
+									>
+										<Pencil data-icon="inline-start" />
+										Edit
+									</Button>
+									<DeleteButton
+										name={workflow.name}
+										pending={remove.isPending}
+										onConfirm={() => remove.mutate({ id: workflow.id })}
+									/>
+								</CardFooter>
+							</Card>
+						))}
+					</div>
+				)}
+				<Card>
+					<CardHeader>
+						<CardTitle>Webhook deliveries</CardTitle>
+						<CardDescription>
+							Latest webhook responses and failures.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="flex flex-col gap-3">
+						{deliveries.data?.map((delivery) => (
+							<div key={delivery.id} className="rounded-md border p-3 text-sm">
+								<div className="flex items-center justify-between gap-2">
+									<span className="truncate font-medium">{delivery.url}</span>
 									<Badge variant="outline">
-										Last run: {workflow.lastRunStatus}
+										{delivery.responseStatus ?? delivery.status}
 									</Badge>
-								</CardContent>
-							) : null}
-							<CardFooter className="flex gap-2">
-								<Button
-									size="sm"
-									variant="outline"
-									onClick={() => setEditingId(workflow.id)}
-								>
-									<Pencil data-icon="inline-start" />
-									Edit
-								</Button>
-								<DeleteButton
-									name={workflow.name}
-									pending={remove.isPending}
-									onConfirm={() => remove.mutate({ id: workflow.id })}
-								/>
-							</CardFooter>
-						</Card>
-					))}
-				</div>
-			)}
-			<Card>
-				<CardHeader>
-					<CardTitle>Webhook deliveries</CardTitle>
-					<CardDescription>
-						Latest webhook responses and failures.
-					</CardDescription>
-				</CardHeader>
-				<CardContent className="flex flex-col gap-3">
-					{deliveries.data?.map((delivery) => (
-						<div key={delivery.id} className="rounded-md border p-3 text-sm">
-							<div className="flex items-center justify-between gap-2">
-								<span className="truncate font-medium">{delivery.url}</span>
-								<Badge variant="outline">
-									{delivery.responseStatus ?? delivery.status}
-								</Badge>
+								</div>
+								{delivery.responseBody ? (
+									<pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs">
+										{delivery.responseBody}
+									</pre>
+								) : null}
+								{delivery.lastError ? (
+									<p className="mt-2 text-destructive">{delivery.lastError}</p>
+								) : null}
 							</div>
-							{delivery.responseBody ? (
-								<pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs">
-									{delivery.responseBody}
-								</pre>
-							) : null}
-							{delivery.lastError ? (
-								<p className="mt-2 text-destructive">{delivery.lastError}</p>
-							) : null}
-						</div>
-					))}
-					{deliveries.data?.length === 0 ? (
-						<p className="text-muted-foreground text-sm">No deliveries yet.</p>
-					) : null}
-				</CardContent>
-			</Card>
+						))}
+						{deliveries.data?.length === 0 ? (
+							<p className="text-muted-foreground text-sm">
+								No deliveries yet.
+							</p>
+						) : null}
+					</CardContent>
+				</Card>
+			</div>
 			<AutomationEditor
 				open={editingId !== undefined}
 				title={selected ? "Edit workflow" : "New workflow"}

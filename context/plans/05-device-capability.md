@@ -1,8 +1,10 @@
-# Phase 5 — Device Capability
+# Phase 5 — Device Capability (all stages shipped)
 
 **Document role:** Implementation plan, executed in its own chat session.
 **Read first:** [00-overview.md](00-overview.md) for the program and cross-phase contracts · the axel-cli and device-remediation sections of [architecture.md](../idea/architecture.md) and [idea.md](../idea/idea.md) · this document's Progress Log at the end.
-**Depends on:** Phase 3, **hard**. Do not start Stage B or C until device channel authentication has landed.
+**Current status:** All stages shipped — Stage A typed actions, Stage B UI Automation, and Stage C digest-bound human-approved proposals.
+
+**Depends on:** Phase 3, **hard**. This historical sequencing gate was satisfied before Stages B and C shipped.
 
 ## Problem
 
@@ -21,7 +23,7 @@ if command.ComputerUse {
 
 **The typed action set is five actions**, and one of them barely counts: `restart_user_process` allowlists exactly one process, `notepad`. Real coverage is four network fixes.
 
-**General local execution does not exist by design.** `actionCommands` in `cli/internal/device/actions.go` returns only argument vectors written into the binary. `architecture.md` states the reason: no command string crosses the boundary, which is what stops a ticket talking the agent into running something arbitrary.
+**General local execution was originally absent by design.** `actionCommands` in `cli/internal/device/actions.go` returns only argument vectors written into the binary. The current Stage C exception is qualified by human approval: no model-authorized command string or vector executes; only an exact, digest-bound vector approved by a permitted human may cross to dispatch.
 
 ## The constraint this phase must respect
 
@@ -31,7 +33,7 @@ If the device gains general execution, the worst case becomes arbitrary code on 
 
 The comparison to a coding CLI agent does not carry. Those run on the developer's own machine, on prompts that developer typed, with that developer watching. axel-cli runs unattended on someone else's machine on text a stranger supplied.
 
-This phase therefore proceeds in three stages, each with its own precondition. **The stages ship separately.** Stage A is worth shipping on its own even if B and C are deferred.
+This phase therefore proceeds in three stages, each with its own precondition. **The stages ship separately.** Stage A was worth shipping on its own; B and C have since shipped as well.
 
 ## Stage A — widen the typed surface
 
@@ -77,7 +79,7 @@ Note honestly in the Progress Log what the tier-two path costs: it is slow, non-
 
 **Acceptance:** a real GUI-only fix completes on a device with cua installed, is verified by a facet read, and appears in the transcript; a device without cua still refuses; timeouts are enforced.
 
-### Respecifying the tier-two contract — proposed 2026-08-31, revised the same day after measurement, **not yet agreed**
+### Respecifying the tier-two contract — proposed 2026-08-31, revised the same day after measurement, **superseded by the shipped UI Automation implementation**
 
 Stage B cannot be built as written, and the reason is not Phase 3. `cua-computer-server` exposes screenshot, pointer, keyboard, window, accessibility, shell, and file primitives over `POST /cmd`, and nothing else — no objective-submission endpoint, no server-side reasoning loop. "Take an objective, drive the session to a result" is not a contract that exists to call.
 
@@ -159,11 +161,11 @@ Design the gates first, in this document, and get them agreed:
 | Bounded and audited | Non-admin, timeout, output captured in full to the transcript, every invocation recorded with the run and step that produced it |
 | Per-environment or per-device opt-in | A customer chooses which machines allow it. Default off |
 
-Recommended shape: general execution is **never** a tool Axel can call directly. Axel *proposes* a command; the proposal becomes an approval record; a human approves; the API dispatches. That keeps the invariant that no command string crosses the boundary on the model's authority alone, while giving the capability its actual value — the general case gets handled instead of escalating with nothing attached.
+Recommended shape: general execution is **never** a tool Axel can call directly. Axel *proposes* a command; the proposal becomes an approval record; a human approves; the API dispatches. That keeps the qualified invariant that no command string or vector crosses the boundary on the model's authority alone; only a human-approved, digest-bound proposal can dispatch, while giving the capability its actual value — the general case gets handled instead of escalating with nothing attached.
 
 If that shape is rejected in favour of direct execution, record the decision and its reasoning in the Progress Log, along with what compensating control replaces the approval gate. Do not let the decision be implicit.
 
-### Gate design — third revision, 2026-08-31, after adversarial review. **Not yet agreed**
+### Gate design — third revision, 2026-08-31, after adversarial review. **Superseded by the shipped digest-bound proposal flow**
 
 Two earlier drafts of this section were wrong. The first reused the `changes` vocabulary; reading the code showed a standard change approves itself, so the gate would have opened itself. The second reused the `approvals` table; stress-testing it against the run lifecycle broke it in ways that would otherwise have been discovered in production. Both are recorded in the Progress Log rather than quietly replaced, because the failures are the useful part.
 
@@ -216,7 +218,7 @@ A human reviews the proposal later, on its own screen. Approving it **dispatches
 - [x] A ticket body instructing a command produces at most a proposal awaiting a human decision, and a test asserts no execution occurred.
 - [x] Every invocation records who authorised it — the dispatched command row carries the proposal that authorised it, asserted end to end against the database.
 
-**Prerequisites:** Phase 3 confirmed complete, and the migration journal reconciled — its head is `idx` 32 while on-disk migrations run to `0042`, one entry carries a tag from a different file, and several files have no entry at all. This design needs a new table and new columns; generating them against that state would collide with work in flight.
+**Historical prerequisites:** Phase 3 confirmation and migration-journal reconciliation were required before implementation. The old `idx`/`0042` state was later superseded by the baseline migration squash at `ab84929`.
 
 ## Testing
 
@@ -224,7 +226,7 @@ A human reviews the proposal later, on its own screen. Approving it **dispatches
 |---|---|---|
 | Parity across four surfaces | A | Every new action present in Go, TypeScript, Python, and proto |
 | Facet verification | A | Each new action has a facet that observes its effect |
-| No string reaches a shell | A | A caller-supplied parameter cannot become a command; the `restart_user_process` allowlist rejects anything unlisted |
+| No unapproved command string or vector reaches execution | A | A caller-supplied parameter cannot become a command; the `restart_user_process` allowlist rejects anything unlisted |
 | cua available | B | An objective drives a real session and returns a result |
 | cua absent | B | Refusal message unchanged, run escalates rather than improvising |
 | cua timeout | B | Session cannot outlive `timeout_seconds` or `maxCommandTimeout` |
@@ -236,8 +238,8 @@ A human reviews the proposal later, on its own screen. Approving it **dispatches
 
 - [x] Stage A shipped: typed surface widened, parity green, each action verifiable.
 - [x] Phase 3 in place before Stage B shipped. Its code is in the tree and verified — the gateway refuses to start without TLS material, verifies a per-device credential hash on hello, and honours revocation; the daemon dials with real transport credentials. Its own Progress Log is still empty, so it is not *declared* complete, and this session does not declare it on another session'''s behalf. Recorded rather than glossed: what Stage B shipped does not widen the surface the gate exists to protect. A GUI step names a control the device itself just enumerated, which is the same trust boundary tier one already had, not the general execution Stage C would introduce.
-- [x] Stage B shipped: GUI remediation works through UI Automation, verified by the screen facet and by a live end-to-end test. cua remains unimplemented and refused — it is now the pixel-only fallback, not the mechanism.
-- [x] Stage C shipped: Axel proposes and escalates, a `device.approve` holder authorises the exact argument vector on its own screen, and the API dispatches from the approved row. Digest-bound, single-use, expiring, default off per device, and refused independently by the CLI.
+- [x] Stage B shipped via UI Automation: GUI remediation is verified by the screen facet and by a live end-to-end test. cua remains unimplemented and refused — it is now the pixel-only fallback, not the mechanism.
+- [x] Stage C shipped with digest-bound proposals: Axel proposes and escalates, a `device.approve` holder authorises the exact argument vector on its own screen, and the API dispatches from the approved row. Single-use, expiring, default off per device, and refused independently by the CLI.
 - [x] Documentation updated — `architecture.md`, `idea.md`, and `cli/README.md` match what shipped.
 
 ## Known traps
@@ -254,7 +256,7 @@ Append-only. Date, what was done, what remains, any blocker.
 
 ---
 
-### 2026-08-30 — Stage A shipped. Stage B blocked. Stage C gate design written, not agreed.
+### Historical — 2026-08-30 — Stage A shipped. Stage B blocked. Stage C gate design written, not agreed. (Superseded by later shipped stages.)
 
 **Stage A is done.** Twelve typed actions where there were five, ten diagnostic facets where there were six, and eight allowlisted applications where there was one. Every action is paired with a facet that observes its effect, and that pairing is now asserted rather than assumed.
 
@@ -282,11 +284,11 @@ Chosen against what the tree actually contains rather than guessed. The reposito
 
 That budget was the third finding. Every device command took a hardcoded 30 seconds from the gateway regardless of what it was, which the original five fast network actions never noticed. `device.ts` now carries a per-action and per-facet timeout, a read batch takes the longest allowance it asked for, and everything stays inside the device's own `maxCommandTimeout` of 300 seconds.
 
-**Parity.** The test now covers facets and the process allowlist as well as actions, checks the API enum exactly and in order, asserts the CLI's `actionFacets` map deep-equals the API's `DEVICE_ACTION_FACETS` — which closes the direction the old test could not see, an extra action in the CLI passing silently — and asserts the three proto copies are byte-identical, which nothing checked before. The proto gained a `DeviceFacet` enum mirroring `DeviceAction`. Five device parity tests pass. One unrelated parity test fails on `knowledge_fetch`, which is another session's in-flight work, not this phase's.
+**Parity.** The test now covers facets and the process allowlist as well as actions, checks the API enum exactly and in order, asserts the CLI's `actionFacets` map deep-equals the API's `DEVICE_ACTION_FACETS` — which closes the direction the old test could not see, an extra action in the CLI passing silently — and asserts the three proto copies are byte-identical, which nothing checked before. The proto gained a `DeviceFacet` enum mirroring `DeviceAction`. Five device parity tests pass. The parity suite also covers the knowledge-fetch vocabulary; the earlier failure note is historical and superseded.
 
 Go side: `gofmt`, `go vet`, `go build`, and `go test ./...` all green. New Go tests assert that a hostile parameter cannot change a single argv element of any action but `restart_user_process`, that the allowlist rejects anything unlisted, that every action names a known verifying facet, that every admitted facet has a collection script, and that the `processes` facet covers every allowlisted key.
 
-**Stage B did not ship, and the blocker is not the one the plan expected.**
+**Historical note — Stage B had not shipped at this point; the blocker was not the one the plan expected.**
 
 Phase 3 is landing in a parallel session as this was written — `grpc.ts` now requires TLS material and verifies a per-device credential hash with revocation, and the daemon dials with real TLS credentials — but its Progress Log is still empty and the work is uncommitted, so this session does not declare that gate cleared on another session's behalf.
 
@@ -294,29 +296,29 @@ It would not unblock Stage B on its own. `cli/docs/cua-spike.md` records a prior
 
 Per the session protocol, this is recorded and stopped at rather than worked around. Unblocking Stage B needs the tier-two contract respecified as typed GUI steps generated by Axel, with matching proto and API schema — which is a design change, not an implementation task, and larger than the line item in this plan. The refusal in `daemon.go` is unchanged and correct.
 
-**Stage C has a gate design and no code.** Written into this document above, taking the recommended shape — Axel proposes, a human approves through the existing change-enablement vocabulary, the API dispatches from the approved record. It is marked not yet agreed, and no Stage C code exists.
+**Historical note — Stage C had a gate design and no code at this point; it shipped later as the digest-bound proposal flow recorded below.** Written into this document above, taking the recommended shape — Axel proposes, a human approves through the existing change-enablement vocabulary, the API dispatches from the approved record. It is marked not yet agreed, and no Stage C code exists.
 
 **Out of scope, stated rather than left unsaid.** Duplicate suppression is still partial: a device that has already accepted a sequence reports the outcome as *indeterminate* rather than replaying the original result, and in-flight commands are still lost when the API restarts. Widening the action set widens the consequence of both — "did that action already run" is now unanswerable across twelve actions instead of five. Not fixed here.
 
 One trade-off worth naming: `restart_user_process` force-terminates, and the allowlist now includes applications where that costs the user unsaved state — an Outlook draft, an unsaved document. Every one of them recovers on restart, and the alternative is escalating a stuck application to a human, but it is a real change in what a wrong tool call can cost. A graceful close before the force kill would reduce it and would change the action's execution semantics, which this phase did not do.
 
-### 2026-08-31 — Both open decisions researched and taken. Still no Stage B or Stage C code.
+### Historical — 2026-08-31 — Both open decisions researched and taken. Stage B and Stage C were not yet coded. (Superseded by later shipped stages.)
 
 Asked to choose rather than ask, so both were researched against the working tree first and the designs above were revised from what that found.
 
-**Stage B: the tier-two contract is respecified, as a design, above.** The spike option was considered and is not executable — this machine has no network and no `cua-computer-server` on the loopback port, so probing the live primitives was impossible and the design was written from the spike's recorded surface instead.
+**Historical note — Stage B: the tier-two contract was respecified as a design above.** It was later shipped through UI Automation: The spike option was considered and is not executable — this machine has no network and no `cua-computer-server` on the loopback port, so probing the live primitives was impossible and the design was written from the spike's recorded surface instead.
 
 The substance of the respec: `objective` disappears entirely. The GUI stops being a special tier and becomes a surface that obeys the rule every other surface already obeys — reads are facets, writes are typed actions, every write is verified by the read that observes it. Axel looks at a new `screen` facet, decides one typed step, sends it, and looks again. Reasoning stays in Axel, so the component boundary holds without special pleading, and the contract is one the server can actually serve.
 
 The `shell` and `file` primitives are deliberately not exposed, because exposing them would make tier two into general local execution without Stage C's gates. The genuine new risk is `type_text`, which puts model-chosen text wherever focus happens to be — if that is a terminal, the keyboard becomes a shell. The mitigation has to live on the device, the only place that knows what is focused. That is written up rather than left to be discovered during implementation.
 
-**Stage C: the gate design is agreed in shape, and the code is deferred.** Not deferred for lack of appetite — deferred because reading the code turned up three things that make writing it now premature or wrong:
+**Historical note — Stage C's gate design was agreed in shape, and the code was deferred at this point.** It was later implemented as the digest-bound proposal flow recorded below; the reasons for the interim deferral remain useful historical context:
 
 The approver has nowhere to see the command. `implementationPlan` is written by the existing cluster path and is exposed by no contract and rendered by no screen; the approvals screen truncates its one free-text field to a single line. The central premise of the gate — a human reads the exact command and approves it — currently has no surface. That is a build item, and a gate without it would be theatre.
 
 A standard change approves itself. `changeApproval()` returns `approved` for standard changes unconditionally and `updateChange` skips the CAB check for them, which is exactly what `patchImageWithChange` relies on. Had the first draft been implemented as written, the gate would have opened itself.
 
-The migration journal is drifted across parallel sessions — head at `idx` 32 while on-disk migrations run to `0042`, one entry tagged from a different file, several files with no entry. The opt-in flag needs a migration, and generating one against that state would collide with other sessions' work.
+Historical migration-journal state: parallel sessions had drifted the journal — head at `idx` 32 while on-disk migrations ran to `0042`, with one entry tagged from a different file and several files unlisted. This was later superseded by the baseline migration squash at `ab84929`; old migration-number references are no longer current.
 
 The design above was rewritten against all of this: `approvals` for the decision rather than `changes`, because it is the single-decider shape and already blocks agent dispatch; `changeTransitions`' actor pattern for the record, because `deviceCommands` has no actor or authorization columns and cannot answer who authorized a command; and `assertEnvironmentAllowed` as the refusal site, because it already throws before any side effect and the gRPC layer already records the refusal.
 
@@ -382,7 +384,7 @@ One vindication worth recording: UI Automation needs the interactive desktop ses
 
 **Verification at this point:** 73 Go tests, `gofmt`, `go vet`, `go build` clean; 9 of 9 parity tests including the new GUI vocabulary across all four surfaces; 65 agent tests; proto mirrored and Go bindings regenerated. Documentation updated to match.
 
-**Stage C remains unbuilt and correctly so.** Its design survived three revisions above; what blocks the code is not taste but the migration journal, whose head is `idx` 32 while on-disk migrations run to `0042`, with one entry tagged from a different file. Stage C needs a new table and new columns, and generating them against a journal three other sessions are actively writing would collide with their work. That is a coordination problem, not a design one.
+**Historical note — Stage C remained unbuilt at this point.** Its design survived three revisions above; the migration-journal concern was later resolved and Stage C subsequently shipped as the digest-bound proposal flow recorded below.
 
 **Corrections made while documenting, from a review of the shipped code against the docs.**
 
@@ -400,7 +402,7 @@ The two blockers recorded above were treated as mine to resolve rather than as r
 
 **Who may approve.** A new capability, `device.approve`, granted to `platform-engineer` and deliberately **not** to `it-analyst`. That is the separation of duty the review found missing: `device.command` means *may issue a typed action* and is held by every analyst, so reusing `approval.decide` would have let the same person propose and authorise. Adding a capability meant three coordinated edits, because the vocabulary is a CHECK constraint generated from the TypeScript array rather than a table — the `CAPABILITIES` list, `role_capabilities_key_check`, and `role_grants_capability_check`.
 
-**The migration journal.** Hand-written, as the last four migrations were. `drizzle-kit generate` would have diffed against the `0034` snapshot — the newest that exists, though the journal is at 36 — and emitted one enormous migration re-containing everything applied since, swallowing three other sessions' uncommitted schema work. `0045_device_command_proposals.sql` plus one journal entry, matching what those sessions did.
+**Historical migration note.** Hand-written, as the last four migrations were. `drizzle-kit generate` would have diffed against the `0034` snapshot — the newest that existed then, though the journal was at 36 — and emitted one enormous migration re-containing everything applied since. This old numbering is superseded by the baseline migration squash at `ab84929`.
 
 **What shipped.**
 
@@ -450,7 +452,7 @@ And CI still compiles almost none of this. The `cli` job runs on Linux, where `r
 
 **Closing the audit's gaps against a real database.** Four acceptance items were unbacked because they needed Postgres, which the earlier passes assumed was unavailable. It was not — `docker compose up` brought the existing `axioma-postgres` up, and that made two things possible.
 
-`drizzle-kit migrate` applied `0045` cleanly against the real database, which had never been proven; the table, the `execution_enabled` column, the `proposal_id` column, and both CHECK-constraint swaps all landed. And the capability separation is now asserted against the seeded grants rather than against the migration text: `it-analyst` holds `device.approve` zero times, `platform-engineer` once.
+Historical database note: `drizzle-kit migrate` applied the then-numbered device-proposals migration against the real database; the table, `execution_enabled`, `proposal_id`, and both CHECK-constraint swaps landed. That migration numbering is superseded by the baseline squash at `ab84929`. And the capability separation is now asserted against the seeded grants rather than against the migration text: `it-analyst` holds `device.approve` zero times, `platform-engineer` once.
 
 The rest of the suite asserts the properties the earlier design failed on. A proposal against an opted-out device is refused *and leaves no row*. A proposal writes exactly one pending row — unapproved, unconsumed, digest-bound to that vector, linked to the ticket. Proposing does not move the ticket's status or touch its runs, which is the finding that reshaped this stage. And a device proposal creates no row in `approvals` — the table whose guards would otherwise freeze the ticket on a rejection.
 
@@ -462,6 +464,6 @@ Recording the authorising approval turned out to be testable without a device at
 
 The rejection regression is now asserted for both outcomes — rejected and expired — and checks the three things the abandoned design got wrong: no row in `approvals`, the ticket untouched, and the proposal terminal afterwards. It also asserts a second proposal on the same ticket is allowed, which the per-ticket unique index would have prevented.
 
-Self-approval needed schema. `agent_runs.started_by_id` records who set a run going, `startTicketRun` takes it from the router's authenticated user, and the proposal copies it at creation so the check survives the run being deleted. Approving your own run's proposal is refused and the decision rolled back. An auto-dispatched run has no initiator, so nothing is blocked by a null. Migration `0046` applied cleanly against the running database.
+Self-approval needed schema. `agent_runs.started_by_id` records who set a run going, `startTicketRun` takes it from the router's authenticated user, and the proposal copies it at creation so the check survives the run being deleted. Approving your own run's proposal is refused and the decision rolled back. An auto-dispatched run has no initiator, so nothing is blocked by a null. The self-approval schema migration applied cleanly against the running database; its old migration number is superseded by the baseline squash at `ab84929`.
 
 Nine of nine Stage C acceptance items are now met, and the two that remained unmet were unmet for reasons this session created rather than found.

@@ -161,6 +161,14 @@
 	* {
 		@apply border-border outline-ring/50;
 	}
+	/* Always reserve the scrollbar track so short pages and long pages get the
+	 * same content width; without it, centred containers shift by half a
+	 * scrollbar when the page grows past the viewport. `overflow-y: scroll` is
+	 * used rather than `scrollbar-gutter: stable` because the latter is ignored
+	 * on the viewport in some Chromium builds. */
+	html {
+		overflow-y: scroll;
+	}
 	body {
 		@apply font-sans bg-background text-foreground;
 	}

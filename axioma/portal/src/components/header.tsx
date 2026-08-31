@@ -1,8 +1,13 @@
-import { RiAddLine, RiMenuLine } from "@remixicon/react";
+import {
+	RiAddLine,
+	RiArrowRightUpLine as ArrowRightUp,
+	RiMenuLine,
+} from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { AxiomaWordmark } from "@/components/brand";
 import { statusCopy } from "@/features/status/copy";
+import { siteUrl } from "@/lib/api-url";
 import { authClient } from "@/lib/auth-client";
 import { orpc } from "@/utils/orpc";
 import { ModeToggle } from "./mode-toggle";
@@ -68,13 +73,14 @@ export default function Header() {
 								Help articles
 							</Link>
 						) : null}
-						<Link
-							to="/status"
-							className="text-muted-foreground text-sm transition-colors hover:text-foreground"
-							activeProps={{ className: "text-foreground font-medium" }}
+						{/* Published on the public website, so this leaves the portal. */}
+						<a
+							href={siteUrl("status")}
+							className="flex items-center gap-1 text-muted-foreground text-sm transition-colors hover:text-foreground"
 						>
 							{statusCopy.viewStatus}
-						</Link>
+							<ArrowRightUp className="size-3.5" />
+						</a>
 					</nav>
 				</div>
 				<div className="flex items-center gap-2">
@@ -103,8 +109,9 @@ export default function Header() {
 										Help articles
 									</DropdownMenuItem>
 								) : null}
-								<DropdownMenuItem render={<Link to="/status" />}>
+								<DropdownMenuItem render={<a href={siteUrl("status")} />}>
 									{statusCopy.viewStatus}
+									<ArrowRightUp className="ml-auto size-3.5 text-muted-foreground" />
 								</DropdownMenuItem>
 								{signedIn && !foreignFrontDoor ? (
 									<DropdownMenuItem render={<Link to="/tickets/new" />}>

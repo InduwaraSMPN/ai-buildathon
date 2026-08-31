@@ -171,7 +171,7 @@ function MailTemplates() {
 				</Dialog>
 			}
 		>
-			<div className="grid gap-3">
+			<div className="grid gap-3 md:grid-cols-2">
 				{templates.data.map((template) => (
 					<Card key={template.id}>
 						<CardHeader>

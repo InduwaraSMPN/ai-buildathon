@@ -2,9 +2,17 @@ package device
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +22,9 @@ import (
 	"time"
 
 	"github.com/axioma/cli/internal/pb"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 )
 
@@ -116,6 +126,76 @@ func TestAuthErrorIsTerminal(t *testing.T) {
 	if err := authError("connect", status.Error(codes.Unavailable, "down")); errors.As(err, &terminal) {
 		t.Fatalf("network error was terminal: %v", err)
 	}
+}
+
+type tlsDeviceServer struct {
+	pb.UnimplementedDeviceChannelServer
+}
+
+func (tlsDeviceServer) Connect(stream pb.DeviceChannel_ConnectServer) error {
+	if _, err := stream.Recv(); err != nil {
+		return err
+	}
+	return stream.Send(&pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{Enrollment: &pb.DeviceEnrollment{AuthValid: true}}})
+}
+
+func TestConfiguredCAAndHostnameVerification(t *testing.T) {
+	caPEM, serverCert, serverKey := testCertificate(t, "localhost", true)
+	untrustedCA, _, _ := testCertificate(t, "localhost", true)
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caFile, caPEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cert, err := tls.X509KeyPair(serverCert, serverKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := grpc.NewServer(grpc.Creds(credentials.NewTLS(&tls.Config{Certificates: []tls.Certificate{cert}})))
+	pb.RegisterDeviceChannelServer(server, tlsDeviceServer{})
+	go server.Serve(listener)
+	defer server.Stop()
+	defer listener.Close()
+
+	address := listener.Addr().String()
+	id := Identity{DeviceID: "device"}
+	if got, err := CheckAuth(context.Background(), Config{GRPCHost: address, CAFile: caFile, TLSServerName: "localhost"}, id); err != nil || got == "" {
+		t.Fatalf("matching configured CA/hostname failed: %q, %v", got, err)
+	}
+
+	untrustedFile := filepath.Join(t.TempDir(), "untrusted-ca.pem")
+	if err := os.WriteFile(untrustedFile, untrustedCA, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CheckAuth(context.Background(), Config{GRPCHost: address, CAFile: untrustedFile, TLSServerName: "localhost"}, id); err == nil {
+		t.Fatal("untrusted CA was accepted")
+	}
+	if _, err := CheckAuth(context.Background(), Config{GRPCHost: address, CAFile: caFile, TLSServerName: "not-localhost"}, id); err == nil {
+		t.Fatal("wrong TLS hostname was accepted")
+	}
+}
+
+func testCertificate(t *testing.T, name string, ca bool) ([]byte, []byte, []byte) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 120))
+	if err != nil {
+		t.Fatal(err)
+	}
+	template := &x509.Certificate{SerialNumber: serial, Subject: pkix.Name{CommonName: name}, DNSNames: []string{name}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), BasicConstraintsValid: true, IsCA: ca, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+	return certPEM, certPEM, keyPEM
 }
 
 func TestTransportCredentialsRejectsInvalidCA(t *testing.T) {

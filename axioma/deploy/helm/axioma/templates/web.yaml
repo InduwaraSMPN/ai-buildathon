@@ -1,0 +1,121 @@
+{{- if .Values.web.enabled }}
+{{/*
+The public website. It does not share the frontend template with the portal and
+the dashboard: those are static bundles behind nginx that read their API URL
+from /config.js in the browser, and this one is a Nitro server that reads it
+from its own environment and calls the API server-side. That is deliberate — it
+keeps the marketing origin out of api.config.corsOrigin.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "axioma.web.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "web") | nindent 4 }}
+  {{- with .Values.web.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.web.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.web.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "axioma.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "axioma.web.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "axioma.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "axioma.selectorLabels" (dict "root" . "component" "web") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "axioma.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- with .Values.web.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: web
+          image: {{ include "axioma.image" .Values.images.web }}
+          imagePullPolicy: {{ .Values.images.web.pullPolicy }}
+          {{- with .Values.web.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            # Reached from inside the cluster, not from a browser: the in-cluster
+            # Service name is the right value here, and it does not belong in
+            # api.config.corsOrigin.
+            - name: AXIOMA_API_URL
+              value: {{ .Values.web.apiUrl | default (printf "http://%s:%v" (include "axioma.api.fullname" .) .Values.api.service.port) | quote }}
+            {{- with .Values.web.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          # The site has no health endpoint of its own; "/" is a rendered route,
+          # so a 200 there means the Nitro server and the router both work. It
+          # reads nothing from the API, unlike /status.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          volumeMounts:
+            # The root filesystem is read-only, and Node writes to /tmp for
+            # things the site never asks for directly — leaving it unwritable
+            # turns an ordinary request into a crash.
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with (default .Values.nodeSelector .Values.web.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default .Values.tolerations .Values.web.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default .Values.affinity .Values.web.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

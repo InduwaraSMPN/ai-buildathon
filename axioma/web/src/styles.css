@@ -159,6 +159,10 @@
 }
 html {
 	scroll-behavior: smooth;
+	/* Always reserve the scrollbar track so short pages and long pages get the
+	 * same content width; without it, the centred shells shift by half a
+	 * scrollbar when a page grows past the viewport. */
+	overflow-y: scroll;
 }
 body {
 	margin: 0;
@@ -1684,6 +1688,121 @@ h3 {
 }
 
 /* ── Staggered reveal — single high-impact moment ── */
+/* Service status — public availability page.
+   Availability tones are local to this page: the shared palette carries brand
+   and neutrals, but no success/warning/danger trio. */
+.status-list {
+	display: flex;
+	flex-direction: column;
+	gap: clamp(12px, 1.4vw, 20px);
+	padding-block: clamp(8px, 1.2vw, 20px);
+}
+
+.status-card {
+	--status-up: var(--color-brand);
+	--status-degraded: oklch(0.75 0.15 75);
+	--status-down: var(--destructive);
+	display: flex;
+	flex-direction: column;
+	gap: clamp(16px, 1.8vw, 24px);
+	padding: clamp(24px, 2.6vw, 32px);
+	border-radius: var(--edge-card);
+	background: var(--color-veil);
+}
+
+.status-card > header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.status-card h2 {
+	margin: 0;
+	font-size: 1.05rem;
+}
+
+.status-pill {
+	padding: 4px 12px;
+	border-radius: var(--edge-pill);
+	font-size: 0.8rem;
+	white-space: nowrap;
+}
+
+.status-pill.is-up {
+	background: var(--color-brand-tint);
+	color: var(--color-brand-deep);
+}
+
+.status-pill.is-down {
+	background: color-mix(in oklch, var(--status-down) 12%, transparent);
+	color: var(--status-down);
+}
+
+/* The 90 bars share the row equally and shrink rather than overflow, so the
+   strip stays one line at every width. */
+.status-strip {
+	display: flex;
+	gap: 2px;
+}
+
+.status-day {
+	flex: 1 1 0;
+	min-width: 0;
+	height: 32px;
+	border-radius: 2px;
+}
+
+.status-day.is-up {
+	background: var(--status-up);
+}
+
+.status-day.is-degraded {
+	background: var(--status-degraded);
+}
+
+.status-day.is-down {
+	background: var(--status-down);
+}
+
+.status-uptime {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--gutter);
+	margin: 0;
+	text-align: center;
+}
+
+.status-uptime dt {
+	color: var(--color-lead);
+	font-size: 0.8rem;
+}
+
+.status-uptime dd {
+	margin: 4px 0 0;
+	font-weight: 500;
+}
+
+.status-empty {
+	align-items: center;
+	text-align: center;
+}
+
+.status-empty p {
+	margin: 0;
+	color: var(--color-lead);
+}
+
+@media (max-width: 640px) {
+	.status-uptime {
+		grid-template-columns: 1fr;
+	}
+	.status-day {
+		height: 24px;
+	}
+}
+
+
 @media (prefers-reduced-motion: no-preference) {
 	.reveal-group .reveal {
 		opacity: 0;

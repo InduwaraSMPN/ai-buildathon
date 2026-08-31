@@ -1,6 +1,8 @@
 # Phase 6 — ITSM Connector
 
 **Document role:** Research brief followed by an implementation plan, executed in its own chat session.
+
+**Current status:** Connector implementation is shipped in staged increments. The earlier research-session statement that no production code was written is historical, not current; the remaining open items are the real-ServiceNow smoke test and other items explicitly listed in the latest Progress Log.
 **Read first:** [00-overview.md](00-overview.md) for the program and cross-phase contracts · [idea.md](../idea/idea.md) and [architecture.md](../idea/architecture.md) in full · this document's Progress Log at the end.
 **Depends on:** Phase 1, hard — see Sequencing.
 **Deliverable of the first session:** research findings plus a written plan appended to this document. **Do not write production code in the research session.**
@@ -312,7 +314,7 @@ The brief asks that its constraints be verified against the tree and corrected w
 | `startTicketRun` is gated by `AXIOMA_AUTO_DISPATCH` and a rules-engine check for a settled `route_human` | Four conditions, not two. `createdCore.created && env.AXIOMA_AUTO_DISPATCH && grpcGateway.hasWorker() && !settledActions.includes("route_human")` — `routers/tickets.ts:229-238`. The `hasWorker()` term matters here more than anywhere else, and is treated separately below |
 | "The tool registry is ten tools, not the seven the older architecture table listed" | `architecture.md`'s tool table already lists all ten. The sentence describes a correction that has already been made |
 | Phase 1's shadow guard is "three lines of work" and reads `mode` in `executeTool` | The API registry has no effect classifier. `ToolHandler` is `{input, verifiedBy?, run}` — `tools/index.ts:34-38`. Read/write effect exists only on the Python side, as `Effect.READ`/`Effect.WRITE` in `agent/axel/tools.py:27-29`. The guard needs an `effect` field added to the API registry first, and the closest thing that exists today is an ad-hoc name-prefix heuristic used for the progress marker at `tools/index.ts:136-146`. Phase 1 should widen its own scope by that much |
-| Phase 1 and Phase 3 both cite `connector-plan.md` | No such file exists. It is a stale name for this document — `01-multi-environment.md:48`, `03-device-channel-auth.md:12` |
+| Phase 1 and Phase 3 once cited a stale connector document name | Historical stale citation; both documents now use `06-itsm-connector.md` |
 
 A fifth finding is a tree fact the brief could not have known, and it is the reason the ingestion design below carries a backstop. **`startTicketRun`'s rerun gate does not apply to a ticket in the `open` status.** The gate at `routers/shared.ts:95-107` is wrapped in `if (ticketState === "open")`, where `open` is the *state type*; the seeded status whose key is `open` has state type `new` (`migrations/0008_tier1_core.sql:16`). So `canRerun` is never consulted for it. `startRun` is permitted from exactly `open` and `escalated` (`0008_tier1_core.sql:22,27`), and a failed dispatch rolls the status back to `open` (`shared.ts:171-196`). A human pressing a button once never notices; a poller can re-dispatch the same ticket indefinitely.
 
@@ -693,11 +695,11 @@ That was judged not to warrant stopping, for a specific reason: the brief pre-co
 
 One correction for Phase 1 to absorb rather than discover: its shadow guard is not three lines. The API tool registry has no read/write effect classifier — `ToolHandler` is `{input, verifiedBy?, run}` at `api/src/server/tools/index.ts:34-38`, and effect exists only on the Python side as `Effect.READ`/`Effect.WRITE` at `agent/axel/tools.py:27-29`. An `effect` field has to be added to the API registry before the guard has anything to read. The only effect-adjacent logic in the API today is a name-prefix heuristic used for the progress marker at `tools/index.ts:136-146`, which is not a sound basis for a security guard.
 
-Second item for another document's owner: `01-multi-environment.md:48` and `03-device-channel-auth.md:12` both reference `connector-plan.md`, which does not exist. It is a stale name for this file. Left unedited — those are other phases' documents.
+Historical citation correction: `01-multi-environment.md:48` and `03-device-channel-auth.md:12` now use `06-itsm-connector.md`; no stale connector document citation remains.
 
 Third, and the most consequential fact found: when no agent worker is connected, `startTicketRun` throws `SERVICE_UNAVAILABLE` and persists nothing (`api/src/server/routers/shared.ts:84-87`). For a portal ticket a human sees the error. For a synced ticket nobody is watching, so the run is silently never started. The plan handles this by decoupling dispatch from ingestion, but it is worth knowing outside this phase too.
 
-Remains: no production code, per this document's instruction that the research session writes none. The plan's step 1 is ServiceNow inbound polling; it should not start until Phase 1 has landed and the four assumptions above are checked.
+Historical status — research session: no production code was written under that session's rule. Current status: the connector implementation has since shipped in staged increments; the remaining open items are listed in the latest Progress Log.
 
 Research note: `context7` and `chrome-devtools` MCP servers failed to connect this session (`CONNECT_TIMEOUT`), so library documentation came from vendor primary sources over web search rather than Context7. Sources are linked inline in Findings. Six parallel research subagents were killed mid-run by an API rate limit; the research was completed sequentially on the main thread instead, which is why the findings are broad rather than exhaustive on any single vendor.
 
@@ -733,7 +735,7 @@ Design changes made: `itsm_dispatch_ledger` added (eight tables now, not seven),
 
 Also closed, as the runner-up gap: the agreement metric. Axel's action distribution is imbalanced by design, raw percentage agreement rewards a system that always says the common thing, and Cohen's kappa fails in the other direction under the kappa paradox — reporting poor reliability precisely when the distribution is skewed. The evaluation surface now specifies raw agreement, kappa and Gwet's AC1 reported together and stratified by action class, never pooled.
 
-Remains unchanged: no production code, and Phase 1 is still the hard gate.
+Historical status — no production code remained at this pass, and Phase 1 was still the hard gate then. Superseded: Phase 1 and connector implementation subsequently landed.
 
 **2026-08-30 — Fourth pass. Researched how a foreign ticket reaches a service and a CI. It exposed a hole in this plan's own logic.**
 
@@ -772,7 +774,7 @@ Two things this pass, at the user's direction to continue past the research sess
 | Pure core | `api/src/server/connectors/mapping.ts`, `plan.ts`, `core.ts` — no database, no network, no clock |
 | Transport | `api/src/server/connectors/servicenow.ts` — client-credentials with a token cache, keyset pagination on `sys_updated_on`, `Retry-After` honoured, work notes with `correlation_id`/`correlation_display` |
 | Store and runtime | `store.ts`, `runtime.ts`, `writeback.ts` |
-| Schema | `api/src/db/schema/connectors.ts`, nine tables; migration `0043_itsm_connector.sql` |
+| Schema | `api/src/db/schema/connectors.ts`, nine tables; represented in the baseline migration squash at `ab84929` |
 | Contracts and router | `api/src/contracts/connectors.ts`, `api/src/server/routers/connectors.ts`, capability `admin.connectors` |
 | Dashboard | `features/connectors/components/{connectors-page,connector-detail,ticket-origin-banner}.tsx`, routes `admin.connectors.index.tsx` and `admin.connectors.$connectorId.tsx`, sidebar entry |
 
@@ -782,9 +784,9 @@ Decisions taken during implementation that differ from the plan above:
 - **`targetField` is typed with the shared vocabulary in the schema**, so a mapping cannot name a field that does not exist. `priority` is absent from that vocabulary, which makes "map a foreign priority" fail to typecheck rather than fail at runtime.
 - **The pure/effect split was forced by the test run**, not chosen for elegance: `writeback.ts` imports `@/db`, which loads `env.ts`, which now requires Phase 3's TLS variables — so the pure half moved to `core.ts`, mirroring `workflows/core.ts` beside `workflows/webhooks.ts`.
 
-**Blocker, recorded and not worked around: `0032_multi_environment.sql` is an empty 53-byte placeholder.** Phase 1's schema code and journal entry exist, but its migration was never written, so `environments` does not exist in the development database and `drizzle-kit migrate` fails before reaching `0043`. Writing that migration is Phase 1's work and this session did not do it — the program plan forbids expanding scope into another phase to unblock oneself.
+**Historical blocker — superseded.** At this pass, `0032_multi_environment.sql` was an empty placeholder and blocked migration replay. The baseline migration squash at `ab84929` replaced that old migration-number state; do not use the old numbers as current status.
 
-`0043_itsm_connector.sql` was verified independently instead: on a scratch database cloned from the development one, with `environments` stood up from its schema definition, all 44 statements apply and produce 9 tables, 25 indexes, 18 foreign keys and the seeded `itsm` origin row. The scratch database was dropped. The migration is correct and will apply as soon as Phase 1's is written.
+Historical verification: `0043_itsm_connector.sql` was checked independently on a scratch database. Its old migration number is superseded by the baseline migration squash at `ab84929`.
 
 Also unverified, and honestly so: nothing has run against a real ServiceNow instance. The transport's request shapes come from the vendor documentation cited in Findings, not from observed responses — in particular `parseJournal`, which reads a flattened display string, is the piece most likely to need correcting against a real instance.
 
@@ -815,7 +817,7 @@ Three details worth recording because they are decisions, not mechanics:
 
 Still unbuilt, and now a short list: the field-mapping and environment-route **editors** (both render read-only; the upsert and delete procedures exist and are unused by any UI), connector create and edit forms, the foreign-resolution back-fill that fills `itsm_proposals.foreignResolution` on a later sync pass — until that runs, the agreement surface compares against a null and reports everything as `escalate` — and the portal-side changes.
 
-Unchanged from the fifth pass: `0032_multi_environment.sql` is still an empty placeholder, so `0043` cannot be applied by `drizzle-kit migrate`; and nothing has run against a real ServiceNow instance.
+Historical note — the fifth-pass migration blocker and `0043` numbering are superseded by the baseline migration squash at `ab84929`. The real-ServiceNow smoke test remains genuinely open.
 
 | Question | Why it matters |
 |---|---|
@@ -843,7 +845,7 @@ Second, on testing without one: cassettes and hand-written mocks both drift, and
 
 | Item | Note |
 |---|---|
-| Phase 1's `0032_multi_environment.sql` | Still an empty 53-byte placeholder. `0043` cannot be applied until it is written. Not this phase's work |
+| Baseline migration | Squashed at `ab84929`; old `0032`/`0043` status references are invalidated |
 | A real-instance smoke test | Needs a PDI, which needs a human to sign up. `parseJournal` is the assumption most likely to be wrong |
 | Mapping and route editors | Read-only; upsert and delete procedures exist and are called by nothing |
 | Portal changes | None written |
@@ -859,7 +861,7 @@ The resolution is that the limitation does not apply to what actually needed tes
 
 Seven assertions, each naming an invariant the design depends on: the ingestion idempotency index refuses a second ticket for one foreign record; one transition claims at most one dispatch while a different transition on the same ticket claims separately; `attempt_count <= max_attempts` is enforced by the database and not only by the sweep; a connector owning synced tickets cannot be deleted out from under them; one proposal per run, so a replayed terminal cannot double-count; and the `itsm` origin vocabulary row exists.
 
-**The Phase 1 blocker is resolved, by another session rather than by this one.** The migration files were renumbered while this work was in progress: `0032_multi_environment.sql` is gone, Phase 1's is now `0034_multi_environment.sql` at 4862 bytes and is real, Phase 3's is `0044_device_channel_auth.sql`, and a `0045_device_command_proposals.sql` has appeared. `0043_itsm_connector.sql` survived the renumbering, the journal is consistent at 37 entries, and 39 migrations are applied to the development database — including this one. `environments` exists, all nine `itsm_*` tables exist, and the `itsm` origin row is seeded. **The entries in the fifth and seventh passes recording that migration as unapplicable are superseded.**
+**Current status correction — migration baseline.** The earlier numbered migration state and its blocker notes are superseded by the baseline migration squash at `ab84929`; references to `0032`, `0034`, `0043`, `0044`, `0045`, or journal counts in the preceding historical entries are not current status. The environment and connector schema work is represented by the squashed baseline.
 
 **Also implemented:** the environment **route editor** (`route-editor.tsx`), replacing the read-only table. Adding a route pointing at an acting environment is what graduates one slice of traffic, so the editor states that at the point of the action and shows every environment with its mode beside it.
 

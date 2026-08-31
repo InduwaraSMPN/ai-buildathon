@@ -149,15 +149,15 @@ function FormsRoute() {
 				</Dialog>
 			}
 		>
-			<ItemGroup className="gap-2">
-				{(query.data ?? []).length === 0 ? (
-					<Empty>
-						<EmptyHeader>
-							<EmptyTitle>No forms found</EmptyTitle>
-						</EmptyHeader>
-					</Empty>
-				) : (
-					(query.data ?? []).map((form) => (
+			{(query.data ?? []).length === 0 ? (
+				<Empty>
+					<EmptyHeader>
+						<EmptyTitle>No forms found</EmptyTitle>
+					</EmptyHeader>
+				</Empty>
+			) : (
+				<ItemGroup className="gap-3 md:grid md:grid-cols-2">
+					{(query.data ?? []).map((form) => (
 						<Item key={form.id} variant="outline">
 							<ItemContent>
 								<ItemTitle>
@@ -216,9 +216,9 @@ function FormsRoute() {
 								)}
 							</ItemActions>
 						</Item>
-					))
-				)}
-			</ItemGroup>
+					))}
+				</ItemGroup>
+			)}
 		</PageContainer>
 	);
 }

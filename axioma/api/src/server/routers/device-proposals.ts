@@ -16,14 +16,14 @@ const asCommand = (value: unknown) =>
  * An undecided proposal goes stale rather than waiting indefinitely, and it is
  * swept on read so a queue never shows something that can no longer be run.
  */
-async function expireStaleProposals() {
+export async function expireStaleProposals(now = new Date()) {
 	await db
 		.update(deviceCommandProposals)
 		.set({ status: "expired" })
 		.where(
 			and(
 				inArray(deviceCommandProposals.status, ["proposed", "approved"]),
-				lt(deviceCommandProposals.expiresAt, new Date()),
+				lt(deviceCommandProposals.expiresAt, now),
 			),
 		);
 }

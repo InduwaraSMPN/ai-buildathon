@@ -16,20 +16,13 @@ import {
 	type OverviewWidget,
 	WidgetArrangement,
 } from "@/features/automation/components";
+import {
+	isRenderableWidget,
+	OVERVIEW_WIDGETS,
+	type OverviewWidgetKey,
+	overviewWidgetTitle,
+} from "@/features/overview/widgets";
 import { orpc } from "@/utils/orpc";
-
-/**
- * The widgets a user may arrange. Titles live here rather than with the
- * overview's renderers because a saved arrangement only stores a key, and a
- * key that no longer ships still has to render as something readable.
- */
-const available = [
-	{ key: "priority", title: "Open by priority", width: 2 },
-	{ key: "confirmation", title: "Awaiting confirmation", width: 1 },
-	{ key: "escalations", title: "Escalated in 24 hours", width: 1 },
-	{ key: "resolution-rate", title: "Autonomous resolution rate", width: 1 },
-	{ key: "median-ttr", title: "Median time to resolution", width: 1 },
-] satisfies OverviewWidget[];
 
 export function EditOverviewDialog() {
 	const [open, setOpen] = useState(false);
@@ -65,16 +58,18 @@ export function EditOverviewDialog() {
 			},
 		}),
 	);
-	const saved = query.data;
-	const widgets = saved?.length
-		? saved.map((entry) => ({
+	// Only offer widgets the overview can render: a stored key with no renderer
+	// would list a row here that changes nothing on the page.
+	const stored = (query.data ?? []).filter((entry) =>
+		isRenderableWidget(entry.widgetKey),
+	);
+	const widgets: OverviewWidget[] = stored.length
+		? stored.map((entry) => ({
 				key: entry.widgetKey,
-				title:
-					available.find((item) => item.key === entry.widgetKey)?.title ??
-					entry.widgetKey,
+				title: overviewWidgetTitle(entry.widgetKey),
 				width: entry.width,
 			}))
-		: available;
+		: OVERVIEW_WIDGETS.map(({ key, title, width }) => ({ key, title, width }));
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
@@ -116,10 +111,16 @@ export function EditOverviewDialog() {
 							widgets={widgets}
 							onChange={(next) =>
 								save.mutate({
-									widgets: next.map(({ key, width }) => ({
-										widgetKey: key,
-										width,
-									})),
+									// WidgetArrangement is generic over plain string keys, but
+									// the contract only accepts the widget vocabulary. Every
+									// key here came from OVERVIEW_WIDGETS or survived the
+									// isRenderableWidget filter above, so the narrowing holds.
+									widgets: next
+										.filter((widget) => isRenderableWidget(widget.key))
+										.map(({ key, width }) => ({
+											widgetKey: key as OverviewWidgetKey,
+											width,
+										})),
 								})
 							}
 						/>

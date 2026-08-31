@@ -121,14 +121,14 @@ Whichever is chosen, note the existing behaviour: `recordObservation` always ins
 
 ## Acceptance checklist
 
-- [ ] The access decision is written in the Progress Log and enforced in queries, not prompts.
-- [ ] Corpus covers documents, ticket history under the access rule, and prior runs.
-- [ ] Retrieval is hybrid; a paraphrased symptom finds the right article.
-- [ ] Retrieval degrades to lexical rather than failing when embeddings are unavailable.
-- [ ] `knowledge_fetch` exists on both schema sides with parity coverage.
-- [ ] Reporter context reaches the prompt, labelled as fact about the asker rather than instruction.
-- [ ] CMDB write-back decision is implemented and the claim in `idea.md` matches what the code does.
-- [ ] Full suite green across `api`, `agent`, `cli`.
+- [x] The access decision is written in the Progress Log and enforced in queries, not prompts.
+- [x] Corpus covers documents, ticket history under the access rule, and prior runs.
+- [x] Retrieval is hybrid; a paraphrased symptom finds the right article.
+- [x] Retrieval degrades to lexical rather than failing when embeddings are unavailable.
+- [x] `knowledge_fetch` exists on both schema sides with parity coverage.
+- [x] Reporter context reaches the prompt, labelled as fact about the asker rather than instruction.
+- [x] CMDB write-back decision is implemented and the claim in `idea.md` matches what the code does.
+- [x] Full suite green across `api`, `agent`, `cli`.
 
 ## Known traps
 

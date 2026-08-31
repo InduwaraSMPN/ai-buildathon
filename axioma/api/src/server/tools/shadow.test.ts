@@ -1,11 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-	changeEnvironment,
-	recordChangeEnvironment,
-	resetChangeEnvironments,
-} from "./change";
-import {
 	assertEnvironmentAllowed,
 	executeTool,
 	type ResolvedEnvironment,
@@ -49,6 +44,7 @@ test("shadow-mode environment refuses a write tool before any call", () => {
 		() =>
 			assertEnvironmentAllowed({
 				name: "cluster_patch_image",
+				effect: "write",
 				requested: undefined,
 				resolved: shadowEnv,
 				linked: new Set(["staging", "prod"]),
@@ -61,6 +57,7 @@ test("shadow-mode environment still allows read tools", () => {
 	assert.doesNotThrow(() =>
 		assertEnvironmentAllowed({
 			name: "cluster_read_pods",
+			effect: "read",
 			requested: undefined,
 			resolved: shadowEnv,
 			linked: new Set(["staging"]),
@@ -69,6 +66,7 @@ test("shadow-mode environment still allows read tools", () => {
 	assert.doesNotThrow(() =>
 		assertEnvironmentAllowed({
 			name: "cluster_read_deployment",
+			effect: "read",
 			requested: undefined,
 			resolved: shadowEnv,
 			linked: new Set(["staging"]),
@@ -81,6 +79,7 @@ test("an environment not linked to the ticket's service is rejected", () => {
 		() =>
 			assertEnvironmentAllowed({
 				name: "cluster_read_pods",
+				effect: "read",
 				requested: "prod",
 				resolved: shadowEnv,
 				linked: new Set(["staging"]),
@@ -94,6 +93,7 @@ test("a requested environment that differs from the resolved one is rejected", (
 		() =>
 			assertEnvironmentAllowed({
 				name: "cluster_read_pods",
+				effect: "read",
 				requested: "prod",
 				resolved: shadowEnv,
 				linked: new Set(["staging", "prod"]),
@@ -106,6 +106,7 @@ test("a requested environment equal to the resolved one is allowed", () => {
 	assert.doesNotThrow(() =>
 		assertEnvironmentAllowed({
 			name: "cluster_read_pods",
+			effect: "read",
 			requested: "prod",
 			resolved: actEnv,
 			linked: new Set(["prod", "staging"]),
@@ -115,6 +116,7 @@ test("a requested environment equal to the resolved one is allowed", () => {
 	assert.doesNotThrow(() =>
 		assertEnvironmentAllowed({
 			name: "cluster_patch_image",
+			effect: "write",
 			requested: undefined,
 			resolved: actEnv,
 			linked: new Set(["prod"]),
@@ -163,19 +165,8 @@ test("executeTool rejects a requested environment that differs from the resolved
 	);
 });
 
-test("verification completion requires the same environment and change", () => {
+test("verification completion requires the persisted run environment", () => {
 	assert.equal(sameChangeEnvironment("prod", "prod"), true);
-	assert.equal(sameChangeEnvironment(undefined, "prod"), true);
+	assert.equal(sameChangeEnvironment(undefined, "prod"), false);
 	assert.equal(sameChangeEnvironment("prod", "staging"), false);
-	// The change registry records the patch environment for the guard to read.
-	resetChangeEnvironments();
-	assert.equal(changeEnvironment("chg-1"), undefined);
-	recordChangeEnvironment("chg-1", "prod");
-	assert.equal(changeEnvironment("chg-1"), "prod");
-	assert.equal(sameChangeEnvironment(changeEnvironment("chg-1"), "prod"), true);
-	assert.equal(
-		sameChangeEnvironment(changeEnvironment("chg-1"), "staging"),
-		false,
-	);
-	resetChangeEnvironments();
 });

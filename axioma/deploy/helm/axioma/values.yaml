@@ -40,6 +40,10 @@ images:
     repository: axioma/dashboard
     tag: dev
     pullPolicy: IfNotPresent
+  web:
+    repository: axioma/web
+    tag: dev
+    pullPolicy: IfNotPresent
 
 # ---------------------------------------------------------------------------
 # Secrets
@@ -437,6 +441,10 @@ portal:
   # Origin of the API as the browser reaches it. Must appear in
   # `api.config.corsOrigin` or credentialed requests are rejected.
   apiUrl: "http://localhost:3000"
+  # Origin of the public website, which publishes the service status page the
+  # portal header links to. Required: the portal throws on every route when
+  # neither this nor the build-time VITE_SITE_URL is set.
+  siteUrl: "http://localhost:3003"
   service:
     type: ClusterIP
     port: 80
@@ -488,6 +496,47 @@ dashboard:
   containerSecurityContext:
     allowPrivilegeEscalation: false
     readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Public website
+#
+# Not a static bundle: TanStack Start on a Nitro server, because the service
+# status page it publishes reads the API server-side. The portal links to it
+# through `portal.siteUrl`, so the two have to agree on where this is reachable.
+# ---------------------------------------------------------------------------
+web:
+  enabled: true
+  replicaCount: 1
+  # Where the website reaches the API from inside the cluster. Empty means the
+  # API's own Service, which is what a single-cluster install wants. This is
+  # server-to-server, so it does not belong in `api.config.corsOrigin`.
+  apiUrl: ""
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    # The node user in the official Node image, not nginx's.
+    runAsUser: 1000
+    runAsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
     capabilities:
       drop: ["ALL"]
   extraEnv: []
@@ -587,6 +636,7 @@ ingress:
     api: ""
     portal: ""
     dashboard: ""
+    web: ""
 
 # The device gateway. gRPC is not HTTP ingress and most controllers have to be
 # told so explicitly. See ../../README.md before enabling this.

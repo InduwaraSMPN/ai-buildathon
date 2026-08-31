@@ -1,16 +1,8 @@
+import { createColumnHelper } from "@tanstack/react-table";
+import { DataTable } from "@/components/data-table";
 import { PageContainer } from "@/components/layout/page-container";
-import { PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 
 export type ApprovalSummary = {
 	id: string;
@@ -41,6 +33,95 @@ export function ApprovalsPage(props: {
 	);
 }
 
+const approvalColumn = createColumnHelper<ApprovalSummary>();
+
+function approvalColumns(
+	pendingId: string | undefined,
+	onDecide:
+		| ((approval: ApprovalSummary, decision: "approved" | "rejected") => void)
+		| undefined,
+) {
+	return [
+		approvalColumn.accessor("ticketId", {
+			header: "Request",
+			size: 30,
+			cell: ({ row }) => (
+				<div>
+					<div className="font-medium">{row.original.ticketId}</div>
+					<div className="text-muted-foreground">
+						{row.original.requestNote ?? "No request note"}
+					</div>
+				</div>
+			),
+		}),
+		approvalColumn.accessor("requesterId", { header: "Requester", size: 18 }),
+		approvalColumn.accessor(
+			(approval) => approval.status.replaceAll("_", " "),
+			{
+				id: "status",
+				header: "Status",
+				size: 14,
+				cell: ({ row }) => (
+					<Badge
+						variant={
+							row.original.status === "rejected"
+								? "destructive"
+								: row.original.status === "approved"
+									? "default"
+									: "secondary"
+						}
+					>
+						{row.original.status.replaceAll("_", " ")}
+					</Badge>
+				),
+			},
+		),
+		// Sorts on the timestamp, displays the formatted date.
+		approvalColumn.accessor(
+			(approval) => new Date(approval.requestedAt).getTime(),
+			{
+				id: "requested",
+				header: "Requested",
+				size: 18,
+				cell: ({ row }) =>
+					new Date(row.original.requestedAt).toLocaleString(),
+			},
+		),
+		approvalColumn.display({
+			id: "decision",
+			header: "Decision",
+			size: 20,
+			cell: ({ row }) => (
+				<div className="flex flex-wrap justify-end gap-2">
+					{row.original.status === "waiting_for_approval" && onDecide ? (
+						<>
+							<Button
+								size="sm"
+								disabled={pendingId === row.original.id}
+								onClick={() => onDecide(row.original, "approved")}
+							>
+								Approve
+							</Button>
+							<Button
+								size="sm"
+								variant="destructive"
+								disabled={pendingId === row.original.id}
+								onClick={() => onDecide(row.original, "rejected")}
+							>
+								Reject
+							</Button>
+						</>
+					) : (
+						<span className="text-muted-foreground">
+							{row.original.decisionNote ?? "Decided"}
+						</span>
+					)}
+				</div>
+			),
+		}),
+	];
+}
+
 export function ApprovalList({
 	approvals,
 	pendingId,
@@ -53,85 +134,17 @@ export function ApprovalList({
 		decision: "approved" | "rejected",
 	) => void;
 }) {
-	if (approvals.length === 0)
-		return (
-			<PageState
-				kind="empty"
-				title="No approvals found"
-				description="Approval requests will appear here when they need a decision."
-			/>
-		);
+	// Rebuilt per render because the cells close over the current pendingId and
+	// handler; memoising would freeze the disabled state on the buttons.
+	const columns = approvalColumns(pendingId, onDecide);
 	return (
-		<Card>
-			<CardContent className="px-0">
-				<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Request</TableHead>
-						<TableHead>Requester</TableHead>
-						<TableHead>Status</TableHead>
-						<TableHead>Requested</TableHead>
-						<TableHead className="text-right">Decision</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{approvals.map((approval) => (
-						<TableRow key={approval.id}>
-							<TableCell>
-								<div className="font-medium">{approval.ticketId}</div>
-								<div className="max-w-sm truncate text-muted-foreground">
-									{approval.requestNote ?? "No request note"}
-								</div>
-							</TableCell>
-							<TableCell>{approval.requesterId}</TableCell>
-							<TableCell>
-								<Badge
-									variant={
-										approval.status === "rejected"
-											? "destructive"
-											: approval.status === "approved"
-												? "default"
-												: "secondary"
-									}
-								>
-									{approval.status.replaceAll("_", " ")}
-								</Badge>
-							</TableCell>
-							<TableCell>
-								{new Date(approval.requestedAt).toLocaleString()}
-							</TableCell>
-							<TableCell>
-								<div className="flex justify-end gap-2">
-									{approval.status === "waiting_for_approval" && onDecide ? (
-										<>
-											<Button
-												size="sm"
-												disabled={pendingId === approval.id}
-												onClick={() => onDecide(approval, "approved")}
-											>
-												Approve
-											</Button>
-											<Button
-												size="sm"
-												variant="destructive"
-												disabled={pendingId === approval.id}
-												onClick={() => onDecide(approval, "rejected")}
-											>
-												Reject
-											</Button>
-										</>
-									) : (
-										<span className="text-muted-foreground">
-											{approval.decisionNote ?? "Decided"}
-										</span>
-									)}
-								</div>
-							</TableCell>
-						</TableRow>
-					))}
-				</TableBody>
-				</Table>
-			</CardContent>
-		</Card>
+		<DataTable
+			data={approvals}
+			columns={columns}
+			filterLabel="Filter approvals"
+			filterPlaceholder="Filter ticket, requester, or status…"
+			emptyTitle="No approvals found"
+			emptyDescription="Approval requests will appear here when they need a decision."
+		/>
 	);
 }

@@ -20,6 +20,7 @@ const footerColumns = [
 			{ href: "/pricing", label: "Pricing" },
 			{ href: "/about", label: "About" },
 			{ href: "/contact", label: "Contact" },
+			{ href: "/status", label: "Service status" },
 		],
 	},
 	{
@@ -184,13 +185,14 @@ export function PageIntro({
 	title,
 	children,
 }: {
-	eyebrow: string;
+	/** Omit on pages where the title alone carries the section. */
+	eyebrow?: string;
 	title: string;
 	children: ReactNode;
 }) {
 	return (
 		<section className="page-intro shell">
-			<p className="eyebrow">{eyebrow}</p>
+			{eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
 			<h1>{title}</h1>
 			<div className="lede">{children}</div>
 		</section>

@@ -420,3 +420,18 @@ test("every tool exposes the same parameter names in the agent and Zod schema", 
 	const agent = await read("agent/axel/tools.py");
 	assert.deepEqual(diffToolParams(agentToolParams(agent), apiToolParams()), []);
 });
+
+test("every tool exposes the same effect in the agent and API", async () => {
+	const source = (await read("agent/axel/tools.py")).replace(/\r\n/g, "\n");
+	const effects = Object.fromEntries(
+		[
+			...source.matchAll(/name="([^"]+)"[\s\S]*?effect=Effect\.(READ|WRITE),/g),
+		].map(([, name, effect]) => [name, effect?.toLowerCase()]),
+	);
+	assert.deepEqual(
+		Object.fromEntries(
+			Object.entries(tools).map(([name, tool]) => [name, tool.effect]),
+		),
+		effects,
+	);
+});

@@ -103,11 +103,18 @@ test("two environments resolve to two different client instances", () => {
 	assert.equal(cache.size, 2);
 });
 
-test("the cache is keyed by id and reuses a built client", () => {
+test("the cache reuses unchanged connections and refreshes changed credentials", () => {
 	const cache = createClientCache();
-	const first = cache.get(kubeconfigConnection("a"));
-	const second = cache.get(kubeconfigConnection("a"));
-	assert.equal(first, second);
+	const connection = kubeconfigConnection("a");
+	const first = cache.get(connection);
+	assert.equal(first, cache.get(connection));
+	assert.notEqual(
+		first,
+		cache.get({
+			...connection,
+			credential: KUBECONFIG_YAML.replace("abcdef", "rotated"),
+		}),
+	);
 });
 
 test("eviction drops one environment and evictAll clears the cache", () => {

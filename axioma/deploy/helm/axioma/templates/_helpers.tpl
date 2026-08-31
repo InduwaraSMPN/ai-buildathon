@@ -126,6 +126,10 @@ through api.grpc.tls.extraSans or the handshake fails on the name.
 {{- printf "%s-dashboard" (include "axioma.fullname" .) -}}
 {{- end -}}
 
+{{- define "axioma.web.fullname" -}}
+{{- printf "%s-web" (include "axioma.fullname" .) -}}
+{{- end -}}
+
 {{/*
 The namespaces the API is granted access to. Empty means the release namespace
 alone, which is the conservative reading of "the namespaces it manages".
@@ -155,7 +159,7 @@ imagePullSecrets:
 {{/*
 DATABASE_URL.
 
-Three supported shapes, and one that is refused rather than guessed at:
+Four supported shapes, including one refused rather than guessed at:
 
   1. secrets.databaseUrl set                -> that DSN, from the chart Secret.
   2. bundled Postgres with a literal password -> composed here into the chart

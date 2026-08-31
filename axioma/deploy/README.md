@@ -6,20 +6,25 @@ container images are built from each project's own `Dockerfile`.
 
 | Path | What it is |
 | --- | --- |
-| `helm/axioma/` | The chart. Four workloads, an optional bundled Postgres, RBAC, and the migration Job. |
+| `helm/axioma/` | The chart. Five workloads, an optional bundled Postgres, RBAC, and the migration Job. |
 | `examples/values-minimal.yaml` | The smallest values file that installs a working stack. |
 | `examples/values-full.yaml` | Every knob set to something other than its default. Not a recommended configuration — it exists so the templates are exercised end to end. |
 
 The Dockerfiles live with the projects they build, because each project is
 standalone — its own lockfile, its own toolchain — and a build context that
 reached outside its directory would contradict that:
-`api/Dockerfile`, `agent/Dockerfile`, `portal/Dockerfile`, `dashboard/Dockerfile`.
+`api/Dockerfile`, `agent/Dockerfile`, `portal/Dockerfile`, `dashboard/Dockerfile`,
+`web/Dockerfile`.
 
 `api/k8s/` is not part of this. It holds two deliberately broken demo workloads
 for the agent to diagnose. Do not extend it.
 
-`web/` is the public marketing site. It is not part of the platform loop and is
-not packaged.
+`web/` is the public marketing site. It is outside the platform loop, but it is
+packaged, because it publishes the service status page the portal header links
+to on every route — `portal.siteUrl` points at it. It is the one frontend that
+is not a static bundle: TanStack Start renders it on a Nitro server so `/status`
+can read the API server-side, which is why the marketing origin never appears in
+`api.config.corsOrigin`.
 
 ## Read this before you install
 
@@ -85,6 +90,10 @@ docker build -t axioma/portal:dev ./portal
 docker build -t axioma/dashboard:dev ./dashboard
 ```
 
+```bash
+docker build -t axioma/web:dev ./web
+```
+
 Each build context is the project directory and nothing outside it. The agent
 build regenerates its protobuf bindings, which are not committed; the frontend
 builds generate their route trees the same way.
@@ -93,7 +102,7 @@ Load them into a kind cluster — `--name` is the cluster, and you need it unles
 yours is called `kind`:
 
 ```bash
-kind load docker-image --name axioma axioma/api:dev axioma/agent:dev axioma/portal:dev axioma/dashboard:dev
+kind load docker-image --name axioma axioma/api:dev axioma/agent:dev axioma/portal:dev axioma/dashboard:dev axioma/web:dev
 ```
 
 If you are using the bundled Postgres, load its image the same way rather than
@@ -258,10 +267,24 @@ kubectl -n axioma port-forward svc/axioma-portal 3001:80
 kubectl -n axioma port-forward svc/axioma-dashboard 3002:80
 ```
 
-With an ingress, set `ingress.enabled: true` and the three hostnames, and set
+```bash
+kubectl -n axioma port-forward svc/axioma-web 3003:80
+```
+
+With an ingress, set `ingress.enabled: true` and the four hostnames, and set
 `api.config.betterAuthUrl`, `api.config.corsOrigin`, `portal.apiUrl`,
 `dashboard.apiUrl` and `dashboard.portalUrl` to match. Those five are the ones
 that silently break authentication when they disagree with reality.
+
+`portal.siteUrl` is separate: it points at the public website that publishes the
+service status page, which the portal header links to on every route. The portal
+fails to render when it is missing, so it carries a working default rather than
+being left empty. It is a browser-facing URL — `ingress.hosts.web`, or the
+port-forward above — not the in-cluster Service name that `web.apiUrl` uses.
+
+The website is the one component whose API URL is not browser-facing. It calls
+the API from its own server, so `web.apiUrl` takes the in-cluster Service (its
+default) and must NOT be added to `api.config.corsOrigin`.
 
 ## 5. Verify
 
@@ -389,6 +412,12 @@ Two consequences worth knowing:
 - No replica serves traffic against a schema older than its own code, on install
   or upgrade.
 
+Commit `ab84929` deliberately squashed the migration history into
+`0000_baseline.sql`. Existing installations whose migration ledger predates that
+squash must be baselined manually before upgrading; the row-count init check
+cannot identify equivalent old migration hashes and is only safe for fresh
+installs created from the baseline.
+
 If API pods stay in `Init`, read the Job:
 
 ```bash
@@ -399,7 +428,7 @@ kubectl -n axioma logs job/axioma-migrate-1
 
 Both SPAs are static bundles. Their `index.html` loads `/config.js` before the
 application bundle, and the container entrypoint writes that file from the
-environment at start. `portal.apiUrl`, `dashboard.apiUrl` and
+environment at start. `portal.apiUrl`, `portal.siteUrl`, `dashboard.apiUrl` and
 `dashboard.portalUrl` therefore take effect on a redeploy, not on a rebuild:
 
 ```bash
@@ -407,8 +436,8 @@ helm upgrade axioma ./helm/axioma --namespace axioma -f my-values.yaml --set por
 ```
 
 The pod annotation carries a hash of those URLs, so changing one rolls the pods.
-The build-time `VITE_SERVER_URL` and `VITE_PORTAL_URL` remain as the development
-fallback, used only when `/config.js` leaves the key empty.
+The build-time `VITE_SERVER_URL`, `VITE_SITE_URL` and `VITE_PORTAL_URL` remain
+as the development fallback, used only when `/config.js` leaves the key empty.
 
 ## The device gateway
 

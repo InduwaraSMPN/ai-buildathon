@@ -21,10 +21,18 @@ Reach the frontends:
 {{- with .Values.ingress.hosts.api }}
   api         http://{{ . }}
 {{- end }}
+{{- if .Values.web.enabled }}
+{{- with .Values.ingress.hosts.web }}
+  website     http://{{ . }}   (publishes /status; portal.siteUrl must match)
+{{- end }}
+{{- end }}
 {{- else }}
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "axioma.dashboard.fullname" . }} 3002:{{ .Values.dashboard.service.port }}
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "axioma.portal.fullname" . }} 3001:{{ .Values.portal.service.port }}
   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "axioma.api.fullname" . }} 3000:{{ .Values.api.service.port }}
+{{- if .Values.web.enabled }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "axioma.web.fullname" . }} 3003:{{ .Values.web.service.port }}
+{{- end }}
 {{- end }}
 
 {{- if .Values.api.config.bootstrapAdminEmail }}

@@ -9,7 +9,7 @@
 
 `architecture.md` records the gap in its own words: the device connection is not authenticated, the stream is plaintext, the device ID in the hello is client-asserted — any process that can reach the gateway can impersonate any device — and the binary is unsigned.
 
-That is survivable while a device can only be told to do one of five fixed things. It stops being survivable the moment the device surface widens, which is exactly what Phase 5 does. It is also the reason `connector-plan.md` states that a customer trial must be infrastructure-path only.
+That is survivable while a device can only be told to do one of five fixed things. It stops being survivable the moment the device surface widens, which is exactly what Phase 5 does. It is also the reason `06-itsm-connector.md` states that a customer trial must be infrastructure-path only.
 
 Three separate problems live under one heading, and they need separating:
 

@@ -53,7 +53,7 @@ local_resource(
 local_resource(
     'web',
     cmd='pnpm install --frozen-lockfile',
-    serve_cmd='pnpm exec vite dev --port 3003',
+    serve_cmd='pnpm exec vite dev --port 3003 --strictPort',
     dir='web',
     serve_dir='web',
     readiness_probe=probe(tcp_socket=tcp_socket_action(port=3003)),

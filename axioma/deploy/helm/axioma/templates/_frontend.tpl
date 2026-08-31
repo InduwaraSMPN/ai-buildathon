@@ -56,7 +56,7 @@ spec:
       annotations:
         # /config.js is written from these values at container start, so a
         # changed URL has to roll the pods to take effect.
-        checksum/runtime-config: {{ printf "%s|%s" ($config.apiUrl | toString) ($config.portalUrl | default "" | toString) | sha256sum }}
+        checksum/runtime-config: {{ printf "%s|%s|%s" ($config.apiUrl | toString) ($config.portalUrl | default "" | toString) ($config.siteUrl | default "" | toString) | sha256sum }}
         {{- with $root.Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -81,6 +81,10 @@ spec:
             {{- if $config.portalUrl }}
             - name: AXIOMA_PORTAL_URL
               value: {{ $config.portalUrl | quote }}
+            {{- end }}
+            {{- if $config.siteUrl }}
+            - name: AXIOMA_SITE_URL
+              value: {{ $config.siteUrl | quote }}
             {{- end }}
             {{- with $config.extraEnv }}
             {{- toYaml . | nindent 12 }}

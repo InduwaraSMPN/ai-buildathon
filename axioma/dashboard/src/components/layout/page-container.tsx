@@ -17,7 +17,11 @@ export function PageContainer({
 		// without ever reaching PageContainer; when the landmark lived here those
 		// states had no <main> at all and the skip link pointed at nothing.
 		<div className="flex min-w-0 flex-1 flex-col p-4 md:p-6">
-			<div className="mb-5 flex min-w-0 flex-col gap-4">
+			{/* Actions sit beside the heading block and align to its bottom, so they
+			  line up with the description rather than the title. Falls back to the
+			  title's baseline when a page has no description, and wraps below on
+			  narrow viewports. */}
+			<div className="mb-5 flex min-w-0 flex-wrap items-end justify-between gap-4">
 				<div className="min-w-0">
 					<h1 className="font-heading font-semibold text-2xl tracking-tight">
 						{title}
@@ -26,7 +30,11 @@ export function PageContainer({
 						<p className="mt-1 text-muted-foreground text-sm">{description}</p>
 					) : null}
 				</div>
-				{action ? <div className="min-w-0 max-w-full">{action}</div> : null}
+				{action ? (
+					<div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">
+						{action}
+					</div>
+				) : null}
 			</div>
 			{children}
 		</div>

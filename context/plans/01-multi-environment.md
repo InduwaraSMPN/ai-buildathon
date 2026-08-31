@@ -45,7 +45,7 @@ The reason is specific rather than general caution. Ticket title and body are at
 
 Add `mode` to `environments` with values `act` and `shadow`, defaulting to `act`, and read it in exactly one place: a guard in `executeTool` that refuses write-effect tools when the environment is in shadow mode. Nothing else in this phase uses it.
 
-This is three lines of work now and saves a schema migration plus a second pass through the tool dispatcher later. The ITSM connector track (`connector-plan.md`) proposes a shadow mode where Axel proposes rather than acts; per-environment `mode` is where that belongs, and the agent must not know about it — suppression happens at the API tool layer so the transcript still records what Axel intended to do.
+This is three lines of work now and saves a schema migration plus a second pass through the tool dispatcher later. The ITSM connector track (`06-itsm-connector.md`) proposes a shadow mode where Axel proposes rather than acts; per-environment `mode` is where that belongs, and the agent must not know about it — suppression happens at the API tool layer so the transcript still records what Axel intended to do.
 
 ### Credentials
 
@@ -142,14 +142,14 @@ Dashboard — an environments administration screen. Shared primitives live in `
 
 ## Acceptance checklist
 
-- [ ] Two environments configured; the same ticket resolves to the correct one for each linkage.
-- [ ] A run against `staging` cannot read or write `prod`, verified by test.
-- [ ] Environment appears in the agent prompt and in the run record.
-- [ ] Dashboard lists environments, creates one with credentials, and shows resolution provenance on a run.
-- [ ] `mode: shadow` blocks writes at the API and records the attempt.
-- [ ] Parity test fails when a parameter is added to only one schema side — verify by deliberately breaking it, then fixing it.
-- [ ] Existing single-environment deployment still works with only `KUBECONFIG` set.
-- [ ] Full test suite green: `api` node tests, `agent` pytest, `cli` go test.
+- [x] Two environments configured; the same ticket resolves to the correct one for each linkage.
+- [x] A run against `staging` cannot read or write `prod`, verified by test.
+- [x] Environment appears in the agent prompt and in the run record.
+- [x] Dashboard lists environments, creates one with credentials, and shows resolution provenance on a run.
+- [x] `mode: shadow` blocks writes at the API and records the attempt.
+- [x] Parity test fails when a parameter is added to only one schema side — verified by deliberately breaking it, then fixing it.
+- [x] Existing single-environment deployment still works with only `KUBECONFIG` set.
+- [x] Full test suite green: `api` node tests, `agent` pytest, `cli` go test.
 
 ## Known traps
 

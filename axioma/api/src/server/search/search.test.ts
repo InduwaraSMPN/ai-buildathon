@@ -29,7 +29,11 @@ test("splits the trailing token off for prefix matching", () => {
 });
 
 test("keeps websearch operator queries whole", () => {
-	for (const query of ['"exact phrase"', "gateway OR proxy", "gateway -proxy"]) {
+	for (const query of [
+		'"exact phrase"',
+		"gateway OR proxy",
+		"gateway -proxy",
+	]) {
 		assert.deepEqual(splitPrefixQuery(query), { head: query, prefix: null });
 	}
 	// A trailing token of only punctuation leaves nothing to prefix-match.

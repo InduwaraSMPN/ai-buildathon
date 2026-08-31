@@ -8,7 +8,6 @@ import {
 	ticketAudit,
 	ticketMailOrigins,
 	ticketRuleFirings,
-	ticketStatuses,
 	tickets,
 	ticketTransitions,
 } from "@/db/schema";
@@ -88,27 +87,18 @@ export async function startTicketRun(
 		throw new ORPCError("SERVICE_UNAVAILABLE", {
 			message: "Axel is not connected",
 		});
-	const ticketState = (
+	const previous = (
 		await db
-			.select({ stateType: ticketStatuses.stateType })
-			.from(ticketStatuses)
-			.where(eq(ticketStatuses.key, ticket.status))
+			.select({ status: agentRuns.status })
+			.from(agentRuns)
+			.where(eq(agentRuns.ticketId, ticketId))
+			.orderBy(desc(agentRuns.startedAt))
 			.limit(1)
-	)[0]?.stateType;
-	if (ticketState === "open") {
-		const previous = (
-			await db
-				.select({ status: agentRuns.status })
-				.from(agentRuns)
-				.where(eq(agentRuns.ticketId, ticketId))
-				.orderBy(desc(agentRuns.startedAt))
-				.limit(1)
-		)[0];
-		if (!(await canRerun(ticket.status, previous?.status)))
-			throw new ORPCError("CONFLICT", {
-				message: "Only failed or exhausted runs can be rerun",
-			});
-	}
+	)[0];
+	if (previous && !(await canRerun(ticket.status, previous.status)))
+		throw new ORPCError("CONFLICT", {
+			message: "Only failed or exhausted runs can be rerun",
+		});
 	const nextStatus = await resolveTicketStatus(ticket.status, "startRun");
 	const [mailOrigin, channelOrigin] = await Promise.all([
 		db

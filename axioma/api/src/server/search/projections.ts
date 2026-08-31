@@ -120,17 +120,94 @@ const PII = [
 	[/\b(?:https?:\/\/|www\.)\S+/gi, "[url]"],
 	[/\b(?:\+?\d[\d ().-]{7,}\d)\b/g, "[phone]"],
 	[/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[ip]"],
+	[/\b[A-Z0-9._-]+\\[A-Z0-9._-]+\b/gi, "[account]"],
+	[/\b(?:[A-Z0-9-]+\.)+(?:local|internal|corp|lan)\b/gi, "[host]"],
+	[/\b(?:INC|REQ|CHG|PRB|TASK)[-_]?\d{3,}\b/gi, "[ticket]"],
 	[
 		/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
 		"[identifier]",
 	],
 ] as const;
 
+/** One name, as a capitalised word pair, allowing hyphens and apostrophes. */
+const NAME = String.raw`[A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)? [A-Z][a-z]+(?:[-'][A-Z]?[a-z]+)?`;
+
+/**
+ * A capitalised pair is only a person in some positions. Matching every pair
+ * would eat the diagnosis — "Active Directory", "Windows Update" — so each
+ * pattern carries the grammar that makes a name a name, and every candidate is
+ * then checked against the technical pairs this domain's prose actually uses.
+ */
+const PERSON = [
+	// Possessive: "Avery Chen's mailbox".
+	new RegExp(String.raw`\b(${NAME})(?='s\b)`, "g"),
+	// Introduced by a role, a preposition, or a verb that takes a person. The
+	// lead-in tolerates a capital because it may open a sentence, but the flag
+	// stays case-sensitive — `i` would make NAME's own [A-Z] match lowercase and
+	// swallow the lead-in word as half the name.
+	new RegExp(
+		String.raw`\b(?:[Rr]eporter|[Rr]equester|[Ee]mployee|[Uu]ser|[Mm]anager|[Oo]wner|[Aa]pprover|[Aa]ssignee|[Ff]or|[Tt]o|[Ff]rom|[Bb]y|[Ww]ith|[Pp]er|[Cc]ontacted|[Cc]alled|[Ee]mailed|[Aa]ssigned to|[Ee]scalated to|[Nn]otified|[Ss]poke to|[Cc]onfirmed with|[Oo]n behalf of)\s+(${NAME})\b`,
+		"g",
+	),
+	// Subject of a sentence: "Avery Chen reported the same fault."
+	new RegExp(
+		String.raw`(?:^|(?<=[.!?]\s))(${NAME})(?=\s+(?:reported|confirmed|said|asked|raised|called|replied|escalated|approved|rejected|declined|requested))`,
+		"g",
+	),
+] as const;
+
+/**
+ * Capitalised pairs that are products, teams, or platform concepts rather than
+ * people. Matched case-insensitively against the candidate alone, so the
+ * surrounding grammar never rescues or condemns one of these.
+ */
+const NON_PERSON = new Set(
+	[
+		"active directory",
+		"group policy",
+		"windows update",
+		"windows defender",
+		"microsoft teams",
+		"microsoft edge",
+		"microsoft office",
+		"outlook cache",
+		"credential manager",
+		"network operations",
+		"service desk",
+		"help desk",
+		"remote desktop",
+		"file explorer",
+		"task scheduler",
+		"device manager",
+		"print spooler",
+		"disk cleanup",
+		"internet settings",
+		"local account",
+		"domain controller",
+		"certificate services",
+		"security centre",
+		"security center",
+	].map((term) => term.toLowerCase()),
+);
+
+function redactPeople(value: string): string {
+	return PERSON.reduce(
+		(text, pattern) =>
+			text.replace(pattern, (match, candidate: string) => {
+				// Every pattern captures exactly the candidate name, so what precedes
+				// it — a role word, a preposition, a sentence boundary — is preserved.
+				if (NON_PERSON.has(candidate.toLowerCase())) return match;
+				return match.replace(candidate, "[person]");
+			}),
+		value,
+	);
+}
+
 /** Best-effort structured-PII removal; source fields remain excluded by construction. */
 export function deidentifyKnowledgeText(value: string): string {
 	return PII.reduce(
 		(text, [pattern, replacement]) => text.replace(pattern, replacement),
-		value,
+		redactPeople(value),
 	)
 		.replaceAll(/[\r\n\t]+/g, " ")
 		.replaceAll(/\s{2,}/g, " ")

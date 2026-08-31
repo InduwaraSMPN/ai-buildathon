@@ -387,7 +387,7 @@ async def run(ctx: RunContext) -> RunResult:
             {
                 "role": "tool",
                 "tool_call_id": call_id,
-                "content": rendered if tool.name == "knowledge_fetch" else _truncate(rendered),
+                "content": _truncate(rendered),
             }
         )
 

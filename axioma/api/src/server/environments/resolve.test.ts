@@ -22,6 +22,19 @@ test("CMDB beats default when the ticket has no linkage", () => {
 	assert.deepEqual(result, { environmentId: "env-prod", source: "cmdb" });
 });
 
+test("a CMDB environment not linked to the service is rejected", () => {
+	assert.throws(
+		() =>
+			resolveEnvironment({
+				ticket: { serviceId: "svc-app", environmentId: null },
+				serviceEnvironmentIds: ["env-staging"],
+				cmdbEnvironmentId: "env-prod",
+				defaultEnvironmentId: "env-default",
+			}),
+		/not linked to service/,
+	);
+});
+
 test("default is used when nothing more specific resolves", () => {
 	const result = resolveEnvironment({
 		ticket: { serviceId: "svc-app", environmentId: null },

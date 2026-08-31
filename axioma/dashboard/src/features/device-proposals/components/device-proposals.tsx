@@ -83,7 +83,7 @@ export function DeviceProposalList({
 			/>
 		);
 	return (
-		<div className="flex flex-col gap-4">
+		<div className="grid gap-4 md:grid-cols-2">
 			{proposals.map((proposal) => (
 				<Card key={proposal.id}>
 					<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">

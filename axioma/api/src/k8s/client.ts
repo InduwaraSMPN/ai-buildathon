@@ -248,12 +248,14 @@ export function createClientCache(
 	const maxSize = opts.maxSize ?? CLIENT_CACHE_MAX;
 	const buildOptions: BuildOptions = { secretKey: opts.secretKey };
 	const cache = new Map<string, KubernetesClients>();
+	const key = (connection: EnvironmentConnection) => JSON.stringify(connection);
 	return {
 		get(connection) {
-			const hit = cache.get(connection.id);
+			const cacheKey = key(connection);
+			const hit = cache.get(cacheKey);
 			if (hit) return hit;
 			const clients = createKubernetesClient(connection, buildOptions);
-			cache.set(connection.id, clients);
+			cache.set(cacheKey, clients);
 			if (cache.size > maxSize) {
 				const oldest = cache.keys().next().value;
 				if (oldest !== undefined) cache.delete(oldest);
@@ -261,7 +263,9 @@ export function createClientCache(
 			return clients;
 		},
 		evict(id) {
-			cache.delete(id);
+			for (const key of cache.keys())
+				if ((JSON.parse(key) as EnvironmentConnection).id === id)
+					cache.delete(key);
 		},
 		evictAll() {
 			cache.clear();

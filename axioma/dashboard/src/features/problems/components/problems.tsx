@@ -1,4 +1,6 @@
+import { createColumnHelper } from "@tanstack/react-table";
 import { type ReactNode, useState } from "react";
+import { DataTable } from "@/components/data-table";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,14 +23,6 @@ import {
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 
 export type ProblemSummary = {
 	id: string;
@@ -138,6 +132,43 @@ export function ProblemDetailPage({ problem }: { problem: ProblemDetail }) {
 	);
 }
 
+const problemColumn = createColumnHelper<ProblemSummary>();
+const problemColumns = [
+	problemColumn.accessor("title", {
+		header: "Problem",
+		cell: ({ row }) => (
+			<div>
+				<div className="font-medium">{row.original.title}</div>
+				<div className="text-muted-foreground">{row.original.problemNumber}</div>
+			</div>
+		),
+	}),
+	problemColumn.accessor(
+		(problem) => (problem.isKnownError ? "Known error" : problem.status),
+		{
+			id: "status",
+			header: "Status",
+			cell: ({ row }) => (
+				<Badge variant={row.original.isKnownError ? "default" : "outline"}>
+					{row.original.isKnownError ? "Known error" : row.original.status}
+				</Badge>
+			),
+		},
+	),
+	problemColumn.accessor("priority", { header: "Priority" }),
+	problemColumn.accessor((problem) => problem.assigneeId ?? "Unassigned", {
+		id: "owner",
+		header: "Owner",
+	}),
+	// Sorts on the timestamp, displays the formatted date: sorting a formatted
+	// date string would order it alphabetically.
+	problemColumn.accessor((problem) => new Date(problem.updatedAt).getTime(), {
+		id: "updated",
+		header: "Updated",
+		cell: ({ row }) => new Date(row.original.updatedAt).toLocaleDateString(),
+	}),
+];
+
 export function ProblemList({
 	problems,
 	onSelect,
@@ -145,72 +176,17 @@ export function ProblemList({
 	problems: readonly ProblemSummary[];
 	onSelect?: (problem: ProblemSummary) => void;
 }) {
-	if (problems.length === 0)
-		return (
-			<Empty>
-				<EmptyHeader>
-					<EmptyTitle>No problems found</EmptyTitle>
-				</EmptyHeader>
-			</Empty>
-		);
-
 	return (
-		<Card>
-			<CardContent className="px-0">
-				<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Problem</TableHead>
-						<TableHead>Status</TableHead>
-						<TableHead>Priority</TableHead>
-						<TableHead>Owner</TableHead>
-						<TableHead>Updated</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{problems.map((problem) => (
-						<TableRow
-							key={problem.id}
-							role={onSelect ? "button" : undefined}
-							tabIndex={onSelect ? 0 : undefined}
-							className={
-								onSelect
-									? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-									: undefined
-							}
-							onClick={() => onSelect?.(problem)}
-							onKeyDown={(event) => {
-								if (onSelect && (event.key === "Enter" || event.key === " ")) {
-									event.preventDefault();
-									onSelect(problem);
-								}
-							}}
-							aria-label={
-								onSelect ? `View ${problem.title} problem details` : undefined
-							}
-						>
-							<TableCell>
-								<div className="font-medium">{problem.title}</div>
-								<div className="text-muted-foreground">
-									{problem.problemNumber}
-								</div>
-							</TableCell>
-							<TableCell>
-								<Badge variant={problem.isKnownError ? "default" : "outline"}>
-									{problem.isKnownError ? "Known error" : problem.status}
-								</Badge>
-							</TableCell>
-							<TableCell>{problem.priority}</TableCell>
-							<TableCell>{problem.assigneeId ?? "Unassigned"}</TableCell>
-							<TableCell>
-								{new Date(problem.updatedAt).toLocaleDateString()}
-							</TableCell>
-						</TableRow>
-					))}
-				</TableBody>
-				</Table>
-			</CardContent>
-		</Card>
+		<DataTable
+			data={problems}
+			columns={problemColumns}
+			filterLabel="Filter problems"
+			filterPlaceholder="Filter title, number, status, or owner…"
+			emptyTitle="No problems found"
+			emptyDescription="No problems have been raised."
+			onRowClick={onSelect}
+			rowLabel={(problem) => `View ${problem.title} problem details`}
+		/>
 	);
 }
 

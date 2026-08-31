@@ -179,12 +179,20 @@ test("a shadow environment cannot even propose a command", () => {
 	};
 	assert.throws(
 		() =>
-			assertEnvironmentAllowed({ name: "device_propose_command", ...shadow }),
+			assertEnvironmentAllowed({
+				name: "device_propose_command",
+				effect: "write",
+				...shadow,
+			}),
 		/shadow mode/,
 	);
 	// And still permits a read, so a shadow run can still diagnose.
 	assert.doesNotThrow(() =>
-		assertEnvironmentAllowed({ name: "device_read_state", ...shadow }),
+		assertEnvironmentAllowed({
+			name: "device_read_state",
+			effect: "read",
+			...shadow,
+		}),
 	);
 });
 

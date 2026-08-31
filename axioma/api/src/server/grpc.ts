@@ -42,6 +42,7 @@ import {
 } from "./grpc-core";
 import { ingestInventoryReport } from "./inventory";
 import { sweepPending } from "./pending";
+import { expireStaleProposals } from "./routers/device-proposals";
 import { reconcileCoreSearchDocuments } from "./search/projections";
 import { transitionTicketStopwatches } from "./sla/runtime";
 import { sweepPresence, sweepSla } from "./sla/sweep";
@@ -778,6 +779,8 @@ export class Gateway {
 					deviceId = String(hello.deviceId);
 					generation = Symbol(deviceId);
 					await this.registerDevice(deviceId, generation, stream, hello);
+				} else if (this.devices.get(deviceId)?.generation !== generation) {
+					return;
 				} else if (message.heartbeat && deviceId) {
 					const connection = this.devices.get(deviceId);
 					if (connection) connection.lastSeen = Date.now();
@@ -1425,6 +1428,7 @@ export class Gateway {
 			["workflow leases", () => sweepExpiredWorkflowExecutions(new Date(now))],
 			["search", () => this.reconcileSearch(new Date(now))],
 			["run leases", () => this.expireRunLeases(new Date(now))],
+			["device proposals", () => expireStaleProposals(new Date(now))],
 			[
 				"change verification",
 				() => sweepExpiredChangeVerifications(new Date(now)),

@@ -39,6 +39,10 @@ export function resolveEnvironment(
 		return { environmentId: ticketEnvironmentId, source: "ticket" };
 	}
 	if (input.cmdbEnvironmentId) {
+		if (!serviceEnvironments.has(input.cmdbEnvironmentId))
+			throw new Error(
+				`environment ${input.cmdbEnvironmentId} is not linked to service ${input.ticket.serviceId}`,
+			);
 		return { environmentId: input.cmdbEnvironmentId, source: "cmdb" };
 	}
 	if (input.defaultEnvironmentId) {

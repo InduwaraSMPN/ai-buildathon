@@ -244,6 +244,7 @@ portal:
   enabled: true
   replicaCount: 2
   apiUrl: "https://api.axioma.example.com"
+  siteUrl: "https://www.axioma.example.com"
   service:
     type: ClusterIP
     port: 80
@@ -270,6 +271,13 @@ portal:
   nodeSelector: {}
   tolerations: []
   affinity: {}
+
+web:
+  enabled: true
+  replicaCount: 2
+  # Server-to-server, so it stays out of api.config.corsOrigin. Empty would use
+  # the API's in-cluster Service; named here to show the knob exists.
+  apiUrl: "http://axioma-api:3000"
 
 dashboard:
   enabled: true
@@ -365,10 +373,12 @@ ingress:
         - api.axioma.example.com
         - portal.axioma.example.com
         - dashboard.axioma.example.com
+        - www.axioma.example.com
   hosts:
     api: api.axioma.example.com
     portal: portal.axioma.example.com
     dashboard: dashboard.axioma.example.com
+    web: www.axioma.example.com
 
 # Enabled here only so `helm template` exercises the branch. Read the warning in
 # values.yaml before doing this for real: the device channel is plaintext and

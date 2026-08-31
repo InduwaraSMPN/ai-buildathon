@@ -235,14 +235,16 @@ export function TicketQueue({
 					</Button>
 					<label className="relative min-w-56 flex-1" htmlFor="ticket-search">
 						<span className="sr-only">Search tickets</span>
-						<Search className="absolute top-2 left-2.5 size-3.5 text-muted-foreground" />
+						<Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-muted-foreground" />
 						<Input
 							ref={searchRef}
 							id="ticket-search"
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
 							placeholder="Search ID, title, or reporter…"
-							className="pl-8"
+							// h-7 matches the size="sm" buttons sharing this row; the
+							// input's own h-8 default stands 4px taller than all of them.
+							className="h-7 pl-8"
 						/>
 					</label>
 					<QueueFacet

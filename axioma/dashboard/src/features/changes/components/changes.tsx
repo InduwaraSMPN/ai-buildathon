@@ -1,4 +1,6 @@
+import { createColumnHelper } from "@tanstack/react-table";
 import { type ReactNode, useState } from "react";
+import { DataTable } from "@/components/data-table";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -25,14 +27,6 @@ import {
 	NativeSelect,
 	NativeSelectOption,
 } from "@/components/ui/native-select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 
 export type ChangeSummary = {
@@ -202,6 +196,60 @@ export function ChangeDetailPage({
 	);
 }
 
+const changeColumn = createColumnHelper<ChangeSummary>();
+const changeColumns = [
+	changeColumn.accessor("title", {
+		header: "Change",
+		cell: ({ row }) => (
+			<div>
+				<div className="font-medium">{row.original.title}</div>
+				<div className="text-muted-foreground">{row.original.changeNumber}</div>
+			</div>
+		),
+	}),
+	changeColumn.accessor("changeType", {
+		header: "Type",
+		cell: ({ row }) => (
+			<span className="capitalize">{row.original.changeType}</span>
+		),
+	}),
+	changeColumn.accessor((change) => change.status.replaceAll("_", " "), {
+		id: "status",
+		header: "Status",
+		cell: ({ row }) => (
+			<Badge
+				variant={
+					row.original.status === "failed" || row.original.status === "rejected"
+						? "destructive"
+						: "outline"
+				}
+			>
+				{row.original.status.replaceAll("_", " ")}
+			</Badge>
+		),
+	}),
+	changeColumn.accessor(
+		(change) => change.riskLevel ?? `${change.impact} impact`,
+		{ id: "risk", header: "Risk" },
+	),
+	// Sorts on the timestamp so the window orders chronologically; unscheduled
+	// changes sort last rather than under "N".
+	changeColumn.accessor(
+		(change) =>
+			change.workStartAt
+				? new Date(change.workStartAt).getTime()
+				: Number.POSITIVE_INFINITY,
+		{
+			id: "window",
+			header: "Window",
+			cell: ({ row }) =>
+				row.original.workStartAt
+					? new Date(row.original.workStartAt).toLocaleString()
+					: "Not scheduled",
+		},
+	),
+];
+
 export function ChangeList({
 	changes,
 	onSelect,
@@ -209,81 +257,17 @@ export function ChangeList({
 	changes: readonly ChangeSummary[];
 	onSelect?: (change: ChangeSummary) => void;
 }) {
-	if (changes.length === 0)
-		return (
-			<Empty>
-				<EmptyHeader>
-					<EmptyTitle>No changes found</EmptyTitle>
-				</EmptyHeader>
-			</Empty>
-		);
 	return (
-		<Card>
-			<CardContent className="px-0">
-				<Table>
-				<TableHeader>
-					<TableRow>
-						<TableHead>Change</TableHead>
-						<TableHead>Type</TableHead>
-						<TableHead>Status</TableHead>
-						<TableHead>Risk</TableHead>
-						<TableHead>Window</TableHead>
-					</TableRow>
-				</TableHeader>
-				<TableBody>
-					{changes.map((change) => (
-						<TableRow
-							key={change.id}
-							role={onSelect ? "button" : undefined}
-							tabIndex={onSelect ? 0 : undefined}
-							className={
-								onSelect
-									? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-									: undefined
-							}
-							onClick={() => onSelect?.(change)}
-							onKeyDown={(event) => {
-								if (onSelect && (event.key === "Enter" || event.key === " ")) {
-									event.preventDefault();
-									onSelect(change);
-								}
-							}}
-							aria-label={
-								onSelect ? `View ${change.title} change details` : undefined
-							}
-						>
-							<TableCell>
-								<div className="font-medium">{change.title}</div>
-								<div className="text-muted-foreground">
-									{change.changeNumber}
-								</div>
-							</TableCell>
-							<TableCell className="capitalize">{change.changeType}</TableCell>
-							<TableCell>
-								<Badge
-									variant={
-										change.status === "failed" || change.status === "rejected"
-											? "destructive"
-											: "outline"
-									}
-								>
-									{change.status.replaceAll("_", " ")}
-								</Badge>
-							</TableCell>
-							<TableCell>
-								{change.riskLevel ?? `${change.impact} impact`}
-							</TableCell>
-							<TableCell>
-								{change.workStartAt
-									? new Date(change.workStartAt).toLocaleString()
-									: "Not scheduled"}
-							</TableCell>
-						</TableRow>
-					))}
-				</TableBody>
-				</Table>
-			</CardContent>
-		</Card>
+		<DataTable
+			data={changes}
+			columns={changeColumns}
+			filterLabel="Filter changes"
+			filterPlaceholder="Filter title, number, type, or status…"
+			emptyTitle="No changes found"
+			emptyDescription="No changes have been raised."
+			onRowClick={onSelect}
+			rowLabel={(change) => `View ${change.title} change details`}
+		/>
 	);
 }
 

@@ -1,3 +1,4 @@
+import { RiArrowRightUpLine as ArrowRightUp } from "@remixicon/react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -43,8 +44,17 @@ export default function UserMenu() {
 					{/* The terms are accepted at sign-in, so they have to stay
 					 * reachable afterwards — this is the only entry point to them
 					 * from inside the portal. */}
-					<DropdownMenuItem render={<Link to="/acceptable-use" />}>
+					<DropdownMenuItem
+						render={
+							<Link
+								to="/acceptable-use"
+								target="_blank"
+								rel="noreferrer noopener"
+							/>
+						}
+					>
 						Acceptable use policy
+						<ArrowRightUp className="ml-auto size-3.5 text-muted-foreground" />
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem

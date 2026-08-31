@@ -56,6 +56,18 @@ spec:
                 port:
                   number: {{ .Values.dashboard.service.port }}
     {{- end }}
+    {{- if and .Values.web.enabled .Values.ingress.hosts.web }}
+    - host: {{ .Values.ingress.hosts.web | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "axioma.web.fullname" . }}
+                port:
+                  number: {{ .Values.web.service.port }}
+    {{- end }}
 {{- end }}
 {{- if .Values.grpcIngress.enabled }}
 ---

@@ -151,7 +151,7 @@ async def test_transcript_shape_truncation_and_usage(monkeypatch: pytest.MonkeyP
     assert "truncated" not in str(observation.tool_output)
 
 
-async def test_knowledge_fetch_keeps_full_item_in_model_context() -> None:
+async def test_knowledge_fetch_is_bounded_in_model_context() -> None:
     full_body = "prefix-" + "x" * 5000 + "-decisive-tail"
     model = ScriptedModel(
         [
@@ -169,12 +169,9 @@ async def test_knowledge_fetch_keeps_full_item_in_model_context() -> None:
         ),
     )
     await run(ctx)
-    fetched = next(
-        item
-        for item in model.transcripts[1]
-        if item.get("role") == "tool" and "decisive-tail" in item.get("content", "")
-    )
-    assert "[truncated " not in fetched["content"]
+    fetched = [item for item in model.transcripts[1] if item.get("role") == "tool"][-1]
+    assert "decisive-tail" not in fetched["content"]
+    assert "[truncated " in fetched["content"]
 
 
 async def test_matching_known_error_result_is_recorded_for_citation() -> None:

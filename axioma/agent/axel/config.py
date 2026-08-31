@@ -28,7 +28,7 @@ class Config(BaseSettings):
     strict_function_calling: bool = False
     temperature: float | None = None
 
-    max_tool_calls: int = 20
+    max_tool_calls: int = 8
     max_model_turns: int = 10
     run_deadline_seconds: float = 300.0
     model_output_max_chars: int = 4000

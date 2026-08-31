@@ -2,9 +2,51 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
 	agentRunDocument,
+	deidentifyKnowledgeText,
 	knowledgeArticleDocument,
 	resolvedTicketDocument,
 } from "./projections";
+
+// A person's name reaches this text because the reporter's name, job title,
+// department and manager are deliberately in the model's context, so the model
+// writes them into a resolution or an outcome. Every grammatical position that
+// puts a name into IT prose has to be covered, not only the possessive one.
+test("removes a person's name in every position it occurs in", () => {
+	for (const [position, sentence] of [
+		["possessive", "Restored Avery Chen's mailbox profile."],
+		["role-prefixed", "Confirmed with reporter Avery Chen before acting."],
+		["bare after a preposition", "Escalated to Avery Chen for a decision."],
+		["bare after a verb", "Contacted Avery Chen and confirmed the fix."],
+		["bare as the subject", "Avery Chen reported the same fault twice."],
+	] as const) {
+		const redacted = deidentifyKnowledgeText(sentence);
+		assert.doesNotMatch(
+			redacted,
+			/Avery|Chen/,
+			`${position}: name survived redaction in ${JSON.stringify(redacted)}`,
+		);
+		assert.match(redacted, /\[person\]/, position);
+	}
+});
+
+// Redaction that eats the diagnosis is a different failure with the same cause.
+// These are the capitalised pairs that actually occur in this domain's prose.
+test("keeps technical terms that look like names", () => {
+	for (const phrase of [
+		"Reinstalled Active Directory certificate services.",
+		"Windows Update was blocked by a stale policy.",
+		"Cleared the Outlook Cache and restarted Microsoft Teams.",
+		"Escalated to Network Operations for capacity.",
+		"Group Policy refresh did not apply.",
+	]) {
+		const redacted = deidentifyKnowledgeText(phrase);
+		assert.doesNotMatch(
+			redacted,
+			/\[person\]/,
+			`over-redacted: ${JSON.stringify(redacted)}`,
+		);
+	}
+});
 
 test("projects knowledge articles into cross-record search", () => {
 	const updatedAt = new Date("2026-01-02T00:00:00Z");

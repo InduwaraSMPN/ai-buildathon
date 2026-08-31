@@ -116,6 +116,39 @@ jobs:
       - run: go test ./...
       - run: go build ./...
 
+  windows-agent-cli:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: axioma/agent/uv.lock
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: axioma/cli/go.mod
+          cache-dependency-path: axioma/cli/go.sum
+      - working-directory: axioma/agent
+        run: uv sync --all-extras --frozen
+      - working-directory: axioma/agent
+        run: uv run ruff check axel tests
+      - working-directory: axioma/agent
+        run: uv run pytest -q --basetemp .pytest-tmp
+      - working-directory: axioma/cli
+        run: pwsh scripts/generate-proto.ps1
+      - working-directory: axioma/cli
+        run: go test ./...
+      - working-directory: axioma/cli
+        run: go vet ./...
+      - working-directory: axioma/cli
+        run: go build ./...
+
   dashboard:
     runs-on: ubuntu-latest
     defaults:

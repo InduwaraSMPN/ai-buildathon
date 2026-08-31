@@ -188,7 +188,7 @@ function Mailboxes() {
 					</DialogFooter>
 				</DialogContent>
 			</Dialog>
-			<div className="grid gap-3">
+			<div className="grid gap-3 md:grid-cols-2">
 				{mailboxes.data.map((mailbox) => (
 					<Card key={mailbox.id}>
 						<CardHeader>

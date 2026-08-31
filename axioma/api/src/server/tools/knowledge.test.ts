@@ -104,7 +104,8 @@ test("real knowledge search crosses employee boundaries only through a deidentif
 			status: "closed",
 			serviceId: "svc-general",
 			serviceSubcategoryId: "ss-general",
-			resolution: "Rotate the frobnicator certificate",
+			resolution:
+				"Restored Avery Chen's frobnicator certificate on WS-104.corp",
 			resolutionCode: "fixed",
 		},
 	]);
@@ -112,7 +113,7 @@ test("real knowledge search crosses employee boundaries only through a deidentif
 		objectType: "resolved_ticket",
 		objectId: resolved,
 		title: "De-identified certificate precedent",
-		body: "frobnicator certificate rotation fixed the outage",
+		body: "Restored Avery Chen's frobnicator certificate on WS-104.corp",
 		sourceUpdatedAt: new Date(),
 	});
 	try {
@@ -122,16 +123,12 @@ test("real knowledge search crosses employee boundaries only through a deidentif
 			dependencies(async () => null),
 		);
 		assert.equal(result.mode, "lexical");
-		assert.deepEqual(result.items, [
-			{
-				source: "resolved_ticket",
-				id: resolved,
-				reference: "deidentified-resolved-ticket",
-				title: "De-identified certificate precedent",
-				excerpt: "frobnicator certificate rotation fixed the outage",
-			},
-		]);
-		assert(!JSON.stringify(result).includes("Private employee"));
+		assert.equal(result.items[0]?.source, "resolved_ticket");
+		assert.equal(result.items[0]?.id, resolved);
+		const serialized = JSON.stringify(result);
+		assert(!serialized.includes("Private employee"));
+		assert(!serialized.includes("Avery Chen"));
+		assert(!serialized.includes("WS-104.corp"));
 	} finally {
 		await cleanup([current, resolved, caller, other]);
 	}

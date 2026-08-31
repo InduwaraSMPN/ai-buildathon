@@ -17,7 +17,8 @@ cat >"$target" <<JS
 // Generated at container start by deploy/runtime-config.sh. Do not edit.
 window.__AXIOMA_CONFIG__ = {
   "apiUrl": "$(escape "${AXIOMA_API_URL:-}")",
-  "portalUrl": "$(escape "${AXIOMA_PORTAL_URL:-}")"
+  "portalUrl": "$(escape "${AXIOMA_PORTAL_URL:-}")",
+  "siteUrl": "$(escape "${AXIOMA_SITE_URL:-}")"
 };
 JS
 

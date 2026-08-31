@@ -86,7 +86,7 @@ def test_prompt_accepts_top_level_observation_list() -> None:
 
 
 async def test_forced_search_fetch_and_cmdb_writeback_fit_default_budget() -> None:
-    assert config.max_tool_calls == 20
+    assert config.max_tool_calls == 8
     assert config.max_model_turns == 10
     model = ScriptedModel(
         [
@@ -116,6 +116,68 @@ async def test_forced_search_fetch_and_cmdb_writeback_fit_default_budget() -> No
         "cmdb_record_observation",
     ]
     assert len(bus.calls) < config.max_tool_calls
+
+
+async def test_worst_case_infrastructure_fix_fits_the_tool_ceiling() -> None:
+    """The longest path a successful run can take, pinned against the ceiling.
+
+    ``max_tool_calls`` was lowered to 8 so it can actually bind — the loop spends
+    at most one tool call per model turn, so a ceiling above ``max_model_turns``
+    was unreachable. That makes the headroom small enough to be worth asserting:
+    forced knowledge search, a fetch, a read, a write, the read that discharges
+    the write's verification obligation, and the CMDB observation the resolution
+    gate requires. Adding a seventh mandatory step, or a second forced call,
+    breaks this test before it breaks a run in production.
+    """
+    model = ScriptedModel(
+        [
+            call("knowledge_fetch", {"source": "known_error", "id": "kb-9"}),
+            call("cluster_read_pods", {"namespace": "shop"}),
+            call(
+                "cluster_patch_image",
+                {
+                    "namespace": "shop",
+                    "name": "checkout",
+                    "container_index": 0,
+                    "image": "checkout:v2",
+                },
+            ),
+            call("cluster_read_deployment", {"namespace": "shop", "name": "checkout"}),
+            cmdb_call(),
+            Decision(
+                kind="resolved",
+                reasoning="Rollout is healthy and the observation is recorded.",
+                resolution="Image tag corrected.",
+            ),
+        ]
+    )
+    ctx, bus, _ = context(
+        model,
+        FakeToolBus(
+            {
+                "knowledge_search": {"mode": "hybrid", "items": []},
+                "knowledge_fetch": {"source": "known_error", "id": "kb-9"},
+                "cluster_read_pods": {"items": [{"name": "checkout-1"}]},
+                "cluster_patch_image": {"accepted": True},
+                "cluster_read_deployment": {"name": "checkout", "readyReplicas": 1},
+            }
+        ),
+    )
+    result = await run(ctx)
+    assert result.status is RunStatus.RESOLVED
+    assert [name for name, _ in bus.calls] == [
+        "knowledge_search",
+        "knowledge_fetch",
+        "cluster_read_pods",
+        "cluster_patch_image",
+        "cluster_read_deployment",
+        "cmdb_record_observation",
+    ]
+    # Six mandatory calls against a ceiling of eight. The remaining two are the
+    # only budget a run has for a wrong turn, and the CMDB gate can spend one of
+    # them on a rejected resolution before the second escalates.
+    assert len(bus.calls) == 6
+    assert config.max_tool_calls - len(bus.calls) == 2
 
 
 def test_same_resource_requires_matching_authoritative_environment() -> None:

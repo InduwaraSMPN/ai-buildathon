@@ -1,10 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
+import type { ReactNode } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { DataTable } from "@/components/data-table";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	Dialog,
 	DialogContent,
@@ -14,33 +24,28 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
 	NativeSelect,
 	NativeSelectOption,
 } from "@/components/ui/native-select";
-import {
-	Table,
-	TableBody,
-	TableCell,
-	TableHead,
-	TableHeader,
-	TableRow,
-} from "@/components/ui/table";
 import { client } from "@/utils/orpc";
 
 type Role = Awaited<ReturnType<typeof client.listRoles>>[number];
 type Capability = Role["capabilities"][number];
 type Team = Awaited<ReturnType<typeof client.listTeams>>[number];
+type Person = Awaited<ReturnType<typeof client.listPeople>>[number];
+type Department = Awaited<ReturnType<typeof client.listDepartments>>[number];
+type CapabilityRow = { capability: Capability };
 
 export function RolesPage() {
 	const queryClient = useQueryClient();
 	const [departmentName, setDepartmentName] = useState("");
 	const [teamName, setTeamName] = useState("");
-	const [departmentOpen, setDepartmentOpen] = useState(false);
-	const [teamOpen, setTeamOpen] = useState(false);
+	const [panel, setPanel] = useState<
+		null | "roles" | "people" | "departments" | "teams"
+	>(null);
 	const roles = useQuery({
 		queryKey: ["roles"],
 		queryFn: () => client.listRoles(),
@@ -121,6 +126,228 @@ export function RolesPage() {
 		onSuccess: refresh,
 		onError: (error) => toast.error(error.message),
 	});
+	// Rows are read before the pending and error guards so the column
+	// definitions below can be memoized: hooks cannot sit after an early return.
+	const roleRows = roles.data ?? [];
+	const peopleRows = people.data ?? [];
+	const teamRows = teams.data ?? [];
+	const departmentRows = departments.data ?? [];
+	const capabilityRows = capabilities.data ?? [];
+
+	// One column per role in both matrices, so the defs are built rather than
+	// written out; each depends on the role list and the mutation it fires.
+	// Under table-fixed a column with no width competes with the sized ones, so
+	// the role columns share what the fixed columns leave and the total is 100%.
+	const roleColumnWidth = useCallback(
+		(fixed: number) =>
+			roleRows.length ? (100 - fixed) / roleRows.length : undefined,
+		[roleRows],
+	);
+	const capabilityColumns = useMemo<ColumnDef<CapabilityRow, unknown>[]>(
+		() => [
+			{
+				accessorKey: "capability",
+				header: "Capability",
+				size: 30,
+				cell: ({ row }) => (
+					<span className="font-mono">{row.original.capability}</span>
+				),
+			},
+			...roleRows.map((role) => ({
+				id: role.id,
+				header: role.name,
+				size: roleColumnWidth(30),
+				accessorFn: (row: CapabilityRow) =>
+					role.capabilities.includes(row.capability),
+				cell: ({ row }: { row: { original: CapabilityRow } }) => (
+					<Checkbox
+						aria-label={`${row.original.capability} for ${role.name}`}
+						checked={role.capabilities.includes(row.original.capability)}
+						disabled={updateRole.isPending}
+						onCheckedChange={(checked) =>
+							updateRole.mutate({
+								roleId: role.id,
+								capabilities: checked
+									? [...role.capabilities, row.original.capability]
+									: role.capabilities.filter(
+											(item) => item !== row.original.capability,
+										),
+							})
+						}
+					/>
+				),
+			})),
+		],
+		[roleRows, updateRole, roleColumnWidth],
+	);
+	const capabilityData = useMemo<CapabilityRow[]>(
+		() => capabilityRows.map((capability) => ({ capability })),
+		[capabilityRows],
+	);
+
+	const peopleColumns = useMemo<ColumnDef<Person, unknown>[]>(
+		() => [
+			{
+				accessorKey: "name",
+				header: "Person",
+				size: 28,
+				cell: ({ row }) => (
+					<>
+						{row.original.name}
+						<div className="text-muted-foreground text-xs">
+							{row.original.email}
+						</div>
+					</>
+				),
+			},
+			{
+				accessorKey: "kind",
+				header: "Kind",
+				size: 14,
+				cell: ({ row }) => (
+					<NativeSelect
+						size="sm"
+						value={row.original.kind}
+						disabled={setKind.isPending}
+						onChange={(event) =>
+							setKind.mutate({
+								userId: row.original.id,
+								kind: event.target.value as "staff" | "reporter",
+							})
+						}
+					>
+						<NativeSelectOption value="reporter">Reporter</NativeSelectOption>
+						<NativeSelectOption value="staff">Staff</NativeSelectOption>
+					</NativeSelect>
+				),
+			},
+			...roleRows.map((role) => ({
+				id: role.id,
+				header: role.name,
+				size: roleColumnWidth(42),
+				accessorFn: (person: Person) => person.roleIds.includes(role.id),
+				cell: ({ row }: { row: { original: Person } }) => (
+					<Checkbox
+						aria-label={`${role.name} for ${row.original.name}`}
+						checked={row.original.roleIds.includes(role.id)}
+						onCheckedChange={(assigned) =>
+							assignRole.mutate({
+								roleId: role.id,
+								targetType: "user",
+								targetId: row.original.id,
+								assigned: assigned === true,
+							})
+						}
+					/>
+				),
+			})),
+		],
+		[roleRows, assignRole, setKind, roleColumnWidth],
+	);
+
+	const departmentColumns = useMemo<ColumnDef<Department, unknown>[]>(
+		() => [
+			{ accessorKey: "name", header: "Department", size: 60 },
+			{
+				id: "teams",
+				header: "Teams",
+				size: 40,
+				accessorFn: (department: Department) =>
+					teamRows.filter((team) => team.departmentId === department.id).length,
+			},
+		],
+		[teamRows],
+	);
+
+	const teamColumns = useMemo<ColumnDef<Team, unknown>[]>(
+		() => [
+			{ accessorKey: "name", header: "Team", size: 18 },
+			{
+				id: "department",
+				header: "Department",
+				size: 20,
+				// Sorted and filtered by the department name, not the id, so the
+				// column behaves the way it reads.
+				accessorFn: (team: Team) =>
+					departmentRows.find(
+						(department) => department.id === team.departmentId,
+					)?.name ?? "",
+				cell: ({ row }) => (
+					<NativeSelect
+						size="sm"
+						value={row.original.departmentId ?? ""}
+						disabled={updateTeam.isPending}
+						onChange={(event) =>
+							updateTeam.mutate({
+								...row.original,
+								departmentId: event.target.value || null,
+							})
+						}
+					>
+						<NativeSelectOption value="">None</NativeSelectOption>
+						{departmentRows.map((department) => (
+							<NativeSelectOption key={department.id} value={department.id}>
+								{department.name}
+							</NativeSelectOption>
+						))}
+					</NativeSelect>
+				),
+			},
+			{
+				id: "members",
+				header: "Members",
+				size: 24,
+				accessorFn: (team: Team) =>
+					peopleRows
+						.filter((person) => team.memberIds.includes(person.id))
+						.map((person) => person.name)
+						.join(", "),
+				cell: ({ row }) => (
+					<MemberSummary
+						names={peopleRows
+							.filter((person) => row.original.memberIds.includes(person.id))
+							.map((person) => person.name)}
+						empty="No members"
+					/>
+				),
+			},
+			{
+				id: "roles",
+				header: "Roles",
+				size: 24,
+				accessorFn: (team: Team) =>
+					roleRows
+						.filter((role) => team.roleIds.includes(role.id))
+						.map((role) => role.name)
+						.join(", "),
+				cell: ({ row }) => (
+					<MemberSummary
+						names={roleRows
+							.filter((role) => row.original.roleIds.includes(role.id))
+							.map((role) => role.name)}
+						empty="No roles"
+					/>
+				),
+			},
+			{
+				id: "membership",
+				header: "Membership",
+				size: 14,
+				enableSorting: false,
+				cell: ({ row }) => (
+					<TeamMembershipDialog
+						team={row.original}
+						people={peopleRows}
+						roles={roleRows}
+						pending={updateTeam.isPending}
+						onChange={(next) => updateTeam.mutate({ ...row.original, ...next })}
+					/>
+				),
+			},
+		],
+		[departmentRows, peopleRows, roleRows, updateTeam],
+	);
+
 	if (
 		[roles, capabilities, people, teams, departments].some(
 			(query) => query.isPending,
@@ -149,303 +376,344 @@ export function RolesPage() {
 				/>
 			</PageContainer>
 		);
-	const roleRows = roles.data ?? [];
-	const peopleRows = people.data ?? [];
-	const teamRows = teams.data ?? [];
-	const departmentRows = departments.data ?? [];
-	const capabilityRows = capabilities.data ?? [];
 	return (
 		<PageContainer
 			title="Identity administration"
 			description="Manage access, people and organization structure."
 		>
-			<section className="space-y-3">
-				<h2 className="font-semibold">Role capabilities</h2>
-				<Card>
-<CardContent className="px-0">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Capability</TableHead>
-								{roleRows.map((role) => (
-									<TableHead key={role.id}>{role.name}</TableHead>
-								))}
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{capabilityRows.map((capability) => (
-								<TableRow key={capability}>
-									<TableCell className="font-mono">{capability}</TableCell>
-									{roleRows.map((role) => (
-										<TableCell key={role.id}>
-											<Checkbox
-												aria-label={`${capability} for ${role.name}`}
-												checked={role.capabilities.includes(capability)}
-												disabled={updateRole.isPending}
-												onCheckedChange={(checked) =>
-													updateRole.mutate({
-														roleId: role.id,
-														capabilities: checked
-															? [...role.capabilities, capability]
-															: role.capabilities.filter(
-																	(item) => item !== capability,
-																),
-													})
-												}
-											/>
-										</TableCell>
-									))}
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-</CardContent>
-</Card>
-			</section>
-			<section className="space-y-3">
-				<h2 className="font-semibold">People</h2>
-				<Card>
-<CardContent className="px-0">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Person</TableHead>
-								<TableHead>Kind</TableHead>
-								{roleRows.map((role) => (
-									<TableHead key={role.id}>{role.name}</TableHead>
-								))}
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{peopleRows.map((person) => (
-								<TableRow key={person.id}>
-									<TableCell>
-										{person.name}
-										<div className="text-muted-foreground text-xs">
-											{person.email}
-										</div>
-									</TableCell>
-									<TableCell>
-										<NativeSelect
-											size="sm"
-											value={person.kind}
-											disabled={setKind.isPending}
-											onChange={(event) =>
-												setKind.mutate({
-													userId: person.id,
-													kind: event.target.value as "staff" | "reporter",
-												})
-											}
-										>
-											<NativeSelectOption value="reporter">
-												Reporter
-											</NativeSelectOption>
-											<NativeSelectOption value="staff">
-												Staff
-											</NativeSelectOption>
-										</NativeSelect>
-									</TableCell>
-									{roleRows.map((role) => (
-										<TableCell key={role.id}>
-											<Checkbox
-												aria-label={`${role.name} for ${person.name}`}
-												checked={person.roleIds.includes(role.id)}
-												onCheckedChange={(assigned) =>
-													assignRole.mutate({
-														roleId: role.id,
-														targetType: "user",
-														targetId: person.id,
-														assigned: assigned === true,
-													})
-												}
-											/>
-										</TableCell>
-									))}
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-</CardContent>
-</Card>
-			</section>
-			<section className="space-y-3">
-				<h2 className="font-semibold">Departments</h2>
-				<Dialog open={departmentOpen} onOpenChange={setDepartmentOpen}>
-					<DialogTrigger
-						render={<Button size="sm">New department</Button>}
-					/>
-					<DialogContent className="sm:max-w-md">
-						<form
-							onSubmit={(event) => {
-								event.preventDefault();
-								createDepartment.mutate();
-								setDepartmentOpen(false);
-							}}
-						>
-							<DialogHeader>
-								<DialogTitle>New department</DialogTitle>
-								<DialogDescription>
-									Departments group the teams that own work.
-								</DialogDescription>
-							</DialogHeader>
-							<FieldGroup className="py-4">
-								<Field>
-									<FieldLabel htmlFor="department-name">
-										Department name
-									</FieldLabel>
-									<Input
-										id="department-name"
-										value={departmentName}
-										onChange={(event) => setDepartmentName(event.target.value)}
-										required
-									/>
-								</Field>
-							</FieldGroup>
-							<DialogFooter>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => setDepartmentOpen(false)}
-								>
-									Cancel
-								</Button>
-								<Button type="submit" disabled={createDepartment.isPending}>
-									Create department
-								</Button>
-							</DialogFooter>
-						</form>
-					</DialogContent>
-				</Dialog>
-				<div className="text-sm">
-					{departmentRows.map((department) => department.name).join(", ") ||
-						"No departments"}
-				</div>
-			</section>
-			<section className="space-y-3">
-				<h2 className="font-semibold">Teams</h2>
-				<Dialog open={teamOpen} onOpenChange={setTeamOpen}>
-					<DialogTrigger render={<Button size="sm">New team</Button>} />
-					<DialogContent className="sm:max-w-md">
-						<form
-							onSubmit={(event) => {
-								event.preventDefault();
-								createTeam.mutate();
-								setTeamOpen(false);
-							}}
-						>
-							<DialogHeader>
-								<DialogTitle>New team</DialogTitle>
-								<DialogDescription>
-									Teams own tickets and appear as assignment targets.
-								</DialogDescription>
-							</DialogHeader>
-							<FieldGroup className="py-4">
-								<Field>
-									<FieldLabel htmlFor="team-name">Team name</FieldLabel>
-									<Input
-										id="team-name"
-										value={teamName}
-										onChange={(event) => setTeamName(event.target.value)}
-										required
-									/>
-								</Field>
-							</FieldGroup>
-							<DialogFooter>
-								<Button
-									type="button"
-									variant="outline"
-									onClick={() => setTeamOpen(false)}
-								>
-									Cancel
-								</Button>
-								<Button type="submit" disabled={createTeam.isPending}>
-									Create team
-								</Button>
-							</DialogFooter>
-						</form>
-					</DialogContent>
-				</Dialog>
-				<Card>
-<CardContent className="px-0">
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Team</TableHead>
-								<TableHead>Department</TableHead>
-								{peopleRows.map((person) => (
-									<TableHead key={person.id}>{person.name}</TableHead>
-								))}
-								{roleRows.map((role) => (
-									<TableHead key={role.id}>{role.name}</TableHead>
-								))}
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{teamRows.map((team) => (
-								<TableRow key={team.id}>
-									<TableCell>{team.name}</TableCell>
-									<TableCell>
-										<NativeSelect
-											size="sm"
-											value={team.departmentId ?? ""}
-											disabled={updateTeam.isPending}
-											onChange={(event) =>
-												updateTeam.mutate({
-													...team,
-													departmentId: event.target.value || null,
-												})
-											}
-										>
-											<NativeSelectOption value="">None</NativeSelectOption>
-											{departmentRows.map((department) => (
-												<NativeSelectOption
-													key={department.id}
-													value={department.id}
-												>
-													{department.name}
-												</NativeSelectOption>
-											))}
-										</NativeSelect>
-									</TableCell>
-									{peopleRows.map((person) => (
-										<TableCell key={person.id}>
-											<Checkbox
-												aria-label={`${person.name} in ${team.name}`}
-												checked={team.memberIds.includes(person.id)}
-												onCheckedChange={(checked) =>
-													updateTeam.mutate({
-														...team,
-														memberIds: checked
-															? [...team.memberIds, person.id]
-															: team.memberIds.filter((id) => id !== person.id),
-													})
-												}
-											/>
-										</TableCell>
-									))}
-									{roleRows.map((role) => (
-										<TableCell key={role.id}>
-											<Checkbox
-												aria-label={`${role.name} for ${team.name}`}
-												checked={team.roleIds.includes(role.id)}
-												onCheckedChange={(checked) =>
-													updateTeam.mutate({
-														...team,
-														roleIds: checked
-															? [...team.roleIds, role.id]
-															: team.roleIds.filter((id) => id !== role.id),
-													})
-												}
-											/>
-										</TableCell>
-									))}
-								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-</CardContent>
-</Card>
-			</section>
+			{/* Four overview tiles instead of four stacked tables. The role and
+			  people matrices grow a column per role, so inline they pushed the page
+			  sideways; each now opens in a wide panel that scrolls on its own. */}
+			<div className="grid gap-4 sm:grid-cols-2">
+				<SectionTile
+					title="Role capabilities"
+					description="Which capabilities each role carries."
+					metric={`${roleRows.length} roles · ${capabilityRows.length} capabilities`}
+					onOpen={() => setPanel("roles")}
+				/>
+				<SectionTile
+					title="Teams"
+					description="Team membership, roles and department."
+					metric={`${teamRows.length} teams`}
+					onOpen={() => setPanel("teams")}
+				/>
+				<SectionTile
+					title="Departments"
+					description="Groups that own the teams."
+					metric={`${departmentRows.length} departments`}
+					onOpen={() => setPanel("departments")}
+				/>
+				<SectionTile
+					title="People"
+					description="Staff, reporters and their roles."
+					metric={`${peopleRows.length} people`}
+					onOpen={() => setPanel("people")}
+				/>
+			</div>
+
+			<SectionPanel
+				open={panel === "roles"}
+				onClose={() => setPanel(null)}
+				title="Role capabilities"
+				description="Tick a capability to grant it to that role."
+			>
+				<DataTable
+					data={capabilityData}
+					columns={capabilityColumns}
+					filterPlaceholder="Search capabilities…"
+					filterLabel="Search capabilities"
+					emptyTitle="No capabilities"
+					emptyDescription="Nothing is defined yet."
+					pageSize={12}
+				/>
+			</SectionPanel>
+
+			<SectionPanel
+				open={panel === "people"}
+				onClose={() => setPanel(null)}
+				title="People"
+				description="Set whether someone is staff or a reporter, and which roles they hold."
+			>
+				<DataTable
+					data={peopleRows}
+					columns={peopleColumns}
+					filterPlaceholder="Search people…"
+					filterLabel="Search people"
+					emptyTitle="No people"
+					emptyDescription="Nobody has signed in yet."
+					pageSize={12}
+				/>
+			</SectionPanel>
+
+			<SectionPanel
+				open={panel === "departments"}
+				onClose={() => setPanel(null)}
+				title="Departments"
+				description="Departments group the teams that own work."
+			>
+				{/* Creation is an inline row rather than a second dialog, so opening a
+				  panel never stacks two modals on top of each other. */}
+				<form
+					className="flex flex-wrap items-end gap-2"
+					onSubmit={(event) => {
+						event.preventDefault();
+						createDepartment.mutate();
+					}}
+				>
+					<Field className="min-w-56 flex-1">
+						<FieldLabel htmlFor="department-name">Department name</FieldLabel>
+						<Input
+							id="department-name"
+							value={departmentName}
+							onChange={(event) => setDepartmentName(event.target.value)}
+							required
+						/>
+					</Field>
+					<Button type="submit" disabled={createDepartment.isPending}>
+						Add department
+					</Button>
+				</form>
+				<DataTable
+					data={departmentRows}
+					columns={departmentColumns}
+					filterPlaceholder="Search departments…"
+					filterLabel="Search departments"
+					emptyTitle="No departments"
+					emptyDescription="No departments yet."
+					pageSize={12}
+				/>
+			</SectionPanel>
+
+			<SectionPanel
+				open={panel === "teams"}
+				onClose={() => setPanel(null)}
+				title="Teams"
+				description="Teams own tickets and appear as assignment targets."
+			>
+				<form
+					className="flex flex-wrap items-end gap-2"
+					onSubmit={(event) => {
+						event.preventDefault();
+						createTeam.mutate();
+					}}
+				>
+					<Field className="min-w-56 flex-1">
+						<FieldLabel htmlFor="team-name">Team name</FieldLabel>
+						<Input
+							id="team-name"
+							value={teamName}
+							onChange={(event) => setTeamName(event.target.value)}
+							required
+						/>
+					</Field>
+					<Button type="submit" disabled={createTeam.isPending}>
+						Add team
+					</Button>
+				</form>
+				<DataTable
+					data={teamRows}
+					columns={teamColumns}
+					filterPlaceholder="Search teams…"
+					filterLabel="Search teams"
+					emptyTitle="No teams"
+					emptyDescription="No teams yet."
+					pageSize={12}
+				/>
+			</SectionPanel>
 		</PageContainer>
+	);
+}
+
+function SectionTile({
+	title,
+	description,
+	metric,
+	onOpen,
+}: {
+	title: string;
+	description: string;
+	metric: string;
+	onOpen: () => void;
+}) {
+	return (
+		<Card className="transition-colors hover:border-foreground/20">
+			<CardHeader>
+				<CardTitle>{title}</CardTitle>
+				<CardDescription>{description}</CardDescription>
+			</CardHeader>
+			<CardContent className="flex flex-wrap items-center justify-between gap-3">
+				<span className="text-muted-foreground text-sm">{metric}</span>
+				<Button size="sm" variant="outline" onClick={onOpen}>
+					More info
+				</Button>
+			</CardContent>
+		</Card>
+	);
+}
+
+function SectionPanel({
+	open,
+	onClose,
+	title,
+	description,
+	children,
+}: {
+	open: boolean;
+	onClose: () => void;
+	title: string;
+	description: string;
+	children: ReactNode;
+}) {
+	return (
+		<Dialog open={open} onOpenChange={(next) => !next && onClose()}>
+			<DialogContent className="flex max-h-[calc(100vh-3rem)] flex-col overflow-hidden sm:max-w-5xl">
+				<DialogHeader>
+					<DialogTitle>{title}</DialogTitle>
+					<DialogDescription>{description}</DialogDescription>
+				</DialogHeader>
+				{/* The capability and people matrices are one column per role, so the
+				  body scrolls in both directions rather than stretching the dialog. */}
+				<div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-1 py-2">
+					{children}
+				</div>
+				<DialogFooter>
+					<Button variant="outline" onClick={onClose}>
+						Close
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+/**
+ * Names as text, truncated past a few. The matrix this replaced gave one column
+ * per person, so the table grew a column every time somebody joined and had to
+ * be scrolled sideways to read at all.
+ */
+function MemberSummary({
+	names,
+	empty,
+}: {
+	names: readonly string[];
+	empty: string;
+}) {
+	if (names.length === 0)
+		return <span className="text-muted-foreground">{empty}</span>;
+	const shown = names.slice(0, 2);
+	const rest = names.length - shown.length;
+	return (
+		<span title={names.join(", ")}>
+			{shown.join(", ")}
+			{rest > 0 ? (
+				<span className="text-muted-foreground"> +{rest} more</span>
+			) : null}
+		</span>
+	);
+}
+
+function TeamMembershipDialog({
+	team,
+	people,
+	roles,
+	pending,
+	onChange,
+}: {
+	team: Team;
+	people: readonly { id: string; name: string }[];
+	roles: readonly { id: string; name: string }[];
+	pending: boolean;
+	onChange: (next: { memberIds: string[]; roleIds: string[] }) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	// Seeded from the team when opened, so a half-finished edit is discarded on
+	// cancel rather than firing a mutation per checkbox as the matrix did.
+	const [memberIds, setMemberIds] = useState<string[]>([]);
+	const [roleIds, setRoleIds] = useState<string[]>([]);
+
+	const toggle = (list: string[], id: string, checked: boolean) =>
+		checked ? [...list, id] : list.filter((entry) => entry !== id);
+
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={(next) => {
+				if (next) {
+					setMemberIds([...team.memberIds]);
+					setRoleIds([...team.roleIds]);
+				}
+				setOpen(next);
+			}}
+		>
+			<DialogTrigger
+				render={
+					<Button size="sm" variant="outline">
+						Manage
+					</Button>
+				}
+			/>
+			<DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-lg">
+				<DialogHeader>
+					<DialogTitle>{team.name} membership</DialogTitle>
+					<DialogDescription>
+						Choose who belongs to this team and which roles it carries.
+					</DialogDescription>
+				</DialogHeader>
+				<div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto py-4 pr-1">
+					<fieldset className="flex flex-col gap-2">
+						<legend className="mb-2 font-medium text-sm">Members</legend>
+						{people.map((person) => (
+							<label
+								key={person.id}
+								className="flex items-center gap-2 text-sm"
+								htmlFor={`member-${team.id}-${person.id}`}
+							>
+								<Checkbox
+									id={`member-${team.id}-${person.id}`}
+									checked={memberIds.includes(person.id)}
+									onCheckedChange={(checked) =>
+										setMemberIds(toggle(memberIds, person.id, checked === true))
+									}
+								/>
+								{person.name}
+							</label>
+						))}
+					</fieldset>
+					<fieldset className="flex flex-col gap-2">
+						<legend className="mb-2 font-medium text-sm">Roles</legend>
+						{roles.map((role) => (
+							<label
+								key={role.id}
+								className="flex items-center gap-2 text-sm"
+								htmlFor={`role-${team.id}-${role.id}`}
+							>
+								<Checkbox
+									id={`role-${team.id}-${role.id}`}
+									checked={roleIds.includes(role.id)}
+									onCheckedChange={(checked) =>
+										setRoleIds(toggle(roleIds, role.id, checked === true))
+									}
+								/>
+								{role.name}
+							</label>
+						))}
+					</fieldset>
+				</div>
+				<DialogFooter>
+					<Button variant="outline" onClick={() => setOpen(false)}>
+						Cancel
+					</Button>
+					<Button
+						disabled={pending}
+						onClick={() => {
+							onChange({ memberIds, roleIds });
+							setOpen(false);
+						}}
+					>
+						Save membership
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
 	);
 }

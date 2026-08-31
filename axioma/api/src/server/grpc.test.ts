@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -49,8 +50,9 @@ test("inbound queue pauses at its bound and resumes after draining", async () =>
 	assert.equal(resumes, 1);
 });
 
-test("inbound queue destroys the stream when a handler rejects", async () => {
+test("inbound queue destroys the stream and drops messages after rejection", async () => {
 	let destroyed: Error | undefined;
+	let handled = 0;
 	const stream = {
 		pause: () => {},
 		resume: () => {},
@@ -58,11 +60,43 @@ test("inbound queue destroys the stream when a handler rejects", async () => {
 			destroyed = error;
 		},
 	};
-	createInboundQueue(stream, async () => {
-		throw new Error("bad message");
-	})({ bad: true });
+	const enqueue = createInboundQueue(stream, async () => {
+		if (++handled === 1) throw new Error("bad message");
+	});
+	enqueue({ hello: true });
+	enqueue({ result: true });
 	await new Promise((resolve) => setImmediate(resolve));
 	assert.equal(destroyed?.message, "bad message");
+	assert.equal(handled, 1);
+});
+
+test("device stream drops a result queued behind refused authentication", async () => {
+	const gateway = new Gateway();
+	let completed = 0;
+	const stream = Object.assign(new EventEmitter(), {
+		pause: () => {},
+		resume: () => {},
+		write: () => true,
+		end: () => {},
+		destroy: () => {},
+	}) as never;
+	const internals = gateway as unknown as {
+		connectDevice(stream: never): void;
+		completeCommand(
+			deviceId: string,
+			result: Record<string, unknown>,
+		): Promise<void>;
+	};
+	internals.completeCommand = async () => {
+		completed++;
+	};
+	internals.connectDevice(stream);
+	(stream as EventEmitter).emit("data", {
+		hello: { deviceId: crypto.randomUUID(), credential: "invalid" },
+	});
+	(stream as EventEmitter).emit("data", { result: { commandId: "attacker" } });
+	await new Promise((resolve) => setImmediate(resolve));
+	assert.equal(completed, 0);
 });
 
 test("lease renewal is anchored to the current activity", () => {
@@ -266,6 +300,143 @@ test("enrolment token is single-use and issues a credential", async () => {
 		await db
 			.delete(deviceEnrolmentTokens)
 			.where(eq(deviceEnrolmentTokens.tokenHash, hashDeviceSecret(token)));
+	}
+});
+
+test("expired enrolment token is refused without creating a device", async () => {
+	const deviceId = crypto.randomUUID();
+	const token = `axen_${crypto.randomUUID()}`;
+	await db.insert(deviceEnrolmentTokens).values({
+		id: crypto.randomUUID(),
+		tokenHash: hashDeviceSecret(token),
+		expiresAt: new Date(Date.now() - 60_000),
+	});
+	const gateway = new Gateway();
+	const registerDevice = (
+		gateway as unknown as {
+			registerDevice(
+				deviceId: string,
+				generation: symbol,
+				stream: never,
+				hello: Record<string, unknown>,
+			): Promise<void>;
+		}
+	).registerDevice.bind(gateway);
+	try {
+		await assert.rejects(() =>
+			registerDevice(deviceId, Symbol(deviceId), { write: () => {} } as never, {
+				deviceId,
+				enrolmentToken: token,
+			}),
+		);
+		assert.deepEqual(
+			await db
+				.select({ id: devices.id })
+				.from(devices)
+				.where(eq(devices.id, deviceId)),
+			[],
+		);
+	} finally {
+		await db
+			.delete(deviceEnrolmentTokens)
+			.where(eq(deviceEnrolmentTokens.tokenHash, hashDeviceSecret(token)));
+	}
+});
+
+test("credential rotation invalidates the old credential and permits reconnect", async () => {
+	const deviceId = crypto.randomUUID();
+	const oldCredential = issueDeviceCredential();
+	await db.insert(devices).values({
+		id: deviceId,
+		hostname: "rotation-test",
+		credentialHash: hashDeviceSecret(oldCredential),
+		enrolledAt: new Date(),
+	});
+	const writes: Record<string, unknown>[] = [];
+	const gateway = new Gateway();
+	const stream = {
+		write: (value: Record<string, unknown>) => writes.push(value),
+		end: () => {},
+		destroy: () => {},
+	} as never;
+	const registerDevice = (
+		gateway as unknown as {
+			registerDevice(
+				deviceId: string,
+				generation: symbol,
+				stream: never,
+				hello: Record<string, unknown>,
+			): Promise<void>;
+		}
+	).registerDevice.bind(gateway);
+	try {
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			credential: oldCredential,
+		});
+		assert.equal(await gateway.rotateDeviceCredential(deviceId), true);
+		const rotated = String(
+			(writes.at(-1)?.enrollment as Record<string, unknown>)?.credential,
+		);
+		assert.notEqual(rotated, oldCredential);
+		await assert.rejects(() =>
+			registerDevice(deviceId, Symbol(deviceId), stream, {
+				deviceId,
+				credential: oldCredential,
+			}),
+		);
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			credential: rotated,
+		});
+	} finally {
+		await db.delete(devices).where(eq(devices.id, deviceId));
+	}
+});
+
+test("revocation disconnects the device and blocks reconnect", async () => {
+	const deviceId = crypto.randomUUID();
+	const credential = issueDeviceCredential();
+	await db.insert(devices).values({
+		id: deviceId,
+		hostname: "revocation-test",
+		credentialHash: hashDeviceSecret(credential),
+		enrolledAt: new Date(),
+	});
+	let destroyed: Error | undefined;
+	const gateway = new Gateway();
+	const stream = {
+		write: () => {},
+		end: () => {},
+		destroy: (error?: Error) => {
+			destroyed = error;
+		},
+	} as never;
+	const registerDevice = (
+		gateway as unknown as {
+			registerDevice(
+				deviceId: string,
+				generation: symbol,
+				stream: never,
+				hello: Record<string, unknown>,
+			): Promise<void>;
+		}
+	).registerDevice.bind(gateway);
+	try {
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			credential,
+		});
+		assert.ok(await gateway.revokeDevice(deviceId));
+		assert.equal(destroyed?.message, "device authentication failed");
+		await assert.rejects(() =>
+			registerDevice(deviceId, Symbol(deviceId), stream, {
+				deviceId,
+				credential,
+			}),
+		);
+	} finally {
+		await db.delete(devices).where(eq(devices.id, deviceId));
 	}
 });
 

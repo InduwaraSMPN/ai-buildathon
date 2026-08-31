@@ -33,6 +33,10 @@ import {
 	ChartTooltipContent,
 } from "@/components/ui/chart";
 import { EditOverviewDialog } from "@/features/overview/components/edit-overview-dialog";
+import {
+	isRenderableWidget,
+	OVERVIEW_WIDGETS,
+} from "@/features/overview/widgets";
 import { cn } from "@/lib/utils";
 import { orpc } from "@/utils/orpc";
 
@@ -99,7 +103,10 @@ export function OverviewPage() {
 			description="Service desk demand and outcomes from one aggregate view."
 			action={<EditOverviewDialog />}
 		>
-			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+			{/* Four columns, and the two double-width widgets sit first in each row:
+			  priority + confirmation + escalations fills row one, resolution rate +
+			  median TTR + CSAT fills row two, with no ragged trailing gap. */}
+			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
 				{orderedOverviewWidgets(arrangement.data).map(({ key, width }) => (
 					<div key={key} className={width === 2 ? "xl:col-span-2" : undefined}>
 						{key === "priority" ? (
@@ -148,10 +155,22 @@ export function OverviewPage() {
 								search={{ resolvedAt: true }}
 							/>
 						) : null}
+						{/* StatTile rather than Stat: CSAT has no ticket filter to link to. */}
+						{key === "csat" ? (
+							<StatTile
+								label="CSAT"
+								value={stats.csat.average?.toFixed(1) ?? "—"}
+								detail={`Average rating from ${stats.csat.responses} responses`}
+								icon={Sparkles}
+							/>
+						) : null}
 					</div>
 				))}
 			</div>
 
+			{/* Every card here is a list or an h-72 chart, so equal-height rows read
+			  cleanly. Keep single-value stats out of this grid — they belong in the
+			  stat row above, where they are not paired against a chart. */}
 			<div className="mt-4 grid gap-4 lg:grid-cols-2">
 				<ChartCard
 					title="Service-level attainment"
@@ -190,14 +209,6 @@ export function OverviewPage() {
 							</li>
 						))}
 					</ul>
-				</ChartCard>
-				<ChartCard title="CSAT" description="Reporter satisfaction">
-					<div className="font-semibold text-3xl">
-						{stats.csat.average?.toFixed(1) ?? "—"}
-					</div>
-					<p className="text-muted-foreground text-sm">
-						Average rating from {stats.csat.responses} responses
-					</p>
 				</ChartCard>
 				<ChartCard
 					title="Ticket volume"
@@ -310,17 +321,22 @@ export function OverviewPage() {
 export function orderedOverviewWidgets(
 	saved: readonly { widgetKey: string; width: 1 | 2 }[],
 ) {
-	const defaults = [
-		{ widgetKey: "priority", width: 2 as const },
-		{ widgetKey: "confirmation", width: 1 as const },
-		{ widgetKey: "escalations", width: 1 as const },
-		{ widgetKey: "resolution-rate", width: 1 as const },
-		{ widgetKey: "median-ttr", width: 1 as const },
-	];
-	return (saved.length ? saved : defaults).map(({ widgetKey, width }) => ({
-		key: widgetKey,
+	const defaults = OVERVIEW_WIDGETS.map(({ key, width }) => ({
+		widgetKey: key,
 		width,
 	}));
+	// A stored key with no renderer would otherwise map to an empty grid cell,
+	// which reads as a stray container above the widgets. Fall back to the
+	// defaults when an arrangement leaves nothing renderable at all.
+	const renderable = saved.filter(({ widgetKey }) =>
+		isRenderableWidget(widgetKey),
+	);
+	return (renderable.length ? renderable : defaults).map(
+		({ widgetKey, width }) => ({
+			key: widgetKey,
+			width,
+		}),
+	);
 }
 
 function PriorityStat({
