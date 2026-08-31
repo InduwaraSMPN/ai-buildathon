@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { mkdir, open, rm } from "node:fs/promises";
+import { mkdir, open, readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 
@@ -35,6 +35,10 @@ export class FileBlobStore {
 
 	async remove(key: string): Promise<void> {
 		await rm(blobPath(this.root, key), { force: true });
+	}
+
+	read(key: string): Promise<Buffer> {
+		return readFile(blobPath(this.root, key));
 	}
 
 	stream(key: string): ReadableStream<Uint8Array> {

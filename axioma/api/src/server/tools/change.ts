@@ -9,6 +9,24 @@ import {
 import { patchImage, type patchImageInput, readDeployment } from "./cluster";
 import type { ToolContext } from "./index";
 
+// The environment a change was applied to. executeTool reads this when a
+// verification read arrives so it can refuse to complete the change from a
+// different cluster. Keyed by change id; kept for the life of the process so a
+// patch and its verification share the value across the two tool calls.
+const changeEnvironments = new Map<string, string>();
+
+export function recordChangeEnvironment(changeId: string, key: string) {
+	changeEnvironments.set(changeId, key);
+}
+
+export function changeEnvironment(changeId: string): string | undefined {
+	return changeEnvironments.get(changeId);
+}
+
+export function resetChangeEnvironments() {
+	changeEnvironments.clear();
+}
+
 const imageName = (image: string) => {
 	const withoutDigest = image.split("@", 1)[0] ?? image;
 	const slash = withoutDigest.lastIndexOf("/");
@@ -33,11 +51,15 @@ export async function patchImageWithChange(
 	input: z.infer<typeof patchImageInput>,
 	ctx: ToolContext,
 ) {
-	const before = await readDeployment(input);
+	const before = await readDeployment(
+		input,
+		ctx.environment ? { environment: ctx.environment } : undefined,
+	);
 	const previousImage = before.containers[input.container_index]?.image;
 	assertStandardImageChange(previousImage, input.image);
 	const now = new Date();
 	const changeId = crypto.randomUUID();
+	recordChangeEnvironment(changeId, ctx.environment?.key ?? "default");
 	await db.transaction(async (tx) => {
 		await tx.insert(changes).values({
 			id: changeId,
@@ -77,7 +99,9 @@ export async function patchImageWithChange(
 		});
 	});
 	try {
-		const result = await patchImage(input);
+		const result = await patchImage(input, {
+			environment: ctx.environment,
+		});
 		return { ...result, changeId, previousImage };
 	} catch (error) {
 		const failedAt = new Date();

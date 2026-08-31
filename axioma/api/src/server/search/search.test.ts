@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+	backfillSearchEmbeddings,
 	groupSearchResults,
+	mayEmbed,
 	normalizeSearchQuery,
 	retainAuthorizedResults,
 	SEARCH_OBJECT_TYPES,
@@ -52,7 +54,120 @@ test("search declares every currently searchable core object type", () => {
 		"knowledge_article",
 		"cmdb_object",
 		"asset",
+		"known_error",
+		"resolved_ticket",
+		"agent_run",
+		"document",
 	]);
+});
+
+test("embeddings require explicit safe access metadata for every eligible type", () => {
+	const document = {
+		objectId: "1",
+		title: "title",
+		body: "secret",
+		url: null,
+		metadata: {},
+		sourceUpdatedAt: new Date(),
+	};
+	const eligible = [
+		{
+			objectType: "knowledge_article" as const,
+			metadata: {
+				fetchId: "1",
+				accessClass: "published_unrestricted",
+				status: "published",
+				isRestricted: false,
+			},
+		},
+		{
+			objectType: "known_error" as const,
+			metadata: {
+				fetchId: "1",
+				accessClass: "published_unrestricted",
+				isKnownError: true,
+			},
+		},
+		{
+			objectType: "resolved_ticket" as const,
+			metadata: { fetchId: "1", accessClass: "deidentified" },
+		},
+		{
+			objectType: "agent_run" as const,
+			metadata: { fetchId: "1", accessClass: "deidentified" },
+		},
+		{
+			objectType: "document" as const,
+			metadata: { fetchId: "1", accessClass: "current_ticket_link" },
+		},
+	];
+
+	for (const candidate of eligible) {
+		assert.equal(mayEmbed({ ...document, ...candidate }), true);
+		assert.equal(mayEmbed({ ...document, ...candidate, metadata: {} }), false);
+		assert.equal(
+			mayEmbed({
+				...document,
+				...candidate,
+				metadata: { ...candidate.metadata, fetchId: "" },
+			}),
+			false,
+		);
+	}
+	assert.equal(mayEmbed({ ...document, objectType: "ticket" }), false);
+	assert.equal(
+		mayEmbed({
+			...document,
+			objectType: "knowledge_article",
+			metadata: {
+				fetchId: "1",
+				accessClass: "published_unrestricted",
+				status: "published",
+				isRestricted: true,
+			},
+		}),
+		false,
+	);
+});
+
+test("embedding backfill bounds a failed batch and advances its cursor", async () => {
+	const row = {
+		objectType: "resolved_ticket",
+		objectId: "failed-1",
+		title: "safe",
+		body: "safe",
+		url: null,
+		metadata: { fetchId: "failed-1", accessClass: "deidentified" },
+		embedding: null,
+		embeddingModel: null,
+		sourceUpdatedAt: new Date(),
+		indexedAt: new Date(),
+	};
+	let selectedLimit = 0;
+	const query = {
+		from: () => query,
+		where: () => query,
+		orderBy: () => query,
+		limit: (limit: number) => {
+			selectedLimit = limit;
+			return Promise.resolve([row]);
+		},
+	};
+	const fakeDb = { select: () => query };
+	const result = await backfillSearchEmbeddings(
+		fakeDb as never,
+		50_000,
+		undefined,
+		async () => null,
+	);
+
+	assert.equal(selectedLimit, 1_000);
+	assert.deepEqual(result, {
+		scanned: 1,
+		updated: 0,
+		failed: 1,
+		nextCursor: { objectType: "resolved_ticket", objectId: "failed-1" },
+	});
 });
 
 test("saved views are visible only to their user or a caller team", () => {

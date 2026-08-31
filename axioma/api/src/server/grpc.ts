@@ -1,22 +1,39 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
-import { and, eq, inArray, lt, max, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, max, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import {
 	agentRuns,
 	agentSteps,
 	agentToolCalls,
 	deviceCommands,
+	deviceEnrolmentTokens,
 	devices,
+	directoryIdentities,
 	searchReconciliationState,
 	ticketStatusTransitions,
 	tickets,
 	ticketTransitions,
+	user,
 } from "@/db/schema";
-import { RESOLUTION_CODES } from "@/shared";
+import type { CommandStatus, EvidenceTone, RunStatus } from "@/shared";
+import {
+	EVIDENCE_TONES,
+	RESOLUTION_CODES,
+	RUN_STATUSES,
+	TERMINAL_COMMAND_STATUSES,
+} from "@/shared";
+import { onRunTerminal } from "./connectors/terminal";
+import {
+	hashDeviceSecret,
+	issueDeviceCredential,
+	validDeviceSecret,
+} from "./device-auth";
+import { loadRunEnvironment } from "./environments/runtime";
 import {
 	createInboundQueue,
 	leaseDeadline,
@@ -31,6 +48,10 @@ import { sweepPresence, sweepSla } from "./sla/sweep";
 import { findTicketTransition, resolveTicketStatus } from "./tickets";
 import { executeTool, sweepExpiredChangeVerifications } from "./tools";
 import { readContextForTicket } from "./tools/cmdb";
+import {
+	deviceActionTimeoutSeconds,
+	deviceReadTimeoutSeconds,
+} from "./tools/device";
 import { sweepExpiredWorkflowExecutions } from "./workflows/runtime";
 import { sweepWebhookDeliveries } from "./workflows/webhooks";
 
@@ -61,7 +82,6 @@ const OUTBOX_LIMIT = 100;
 const HEARTBEAT_MS = 10_000;
 const STALE_MS = 30_000;
 const RUN_LEASE_MS = 45_000;
-const ENROLMENT_TTL_MS = 10 * 60_000;
 const SEARCH_WATERMARK_KEY = "core";
 const sourceProtoPath = fileURLToPath(
 	new URL("../../proto/axioma.proto", import.meta.url),
@@ -79,6 +99,31 @@ const axioma = (
 		axioma: { v1: Record<string, { service: grpc.ServiceDefinition }> };
 	}
 ).axioma.v1;
+const manager = alias(user, "reporter_manager");
+
+export async function readReporterContext(reporterId: string) {
+	const row = (
+		await db
+			.select({
+				name: user.name,
+				jobTitle: user.jobTitle,
+				department: directoryIdentities.department,
+				manager: manager.name,
+			})
+			.from(user)
+			.leftJoin(directoryIdentities, eq(directoryIdentities.userId, user.id))
+			.leftJoin(manager, eq(user.managerId, manager.id))
+			.where(eq(user.id, reporterId))
+			.orderBy(desc(directoryIdentities.updatedAt))
+			.limit(1)
+	)[0];
+	return {
+		name: row?.name ?? "",
+		jobTitle: row?.jobTitle ?? "",
+		department: row?.department ?? "",
+		manager: row?.manager ?? "",
+	};
+}
 
 export class Gateway {
 	readonly server = new grpc.Server();
@@ -110,15 +155,23 @@ export class Gateway {
 
 	async listen(address = process.env.AXIOMA_GRPC_ADDRESS ?? "0.0.0.0:50051") {
 		await this.reconcileOrphans();
-		await new Promise<void>((resolve, reject) => {
-			this.server.bindAsync(
-				address,
-				grpc.ServerCredentials.createInsecure(),
-				(error) => {
-					if (error) reject(error);
-					else resolve();
-				},
+		const certificatePath = process.env.AXIOMA_GRPC_TLS_CERT;
+		const keyPath = process.env.AXIOMA_GRPC_TLS_KEY;
+		if (!certificatePath || !keyPath)
+			throw new Error(
+				"AXIOMA_GRPC_TLS_CERT and AXIOMA_GRPC_TLS_KEY are required",
 			);
+		const credentials = grpc.ServerCredentials.createSsl(null, [
+			{
+				cert_chain: readFileSync(certificatePath),
+				private_key: readFileSync(keyPath),
+			},
+		]);
+		await new Promise<void>((resolve, reject) => {
+			this.server.bindAsync(address, credentials, (error) => {
+				if (error) reject(error);
+				else resolve();
+			});
 		});
 		this.closed = false;
 		this.scheduleSweep();
@@ -155,6 +208,7 @@ export class Gateway {
 		urgency?: string;
 		priority?: string;
 		origin?: string;
+		environmentKey?: string;
 	}) {
 		const selected = this.selectAgent();
 		if (!selected) throw new Error("Axel is not connected");
@@ -163,6 +217,7 @@ export class Gateway {
 			JSON.stringify(
 				await readContextForTicket(input.ticketId, input.deviceId),
 			);
+		const reporter = await readReporterContext(input.reporterId);
 		const run = await db
 			.update(agentRuns)
 			.set({
@@ -185,6 +240,10 @@ export class Gateway {
 					title: input.title,
 					body: input.body,
 					reporterId: input.reporterId,
+					reporterName: reporter.name,
+					reporterJobTitle: reporter.jobTitle,
+					reporterDepartment: reporter.department,
+					reporterManager: reporter.manager,
 					deviceId: input.deviceId ?? "",
 					contextJson,
 					recordType: input.recordType ?? "incident",
@@ -192,6 +251,7 @@ export class Gateway {
 					urgency: input.urgency ?? "medium",
 					priority: input.priority ?? "P3",
 					origin: input.origin ?? "portal",
+					environment: input.environmentKey ?? "",
 				},
 			});
 		} catch (error) {
@@ -299,6 +359,9 @@ export class Gateway {
 		toolName: string,
 		input: unknown,
 		stepId?: string,
+		// Set only when a human authorised this command. It is what makes
+		// "who approved this" answerable from the command row alone.
+		proposalId?: string,
 	) {
 		if (!input || typeof input !== "object")
 			throw new Error("device tool input must be an object");
@@ -312,11 +375,17 @@ export class Gateway {
 		let objective = "";
 		let timeoutSeconds = 30;
 		switch (toolName) {
-			case "device_read_state":
+			case "device_read_state": {
 				action = "read_state";
+				const facets = Array.isArray(body.facets)
+					? body.facets.map(String)
+					: [];
 				parameters = { facets: JSON.stringify(body.facets ?? []) };
 				if (body.target != null) parameters.target = String(body.target);
+				if (body.window != null) parameters.window = String(body.window);
+				timeoutSeconds = deviceReadTimeoutSeconds(facets);
 				break;
+			}
 			case "device_run_action":
 				action = String(body.action ?? "");
 				parameters = Object.fromEntries(
@@ -324,7 +393,26 @@ export class Gateway {
 						(body.parameters as Record<string, unknown>) ?? {},
 					).map(([key, value]) => [key, String(value)]),
 				);
+				timeoutSeconds = deviceActionTimeoutSeconds(action);
 				break;
+			// Dispatched from an approved proposal, never chosen by the model.
+			// executeTool has no branch for it, so a run cannot reach this.
+			case "device_run_command": {
+				action = "run_command";
+				const approved = Array.isArray(body.command)
+					? (body.command as unknown[]).map(String)
+					: [];
+				if (!approved.length)
+					throw new Error("an approved argument vector is required");
+				if (!body.proposal_id)
+					throw new Error("a proposal reference is required");
+				parameters = {
+					command: JSON.stringify(approved),
+					proposal_id: String(body.proposal_id),
+				};
+				timeoutSeconds = 120;
+				break;
+			}
 			case "device_computer_use":
 				action = "computer_use";
 				parameters = {};
@@ -360,6 +448,7 @@ export class Gateway {
 					tool: toolName,
 					input,
 					status: "pending",
+					proposalId: proposalId || null,
 				});
 			} catch (error) {
 				this.sequences.delete(deviceId);
@@ -613,10 +702,13 @@ export class Gateway {
 					tx,
 				);
 			});
+			const runEnvironment = await loadRunEnvironment(runId);
 			const output = await executeTool(toolName, input, {
 				runId,
 				ticketId: run.ticketId,
 				stepId,
+				environment: runEnvironment.environment,
+				linkedEnvironments: runEnvironment.linkedEnvironments,
 				dispatchDevice: (toolName, input) =>
 					this.dispatchDeviceTool(runId, toolName, input, stepId),
 			});
@@ -728,63 +820,92 @@ export class Gateway {
 		stream: Duplex,
 		hello: Record<string, unknown>,
 	) {
-		const old = this.devices.get(deviceId);
-		if (old) old.stream.end();
-		this.devices.set(deviceId, { stream, lastSeen: Date.now(), generation });
-		const enrolmentCode = String(hello.enrolmentCode ?? "").trim() || null;
+		if (
+			!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+				deviceId,
+			)
+		)
+			throw this.deviceAuthError(deviceId, "invalid device id");
+		const credential = String(hello.credential ?? "");
+		const enrolmentToken = String(hello.enrolmentToken ?? "");
+		let issuedCredential = "";
 		const details = {
-			hostname: String(hello.hostname),
-			username: String(hello.username),
-			platform: String(hello.platform),
-			release: String(hello.release),
-			agentVersion: String(hello.agentVersion),
+			hostname: String(hello.hostname).slice(0, 255),
+			username: String(hello.username).slice(0, 255),
+			platform: String(hello.platform).slice(0, 64),
+			release: String(hello.release).slice(0, 255),
+			agentVersion: String(hello.agentVersion).slice(0, 64),
 			connected: "online" as const,
 			lastSeenAt: new Date(),
 		};
-		const enrolment = enrolmentCode
-			? {
-					enrolmentCode,
-					enrolmentCodeExpiresAt: new Date(Date.now() + ENROLMENT_TTL_MS),
-				}
-			: {};
-		await db
-			.insert(devices)
-			.values({ id: deviceId, ...details, ...enrolment })
-			.onConflictDoUpdate({ target: devices.id, set: details });
-		if (enrolmentCode)
-			await db
-				.update(devices)
-				.set(enrolment)
-				.where(
-					and(
-						eq(devices.id, deviceId),
-						sql`${devices.ownerId} is null`,
-						sql`${devices.enrolmentCode} is null or ${devices.enrolmentCode} <> ${enrolmentCode}`,
-					),
-				);
-		const enrollmentState = (
-			await db
-				.select({
-					ownerId: devices.ownerId,
-					code: devices.enrolmentCode,
-					expiresAt: devices.enrolmentCodeExpiresAt,
+		if (enrolmentToken) {
+			issuedCredential = issueDeviceCredential();
+			const enrolled = await db
+				.transaction(async (tx) => {
+					const token = (
+						await tx
+							.update(deviceEnrolmentTokens)
+							.set({ usedAt: new Date(), usedByDeviceId: deviceId })
+							.where(
+								and(
+									eq(
+										deviceEnrolmentTokens.tokenHash,
+										hashDeviceSecret(enrolmentToken),
+									),
+									sql`${deviceEnrolmentTokens.usedAt} is null`,
+									sql`${deviceEnrolmentTokens.expiresAt} > now()`,
+								),
+							)
+							.returning({ id: deviceEnrolmentTokens.id })
+					)[0];
+					if (!token) return false;
+					await tx.insert(devices).values({
+						id: deviceId,
+						...details,
+						credentialHash: hashDeviceSecret(issuedCredential),
+						credentialRotatedAt: new Date(),
+						enrolledAt: new Date(),
+					});
+					return true;
 				})
+				.catch(() => false);
+			if (!enrolled) throw this.deviceAuthError(deviceId, "invalid enrolment");
+		} else {
+			const row = (
+				await db
+					.select({
+						hash: devices.credentialHash,
+						revokedAt: devices.revokedAt,
+					})
+					.from(devices)
+					.where(eq(devices.id, deviceId))
+					.limit(1)
+			)[0];
+			if (!row || row.revokedAt || !validDeviceSecret(credential, row.hash))
+				throw this.deviceAuthError(deviceId, "invalid credential");
+			await db.update(devices).set(details).where(eq(devices.id, deviceId));
+		}
+		if (!this.sequences.has(deviceId))
+			this.sequences.set(deviceId, await this.loadSequence(deviceId));
+		const stillAuthorized = (
+			await db
+				.select({ revokedAt: devices.revokedAt })
 				.from(devices)
 				.where(eq(devices.id, deviceId))
 				.limit(1)
 		)[0];
+		if (!stillAuthorized || stillAuthorized.revokedAt)
+			throw this.deviceAuthError(deviceId, "revoked before replay");
+		const old = this.devices.get(deviceId);
+		if (old) old.stream.end();
+		this.devices.set(deviceId, { stream, lastSeen: Date.now(), generation });
 		stream.write({
 			enrollment: {
-				claimed: Boolean(enrollmentState?.ownerId),
-				codeExpired: Boolean(
-					enrollmentState?.code === enrolmentCode &&
-						enrollmentState.expiresAt &&
-						enrollmentState.expiresAt <= new Date(),
-				),
+				claimed: true,
+				authValid: true,
+				credential: issuedCredential,
 			},
 		});
-		if (!this.sequences.has(deviceId))
-			this.sequences.set(deviceId, await this.loadSequence(deviceId));
 		const lastSeen = Number(hello.lastSeenSequence ?? 0);
 		const replay = (this.outboxes.get(deviceId) ?? []).filter(
 			(command) => Number(command.sequence) > lastSeen,
@@ -802,8 +923,52 @@ export class Gateway {
 				);
 		}
 		console.log(
-			`[grpc] device ${deviceId} connected; replayed=${replay.length} after=${lastSeen}`,
+			`[grpc] device ${deviceId} authenticated; replayed=${replay.length} after=${lastSeen}`,
 		);
+	}
+
+	private deviceAuthError(deviceId: string, reason: string) {
+		console.warn(
+			`[grpc] device authentication refused id=${deviceId || "<missing>"} reason=${reason}`,
+		);
+		return Object.assign(new Error("device authentication failed"), {
+			code: grpc.status.UNAUTHENTICATED,
+		});
+	}
+
+	async rotateDeviceCredential(deviceId: string) {
+		const connection = this.devices.get(deviceId);
+		if (!connection) return false;
+		const credential = issueDeviceCredential();
+		const changed = await db
+			.update(devices)
+			.set({
+				credentialHash: hashDeviceSecret(credential),
+				credentialRotatedAt: new Date(),
+			})
+			.where(and(eq(devices.id, deviceId), sql`${devices.revokedAt} is null`))
+			.returning({ id: devices.id });
+		if (!changed[0]) return false;
+		connection.stream.write({
+			enrollment: { claimed: true, authValid: true, credential },
+		});
+		return true;
+	}
+
+	async revokeDevice(deviceId: string) {
+		const revokedAt = new Date();
+		const changed = await db
+			.update(devices)
+			.set({ revokedAt, connected: "offline" })
+			.where(eq(devices.id, deviceId))
+			.returning({ revokedAt: devices.revokedAt });
+		if (!changed[0]) return null;
+		const connection = this.devices.get(deviceId);
+		if (connection) {
+			this.devices.delete(deviceId);
+			connection.stream.destroy(this.deviceAuthError(deviceId, "revoked"));
+		}
+		return changed[0].revokedAt ?? revokedAt;
 	}
 
 	private async disconnectDevice(deviceId: string, generation?: symbol) {
@@ -824,6 +989,17 @@ export class Gateway {
 	) {
 		const commandId = String(result.commandId);
 		const ok = Boolean(result.ok);
+		// A device may name its own terminal status when the boolean cannot carry
+		// it — a replayed sequence is acknowledged without re-running, so the
+		// outcome is genuinely unknown rather than failed. Only a value from the
+		// shared vocabulary is honoured, and `pending`/`dispatched` are refused
+		// because a result message is by definition terminal.
+		const reported = result.status ? String(result.status) : "";
+		const named = TERMINAL_COMMAND_STATUSES.includes(
+			reported as (typeof TERMINAL_COMMAND_STATUSES)[number],
+		)
+			? (reported as CommandStatus)
+			: null;
 		let output: unknown = null;
 		if (result.outputJson) {
 			try {
@@ -835,7 +1011,7 @@ export class Gateway {
 		const changed = await db
 			.update(deviceCommands)
 			.set({
-				status: ok ? "succeeded" : "failed",
+				status: named ?? (ok ? "succeeded" : "failed"),
 				output,
 				error: result.error ? String(result.error) : null,
 				completedAt: new Date(),
@@ -919,6 +1095,12 @@ export class Gateway {
 		if (!Number.isInteger(rawKind) || rawKind < 1 || rawKind > 5)
 			throw new Error(`invalid run update kind: ${rawKind}`);
 		const toolOutput = parse(update.toolOutputJson);
+		const notice = update.notice ? String(update.notice) : "";
+		const rawEvidenceTone = update.evidenceTone as EvidenceTone | undefined;
+		const evidenceTone =
+			rawEvidenceTone && EVIDENCE_TONES.includes(rawEvidenceTone)
+				? rawEvidenceTone
+				: undefined;
 		await db
 			.insert(agentSteps)
 			.values({
@@ -932,11 +1114,13 @@ export class Gateway {
 				toolOutput,
 				error: update.error ? String(update.error) : null,
 				evidence: update.evidence ? String(update.evidence) : null,
+				notice,
+				...(evidenceTone ? { evidenceTone } : {}),
 			})
 			.onConflictDoNothing({ target: [agentSteps.runId, agentSteps.ordinal] });
 		if (update.status) {
 			const status = String(update.status);
-			if (!["resolved", "escalated", "failed", "exhausted"].includes(status))
+			if (!RUN_STATUSES.includes(status as RunStatus))
 				throw new Error(`invalid terminal run status: ${status}`);
 			const resolutionCode = String(update.resolutionCode || "");
 			if (
@@ -958,7 +1142,7 @@ export class Gateway {
 				const finished = await tx
 					.update(agentRuns)
 					.set({
-						status: status as "resolved" | "escalated" | "failed" | "exhausted",
+						status: status as RunStatus,
 						outcome: String(update.outcome || "") || null,
 						promptTokens: Number(update.promptTokens) || 0,
 						completionTokens: Number(update.completionTokens) || 0,
@@ -1025,6 +1209,17 @@ export class Gateway {
 				);
 			});
 			this.runAgents.delete(runId);
+			// Fail-soft, like `finalizeCreatedTicket`: a connector that cannot post
+			// must not be able to fail a run's terminal update.
+			void onRunTerminal({
+				runId,
+				status,
+				outcome: String(update.outcome || "") || null,
+				evidence: String(update.evidence || "") || null,
+				resolutionCode: status === "resolved" ? resolutionCode : null,
+			}).catch((error) =>
+				console.error("[connectors] terminal write-back failed", error),
+			);
 			stream.write({ terminalAck: { runId, ordinal } });
 		}
 	}

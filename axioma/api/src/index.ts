@@ -2,6 +2,10 @@ import { serve } from "@hono/node-server";
 import { createApp } from "@/app";
 import { env } from "@/env";
 import { bootstrapAdministrator } from "@/server/authorization";
+import {
+	closeConnectorSweep,
+	startConnectorSweep,
+} from "@/server/connectors/runtime";
 import { grpcGateway } from "@/server/grpc";
 import { sweepKnowledgeGaps } from "@/server/knowledge/gaps";
 import { createHttpMailProvider } from "@/server/mail/http-provider";
@@ -48,6 +52,7 @@ if (env.AXIOMA_MAIL_OUTBOUND_URL)
 	});
 await Promise.all([grpcGateway.listen(), startMailRuntime()]);
 startRecurrenceSweep();
+startConnectorSweep();
 let knowledgeGapSweep: NodeJS.Timeout | undefined;
 let knowledgeGapSweepClosed = false;
 const scheduleKnowledgeGapSweep = (delay = 0) => {
@@ -69,6 +74,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 		knowledgeGapSweepClosed = true;
 		if (knowledgeGapSweep) clearTimeout(knowledgeGapSweep);
 		closeRecurrenceSweep();
+		closeConnectorSweep();
 		void Promise.all([grpcGateway.close(), closeMailRuntime()])
 			.catch((error) => console.error("[shutdown] cleanup failed", error))
 			.finally(() => process.exit(0));

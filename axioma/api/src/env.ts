@@ -30,6 +30,9 @@ export const env = createEnv({
 			.enum(["true", "false"])
 			.default("true")
 			.transform((value) => value === "true"),
+		AXIOMA_LLM_API_BASE: z.url().default("https://llm.marketrix.io/v1"),
+		AXIOMA_LLM_KEY: z.string().optional(),
+		AXIOMA_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
 		NODE_ENV: z
 			.enum(["development", "production", "test"])
 			.default("development"),

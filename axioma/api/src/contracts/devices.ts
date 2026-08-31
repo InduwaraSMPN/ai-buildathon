@@ -1,13 +1,8 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { COMMAND_STATUSES, DEVICE_CONNECTION_STATES } from "../shared";
 
-const commandStatus = z.enum([
-	"pending",
-	"dispatched",
-	"succeeded",
-	"failed",
-	"timed_out",
-]);
+const commandStatus = z.enum(COMMAND_STATUSES);
 
 const deviceCommand = z.object({
 	id: z.string(),
@@ -25,7 +20,7 @@ const deviceCommand = z.object({
 	completedAt: z.date().nullable(),
 });
 
-const deviceConnection = z.enum(["online", "offline"]);
+const deviceConnection = z.enum(DEVICE_CONNECTION_STATES);
 
 const lastCommand = z
 	.object({
@@ -50,6 +45,8 @@ const device = z.object({
 	connected: deviceConnection,
 	lastSeenAt: z.date(),
 	enrolledAt: z.date().nullable(),
+	revokedAt: z.date().nullable(),
+	credentialStatus: z.enum(["active", "missing", "revoked"]),
 	lastCommand,
 });
 
@@ -65,16 +62,15 @@ export const devicesContract = {
 			}),
 		),
 	),
-	enrollDevice: oc
-		.input(z.object({ code: z.string().trim().min(4).max(64) }))
-		.output(
-			z.object({
-				id: z.string(),
-				hostname: z.string(),
-				connected: deviceConnection,
-				lastSeenAt: z.date(),
-			}),
-		),
+	createDeviceEnrolmentToken: oc.output(
+		z.object({ token: z.string(), expiresAt: z.date() }),
+	),
+	rotateDeviceCredential: oc
+		.input(z.object({ deviceId: z.string().uuid() }))
+		.output(z.object({ delivered: z.boolean() })),
+	revokeDevice: oc
+		.input(z.object({ deviceId: z.string().uuid() }))
+		.output(z.object({ revokedAt: z.date() })),
 	listDeviceCommands: oc
 		.input(
 			z.object({

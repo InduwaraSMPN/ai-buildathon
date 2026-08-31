@@ -4,23 +4,49 @@ import {
 	type V1Deployment,
 } from "@kubernetes/client-node";
 import { z } from "zod";
-import { getKubernetesClients } from "@/k8s/client";
+import {
+	defaultEnvironmentConnection,
+	type EnvironmentConnection,
+	getKubernetesClients,
+} from "@/k8s/client";
+
+// The environment a cluster call runs against. `executeTool` (or the caller)
+// resolves and injects the authoritative connection; when absent the cluster
+// tools fall back to the single-environment bootstrap so an existing deployment
+// keeps working unchanged.
+export type EnvironmentContext = {
+	connection: EnvironmentConnection;
+	key?: string;
+};
+export type ClusterToolCtx = { environment?: EnvironmentContext };
+
+const environmentInput = z.string().min(1).optional();
 
 export const readPodsInput = z.object({
 	namespace: z.string().min(1),
 	label_selector: z.string().optional(),
+	environment: environmentInput,
 });
 export const readDeploymentInput = z.object({
 	namespace: z.string().min(1),
 	name: z.string().min(1),
+	environment: environmentInput,
 });
 export const patchImageInput = readDeploymentInput.extend({
 	container_index: z.number().int().nonnegative(),
 	image: z.string().min(1),
 });
 
-export async function readPods(input: z.infer<typeof readPodsInput>) {
-	const { coreApi } = getKubernetesClients();
+function resolveConnection(ctx?: ClusterToolCtx): EnvironmentConnection {
+	return ctx?.environment?.connection ?? defaultEnvironmentConnection();
+}
+
+export async function readPods(
+	input: z.infer<typeof readPodsInput>,
+	ctx?: ClusterToolCtx,
+) {
+	const connection = resolveConnection(ctx);
+	const { coreApi } = getKubernetesClients(connection);
 	const result = await coreApi.listNamespacedPod({
 		namespace: input.namespace,
 		labelSelector: input.label_selector,
@@ -41,8 +67,10 @@ export async function readPods(input: z.infer<typeof readPodsInput>) {
 
 export async function readDeployment(
 	input: z.infer<typeof readDeploymentInput>,
+	ctx?: ClusterToolCtx,
 ) {
-	const { appsApi } = getKubernetesClients();
+	const connection = resolveConnection(ctx);
+	const { appsApi } = getKubernetesClients(connection);
 	const deployment = await appsApi.readNamespacedDeployment(input);
 	return deploymentObservation(deployment);
 }
@@ -63,8 +91,12 @@ export function deploymentObservation(deployment: V1Deployment) {
 	};
 }
 
-export async function patchImage(input: z.infer<typeof patchImageInput>) {
-	const { appsApi } = getKubernetesClients();
+export async function patchImage(
+	input: z.infer<typeof patchImageInput>,
+	ctx?: ClusterToolCtx,
+) {
+	const connection = resolveConnection(ctx);
+	const { appsApi } = getKubernetesClients(connection);
 	const body = [
 		{
 			op: "replace",
@@ -82,19 +114,25 @@ export async function patchImage(input: z.infer<typeof patchImageInput>) {
 	return {
 		dryRun: deploymentObservation(dryRun),
 		applied: deploymentObservation(applied),
-		rollout: await pollRollout(input.namespace, input.name),
+		rollout: await pollRollout(input.namespace, input.name, connection),
 	};
 }
 
+// `connection` threads the environment for the whole rollout so every read in
+// the polling loop (and the verification it feeds) stays on the same cluster.
 export async function pollRollout(
 	namespace: string,
 	name: string,
+	connection?: EnvironmentConnection,
 	ceilingMs = 15_000,
 ) {
 	const observations: Awaited<ReturnType<typeof readDeployment>>[] = [];
 	const deadline = Date.now() + ceilingMs;
 	do {
-		const observation = await readDeployment({ namespace, name });
+		const observation = await readDeployment(
+			{ namespace, name },
+			connection ? { environment: { connection } } : undefined,
+		);
 		observations.push(observation);
 		if (
 			observation.replicas > 0 &&

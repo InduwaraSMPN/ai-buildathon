@@ -1,15 +1,19 @@
 import { oc } from "@orpc/contract";
 import { z } from "zod";
-import { STATE_TYPES } from "../shared";
+import {
+	EVIDENCE_TONES,
+	PROGRESS_MARKERS,
+	RECORD_TYPES,
+	RESOLUTION_CODES,
+	RUN_STATUSES,
+	STATE_TYPES,
+	STEP_KINDS,
+	TICKET_ROUTES,
+	URGENCY_LEVELS,
+} from "../shared";
 import { id, impact, jsonRecord, nullableId, priority } from "./shared";
 
-const runStatus = z.enum([
-	"running",
-	"resolved",
-	"escalated",
-	"failed",
-	"exhausted",
-]);
+const runStatus = z.enum(RUN_STATUSES);
 
 const runSummary = z.object({
 	id: z.string(),
@@ -21,6 +25,10 @@ const runSummary = z.object({
 	completionTokens: z.number().int().nullable(),
 	startedAt: z.date(),
 	endedAt: z.date().nullable(),
+	// Resolved run environment, denormalised for the run list without a join.
+	environmentId: z.string().nullable(),
+	environmentKey: z.string().nullable(),
+	environmentSource: z.enum(["ticket", "cmdb", "default"]).nullable(),
 });
 
 const changeType = z.enum(["standard", "normal", "emergency"]);
@@ -47,7 +55,7 @@ const changeSchema = z.object({
 	changeType,
 	status: changeStatus,
 	priority,
-	impact: z.enum(["high", "medium", "low"]),
+	impact,
 	testPlan: z.string().nullable(),
 	rollbackPlan: z.string().nullable(),
 	riskLikelihood: z.number().int().nullable(),
@@ -85,14 +93,7 @@ const problemSchema = z.object({
 	updatedAt: z.date(),
 });
 
-const resolutionCode = z.enum([
-	"fixed",
-	"workaround",
-	"not_reproducible",
-	"duplicate",
-	"no_action_required",
-	"rejected",
-]);
+const resolutionCode = z.enum(RESOLUTION_CODES);
 
 const ticketTimeEntry = z.object({
 	id: z.string(),
@@ -152,13 +153,7 @@ const ticketMessage = z.object({
 
 const portalTicketMessage = ticketMessage.omit({ visibility: true });
 
-const stepKind = z.enum([
-	"think",
-	"tool_call",
-	"observation",
-	"decision",
-	"terminal",
-]);
+const stepKind = z.enum(STEP_KINDS);
 
 const agentStep = z.object({
 	id: z.string(),
@@ -170,35 +165,25 @@ const agentStep = z.object({
 	toolInput: z.unknown().nullable(),
 	toolOutput: z.unknown().nullable(),
 	error: z.string().nullable(),
+	// Informational messages that are not failures; empty means absent.
+	notice: z.string().optional(),
 	evidence: z.string().nullable(),
+	// Presentation tone for the evidence alert.
+	evidenceTone: z.enum(EVIDENCE_TONES).optional(),
 	createdAt: z.date(),
 });
 
 const agentRun = runSummary.extend({ steps: z.array(agentStep) });
 
-const ticketRoute = z.enum([
-	"unassigned",
-	"infrastructure",
-	"device",
-	"application",
-	"identity",
-	"human_triage",
-]);
+const ticketRoute = z.enum(TICKET_ROUTES);
 
 const ticketStatus = z.string().min(1);
 
-const recordType = z.enum(["incident", "service_request"]);
+const recordType = z.enum(RECORD_TYPES);
 
-const urgency = z.enum(["high", "medium", "low"]);
+const urgency = z.enum(URGENCY_LEVELS);
 
-const progressMarker = z.enum([
-	"gathering_evidence",
-	"checking_device",
-	"checking_service",
-	"applying_fix",
-	"verifying_fix",
-	"handing_to_person",
-]);
+const progressMarker = z.enum(PROGRESS_MARKERS);
 
 const ticketSlaTarget = z.object({
 	policyType: z.enum(["sla", "ola"]),
@@ -235,6 +220,9 @@ const ticket = z.object({
 	teamId: z.string().nullable(),
 	teamName: z.string().nullable(),
 	deviceId: z.string().nullable(),
+	/** Set when the ticket's record lives in a customer's own service desk. */
+	connectorLabel: z.string().nullable(),
+	externalKey: z.string().nullable(),
 	title: z.string(),
 	body: z.string(),
 	recordType,
@@ -246,10 +234,9 @@ const ticket = z.object({
 	serviceSubcategoryId: z.string(),
 	serviceSubcategoryName: z.string(),
 	status: ticketStatus,
+	// Admin-editable presentation metadata; clients intentionally derive semantics from statusStateType.
 	statusLabel: z.string(),
 	statusStateType: z.enum(STATE_TYPES),
-	// Admin-editable presentation metadata; clients intentionally derive semantics from statusStateType.
-	statusColour: z.string().nullable(),
 	route: ticketRoute.nullable(),
 	resolution: z.string().nullable(),
 	resolutionCode: resolutionCode.nullable(),
@@ -329,6 +316,8 @@ export const ticketsContract = {
 				route: z.array(ticketRoute.nullable()).max(7).optional(),
 				assigneeId: z.string().min(1).optional(),
 				teamId: z.string().min(1).optional(),
+				/** Narrow to tickets synced from one customer service desk. */
+				connectorId: z.string().min(1).optional(),
 				myQueue: z.boolean().optional(),
 				deviceId: z.string().min(1).optional(),
 				unassigned: z.boolean().optional(),
@@ -349,6 +338,13 @@ export const ticketsContract = {
 				items: z.array(ticket),
 				nextCursor: z.string().nullable(),
 				facets: z.object({
+					connector: z.array(
+						z.object({
+							id: z.string(),
+							name: z.string(),
+							count: z.number().int(),
+						}),
+					),
 					status: z.array(
 						z.object({
 							value: ticketStatus,

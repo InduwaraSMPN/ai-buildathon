@@ -22,6 +22,8 @@ import {
 	changes,
 	changeTicketLinks,
 	devices,
+	itsmConnectors,
+	itsmTicketOrigins,
 	pendingReasons,
 	serviceSubcategories,
 	services,
@@ -109,6 +111,15 @@ const ticketSelection = {
 		string | null
 	>`(select name from ${teams} where id = ${tickets.teamId})`,
 	deviceId: tickets.deviceId,
+	// Correlated subqueries rather than a join, matching the columns around
+	// them, so a ticket with no connector origin stays a single row.
+	connectorLabel: sql<string | null>`(select c.label from ${itsmTicketOrigins} o
+		join ${itsmConnectors} c on c.id = o.connector_id
+		where o.ticket_id = ${tickets.id})`,
+	externalKey: sql<
+		string | null
+	>`(select o.external_key from ${itsmTicketOrigins} o
+		where o.ticket_id = ${tickets.id})`,
 	title: tickets.title,
 	body: tickets.body,
 	recordType: tickets.recordType,
@@ -122,9 +133,6 @@ const ticketSelection = {
 	status: tickets.status,
 	statusLabel: sql<string>`(select label from ${ticketStatuses} where key = ${tickets.status})`,
 	statusStateType: sql<StateType>`(select state_type from ${ticketStatuses} where key = ${tickets.status})`,
-	statusColour: sql<
-		string | null
-	>`(select colour from ${ticketStatuses} where key = ${tickets.status})`,
 	route: tickets.route,
 	resolution: tickets.resolution,
 	resolutionCode: tickets.resolutionCode,
@@ -177,6 +185,22 @@ export async function findTicket(id: string, reporterId?: string) {
 			.limit(1)
 	)[0];
 }
+
+/**
+ * Excludes tickets whose record lives in a customer's own service desk.
+ *
+ * Applied to the reporter-scoped paths only. An employee whose ticket was
+ * filed in the foreign system has their front door there; showing it in our
+ * portal as well gives them two places to look and two places to reply.
+ *
+ * In SQL rather than in the component, because the portal's boundary is
+ * enforced by data shape — a page that renders nothing while fetching it is
+ * still a leak, and this follows `getMyTicket`'s own precedent.
+ */
+const notForeignOwned = sql`not exists (
+	select 1 from ${itsmTicketOrigins}
+	where ${itsmTicketOrigins.ticketId} = ${tickets.id}
+)`;
 
 export const ticketsRouter = {
 	createTicket: capabilityProcedure("ticket.create").createTicket.handler(
@@ -269,7 +293,7 @@ export const ticketsRouter = {
 					and ${ticketScheduling.snoozedUntil} > now()
 			)`,
 			input.scope === "mine"
-				? eq(tickets.reporterId, context.userId)
+				? and(eq(tickets.reporterId, context.userId), notForeignOwned)
 				: undefined,
 			input.myQueue
 				? or(
@@ -279,6 +303,13 @@ export const ticketsRouter = {
 				: undefined,
 			input.assigneeId ? eq(tickets.assigneeId, input.assigneeId) : undefined,
 			input.teamId ? eq(tickets.teamId, input.teamId) : undefined,
+			input.connectorId
+				? sql`exists (
+					select 1 from ${itsmTicketOrigins}
+					where ${itsmTicketOrigins.ticketId} = ${tickets.id}
+						and ${itsmTicketOrigins.connectorId} = ${input.connectorId}
+				)`
+				: undefined,
 			input.status?.length ? inArray(tickets.status, input.status) : undefined,
 			input.priority?.length
 				? inArray(tickets.priority, input.priority)
@@ -433,7 +464,7 @@ export const ticketsRouter = {
 				: null;
 		const scope =
 			input.scope === "mine"
-				? eq(tickets.reporterId, context.userId)
+				? and(eq(tickets.reporterId, context.userId), notForeignOwned)
 				: undefined;
 		const [
 			statusDefinitions,
@@ -441,6 +472,7 @@ export const ticketsRouter = {
 			priorities,
 			recordTypes,
 			serviceFacets,
+			connectorFacets,
 			routes,
 			assignees,
 			ticketTeams,
@@ -476,6 +508,24 @@ export const ticketsRouter = {
 				.where(scope)
 				.groupBy(services.id, services.name)
 				.orderBy(asc(services.name)),
+			// Which service desk a ticket came from. Only connectors that own at
+			// least one ticket appear, so the facet is empty in a deployment with
+			// no connector rather than showing an always-zero row.
+			db
+				.select({
+					id: itsmConnectors.id,
+					name: itsmConnectors.label,
+					count: count(tickets.id),
+				})
+				.from(itsmConnectors)
+				.innerJoin(
+					itsmTicketOrigins,
+					eq(itsmTicketOrigins.connectorId, itsmConnectors.id),
+				)
+				.innerJoin(tickets, eq(tickets.id, itsmTicketOrigins.ticketId))
+				.where(scope)
+				.groupBy(itsmConnectors.id, itsmConnectors.label)
+				.orderBy(asc(itsmConnectors.label)),
 			db
 				.select({ value: tickets.route, count: count() })
 				.from(tickets)
@@ -500,6 +550,7 @@ export const ticketsRouter = {
 			items,
 			nextCursor,
 			facets: {
+				connector: connectorFacets,
 				status: statusDefinitions.map(({ key: value, label }) => ({
 					value,
 					label,

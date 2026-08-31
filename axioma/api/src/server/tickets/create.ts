@@ -27,7 +27,9 @@ export type TicketCreationSource =
 	| "catalogue"
 	| "email"
 	| "channel"
-	| "recurrence";
+	| "recurrence"
+	/** Synced from a customer's incumbent ITSM by a connector. */
+	| "itsm";
 
 export interface CreateTicketInput {
 	source: TicketCreationSource;

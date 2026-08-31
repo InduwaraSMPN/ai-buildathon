@@ -1,14 +1,17 @@
-import { eq, gte } from "drizzle-orm";
+import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import type { createDb } from "@/db";
 import {
+	agentRuns,
 	assets,
 	changes,
 	cmdbClasses,
 	cmdbObjects,
+	documents,
 	dynamicFields,
 	dynamicFieldValues,
 	knowledgeArticles,
 	problems,
+	ticketStatuses,
 	tickets,
 } from "@/db/schema";
 import {
@@ -91,11 +94,105 @@ export const knowledgeArticleDocument = (
 	body: [article.summary, article.body].filter(Boolean).join("\n"),
 	url: `/knowledge/${article.id}`,
 	metadata: {
+		accessClass: "published_unrestricted",
+		fetchId: article.id,
 		status: article.status,
 		audience: article.audience,
 		isRestricted: article.isRestricted,
 	},
 	sourceUpdatedAt: article.updatedAt,
+});
+
+export const knownErrorDocument = (
+	problem: typeof problems.$inferSelect,
+): SearchDocumentInput => ({
+	...problemDocument(problem),
+	objectType: "known_error",
+	metadata: {
+		accessClass: "published_unrestricted",
+		fetchId: problem.id,
+		isKnownError: problem.isKnownError,
+	},
+});
+
+const PII = [
+	[/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]"],
+	[/\b(?:https?:\/\/|www\.)\S+/gi, "[url]"],
+	[/\b(?:\+?\d[\d ().-]{7,}\d)\b/g, "[phone]"],
+	[/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[ip]"],
+	[
+		/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,
+		"[identifier]",
+	],
+] as const;
+
+/** Best-effort structured-PII removal; source fields remain excluded by construction. */
+export function deidentifyKnowledgeText(value: string): string {
+	return PII.reduce(
+		(text, [pattern, replacement]) => text.replace(pattern, replacement),
+		value,
+	)
+		.replaceAll(/[\r\n\t]+/g, " ")
+		.replaceAll(/\s{2,}/g, " ")
+		.trim()
+		.slice(0, 4_000);
+}
+
+/** Deliberately omits reporter, body, messages, and ticket number. */
+export const resolvedTicketDocument = (
+	ticket: typeof tickets.$inferSelect,
+): SearchDocumentInput => ({
+	objectType: "resolved_ticket",
+	objectId: ticket.id,
+	title: "De-identified resolved ticket",
+	body: [
+		ticket.resolutionCode && `Diagnosis: ${ticket.resolutionCode}`,
+		`Resolution: ${deidentifyKnowledgeText(ticket.resolution ?? "completed")}`,
+	]
+		.filter(Boolean)
+		.join("\n"),
+	url: null,
+	metadata: {
+		accessClass: "deidentified",
+		fetchId: ticket.id,
+		resolutionCode: ticket.resolutionCode,
+	},
+	sourceUpdatedAt: ticket.updatedAt,
+});
+
+export const agentRunDocument = (
+	run: typeof agentRuns.$inferSelect,
+): SearchDocumentInput => ({
+	objectType: "agent_run",
+	objectId: run.id,
+	title: "Prior terminal agent outcome",
+	body: `Terminal run status: ${run.status}\nOutcome: ${deidentifyKnowledgeText(run.outcome ?? "")}`,
+	url: null,
+	metadata: {
+		accessClass: "deidentified",
+		fetchId: run.id,
+		status: run.status,
+	},
+	sourceUpdatedAt: run.endedAt ?? run.startedAt,
+});
+
+/** ponytail: Documents expose safe metadata/link text only; add owned text extraction before indexing file contents. */
+export const linkedDocument = (
+	document: typeof documents.$inferSelect,
+): SearchDocumentInput => ({
+	objectType: "document",
+	objectId: document.id,
+	title: document.displayName,
+	body: document.kind === "link" ? (document.url ?? "") : "",
+	url:
+		document.kind === "link" ? document.url : `/api/documents/${document.id}`,
+	metadata: {
+		accessClass: "current_ticket_link",
+		fetchId: document.id,
+		kind: document.kind,
+		mediaType: document.mediaType,
+	},
+	sourceUpdatedAt: document.createdAt,
 });
 
 const assetDocument = (
@@ -148,13 +245,16 @@ export async function indexAsset(db: Db, id: string): Promise<boolean> {
 }
 
 export async function indexTicket(db: Db, id: string): Promise<boolean> {
-	const [ticket] = await db
-		.select()
+	const [row] = await db
+		.select({ ticket: tickets, isClosed: ticketStatuses.isClosed })
 		.from(tickets)
+		.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
 		.where(eq(tickets.id, id))
 		.limit(1);
-	if (!ticket) return false;
-	await upsertSearchDocument(db, ticketDocument(ticket));
+	if (!row) return false;
+	await upsertSearchDocument(db, ticketDocument(row.ticket));
+	if (row.isClosed && row.ticket.resolution)
+		await upsertSearchDocument(db, resolvedTicketDocument(row.ticket));
 	return true;
 }
 
@@ -241,6 +341,70 @@ export function reconcileCoreSearchDocuments(
 							.from(knowledgeArticles)
 							.where(gte(knowledgeArticles.updatedAt, changedSince))
 					).map(knowledgeArticleDocument),
+			},
+			{
+				objectType: "known_error",
+				loadChanged: async (changedSince) =>
+					(
+						await db
+							.select()
+							.from(problems)
+							.where(
+								and(
+									gte(problems.updatedAt, changedSince),
+									eq(problems.isKnownError, true),
+									isNotNull(problems.workaround),
+								),
+							)
+					).map(knownErrorDocument),
+			},
+			{
+				objectType: "resolved_ticket",
+				loadChanged: async (changedSince) =>
+					(
+						await db
+							.select({ ticket: tickets })
+							.from(tickets)
+							.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
+							.where(
+								and(
+									gte(tickets.updatedAt, changedSince),
+									eq(ticketStatuses.isClosed, true),
+									isNotNull(tickets.resolution),
+								),
+							)
+					).map(({ ticket }) => resolvedTicketDocument(ticket)),
+			},
+			{
+				objectType: "agent_run",
+				loadChanged: async (changedSince) =>
+					(
+						await db
+							.select()
+							.from(agentRuns)
+							.where(
+								and(
+									gte(agentRuns.endedAt, changedSince),
+									inArray(agentRuns.status, [
+										"resolved",
+										"escalated",
+										"failed",
+										"exhausted",
+									]),
+									isNotNull(agentRuns.outcome),
+								),
+							)
+					).map(agentRunDocument),
+			},
+			{
+				objectType: "document",
+				loadChanged: async (changedSince) =>
+					(
+						await db
+							.select()
+							.from(documents)
+							.where(gte(documents.createdAt, changedSince))
+					).map(linkedDocument),
 			},
 		],
 		since,

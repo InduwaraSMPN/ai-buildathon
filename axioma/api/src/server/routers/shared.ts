@@ -12,6 +12,7 @@ import {
 	tickets,
 	ticketTransitions,
 } from "@/db/schema";
+import { resolveRunEnvironment } from "../environments/runtime";
 import { grpcGateway } from "../grpc";
 import { healthProcedure } from "../orpc";
 import { routesToHuman } from "../rules";
@@ -25,6 +26,8 @@ export const sharedRouter = {
 
 export async function startTicketRun(
 	ticket: Awaited<ReturnType<typeof findTicket>>,
+	/** Who set this run going, when a person did. Auto-dispatch passes nothing. */
+	startedById?: string,
 ) {
 	if (!ticket) throw new ORPCError("NOT_FOUND");
 	const firings = await db
@@ -85,7 +88,6 @@ export async function startTicketRun(
 		throw new ORPCError("SERVICE_UNAVAILABLE", {
 			message: "Axel is not connected",
 		});
-	let nextStatus: typeof ticket.status;
 	const ticketState = (
 		await db
 			.select({ stateType: ticketStatuses.stateType })
@@ -106,10 +108,8 @@ export async function startTicketRun(
 			throw new ORPCError("CONFLICT", {
 				message: "Only failed or exhausted runs can be rerun",
 			});
-		nextStatus = "routing" as const;
-	} else {
-		nextStatus = await resolveTicketStatus(ticket.status, "startRun");
 	}
+	const nextStatus = await resolveTicketStatus(ticket.status, "startRun");
 	const [mailOrigin, channelOrigin] = await Promise.all([
 		db
 			.select({ origin: ticketMailOrigins.ticketOrigin })
@@ -127,6 +127,7 @@ export async function startTicketRun(
 		mailOrigin[0]?.origin,
 		channelOrigin[0]?.origin,
 	);
+	const resolvedEnvironment = await resolveRunEnvironment(ticket);
 	const runId = crypto.randomUUID();
 	const transitionId = crypto.randomUUID();
 	await db.transaction(async (tx) => {
@@ -143,7 +144,14 @@ export async function startTicketRun(
 			throw new ORPCError("CONFLICT", {
 				message: "Ticket changed while run was starting",
 			});
-		await tx.insert(agentRuns).values({ id: runId, ticketId });
+		await tx.insert(agentRuns).values({
+			id: runId,
+			ticketId,
+			environmentId: resolvedEnvironment.environmentId,
+			environmentKey: resolvedEnvironment.environmentKey,
+			environmentSource: resolvedEnvironment.environmentSource,
+			startedById: startedById ?? null,
+		});
 		await tx.insert(ticketTransitions).values({
 			id: transitionId,
 			ticketId,
@@ -170,6 +178,7 @@ export async function startTicketRun(
 			urgency: ticket.urgency,
 			priority: ticket.priority,
 			origin,
+			environmentKey: resolvedEnvironment.environmentKey ?? undefined,
 		});
 	} catch (error) {
 		await db.transaction(async (tx) => {

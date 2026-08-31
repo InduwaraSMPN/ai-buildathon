@@ -5,8 +5,11 @@ import { automationRouter } from "./automation";
 import { catalogueRouter } from "./catalogue";
 import { changesRouter } from "./changes";
 import { cmdbRouter } from "./cmdb";
+import { connectorsRouter } from "./connectors";
 import { devicesRouter } from "./devices";
+import { deviceProposalsRouter } from "./device-proposals";
 import { documentsRouter } from "./documents";
+import { environmentsRouter } from "./environments";
 import { identityRouter } from "./identity";
 import { knowledgeRouter } from "./knowledge";
 import { mailRouter } from "./mail";
@@ -44,6 +47,8 @@ export const appRouter = {
 	getPublicKnowledgeArticle: knowledgeRouter.getPublicKnowledgeArticle,
 	listRequestCatalogue: catalogueRouter.listRequestCatalogue,
 	createCatalogueRequest: catalogueRouter.createCatalogueRequest,
+	listDeviceProposals: deviceProposalsRouter.listDeviceProposals,
+	decideDeviceProposal: deviceProposalsRouter.decideDeviceProposal,
 	listApprovals: catalogueRouter.listApprovals,
 	decideApproval: catalogueRouter.decideApproval,
 	getMyApprovalStatus: catalogueRouter.getMyApprovalStatus,
@@ -133,6 +138,12 @@ export const appRouter = {
 	unlinkDocument: documentsRouter.unlinkDocument,
 	listSuppliers: suppliersRouter.listSuppliers,
 	listContracts: suppliersRouter.listContracts,
+	listEnvironments: environmentsRouter.listEnvironments,
+	createEnvironment: environmentsRouter.createEnvironment,
+	updateEnvironment: environmentsRouter.updateEnvironment,
+	deleteEnvironment: environmentsRouter.deleteEnvironment,
+	linkTicketEnvironment: environmentsRouter.linkTicketEnvironment,
+	unlinkTicketEnvironment: environmentsRouter.unlinkTicketEnvironment,
 	listEmailSendLog: mailRouter.listEmailSendLog,
 	healthCheck: sharedRouter.healthCheck,
 	privateData: identityRouter.privateData,
@@ -164,7 +175,9 @@ export const appRouter = {
 	setTicketDynamicFields: ticketsRouter.setTicketDynamicFields,
 	updateTicket: ticketsRouter.updateTicket,
 	listMyDevices: devicesRouter.listMyDevices,
-	enrollDevice: devicesRouter.enrollDevice,
+	createDeviceEnrolmentToken: devicesRouter.createDeviceEnrolmentToken,
+	rotateDeviceCredential: devicesRouter.rotateDeviceCredential,
+	revokeDevice: devicesRouter.revokeDevice,
 	listDevices: devicesRouter.listDevices,
 	listDeviceCommands: devicesRouter.listDeviceCommands,
 	ticketStats: ticketsRouter.ticketStats,
@@ -180,6 +193,8 @@ export const appRouter = {
 	listTeams: identityRouter.listTeams,
 	createTeam: identityRouter.createTeam,
 	updateTeam: identityRouter.updateTeam,
+
+	...connectorsRouter,
 };
 
 export type AppRouter = typeof appRouter;

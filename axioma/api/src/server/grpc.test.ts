@@ -2,8 +2,18 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { agentRuns, tickets, ticketTransitions, user } from "@/db/schema";
-import { Gateway } from "./grpc";
+import {
+	agentRuns,
+	authProviders,
+	deviceEnrolmentTokens,
+	devices,
+	directoryIdentities,
+	tickets,
+	ticketTransitions,
+	user,
+} from "@/db/schema";
+import { hashDeviceSecret, issueDeviceCredential } from "./device-auth";
+import { Gateway, readReporterContext } from "./grpc";
 import {
 	createInboundQueue,
 	createNonOverlappingTask,
@@ -95,6 +105,168 @@ test("maintenance failures are isolated from later heartbeat work", async () => 
 	);
 	assert.deepEqual(ran, ["heartbeat"]);
 	assert.deepEqual(failures, ["broken"]);
+});
+
+test("reporter context uses synced directory data and degrades without it", async () => {
+	const suffix = crypto.randomUUID();
+	const managerId = `grpc-manager-${suffix}`;
+	const reporterId = `grpc-reporter-${suffix}`;
+	const plainUserId = `grpc-plain-${suffix}`;
+	const providerId = `grpc-provider-${suffix}`;
+	await db.insert(user).values([
+		{ id: managerId, name: "Morgan Lee", email: `${managerId}@example.test` },
+		{
+			id: reporterId,
+			name: "Avery Chen",
+			email: `${reporterId}@example.test`,
+			jobTitle: "Finance Analyst",
+			managerId,
+		},
+		{
+			id: plainUserId,
+			name: "No Sync",
+			email: `${plainUserId}@example.test`,
+			jobTitle: "Support Engineer",
+			managerId,
+		},
+	]);
+	await db.insert(authProviders).values({
+		id: providerId,
+		providerId,
+		name: "Test directory",
+		discoveryUrl: "https://example.test/.well-known/openid-configuration",
+		clientId: "test",
+		clientSecretEncrypted: "test",
+	});
+	await db.insert(directoryIdentities).values({
+		id: `grpc-identity-${suffix}`,
+		providerId,
+		userId: reporterId,
+		externalId: `external-${suffix}`,
+		department: "Finance",
+		lastSeenAt: new Date(),
+	});
+	try {
+		assert.deepEqual(await readReporterContext(reporterId), {
+			name: "Avery Chen",
+			jobTitle: "Finance Analyst",
+			department: "Finance",
+			manager: "Morgan Lee",
+		});
+		assert.deepEqual(await readReporterContext(plainUserId), {
+			name: "No Sync",
+			jobTitle: "Support Engineer",
+			department: "",
+			manager: "Morgan Lee",
+		});
+	} finally {
+		await db
+			.delete(directoryIdentities)
+			.where(eq(directoryIdentities.providerId, providerId));
+		await db.delete(authProviders).where(eq(authProviders.id, providerId));
+		await db.delete(user).where(eq(user.id, reporterId));
+		await db.delete(user).where(eq(user.id, plainUserId));
+		await db.delete(user).where(eq(user.id, managerId));
+	}
+});
+
+test("known device impersonation is refused before connection registration or replay", async () => {
+	const deviceId = crypto.randomUUID();
+	const credential = issueDeviceCredential();
+	await db.insert(devices).values({
+		id: deviceId,
+		hostname: "auth-test",
+		credentialHash: hashDeviceSecret(credential),
+		enrolledAt: new Date(),
+	});
+	const writes: unknown[] = [];
+	const gateway = new Gateway();
+	const stream = {
+		write: (value: unknown) => void writes.push(value),
+		end: () => {},
+		destroy: () => {},
+	} as never;
+	const registerDevice = (
+		gateway as unknown as {
+			registerDevice(
+				deviceId: string,
+				generation: symbol,
+				stream: never,
+				hello: Record<string, unknown>,
+			): Promise<void>;
+		}
+	).registerDevice.bind(gateway);
+	try {
+		await assert.rejects(
+			registerDevice(deviceId, Symbol(deviceId), stream, {
+				deviceId,
+				hostname: "attacker",
+				credential: "wrong",
+			}),
+			(error: unknown) =>
+				error instanceof Error &&
+				error.message === "device authentication failed",
+		);
+		assert.deepEqual(writes, []);
+		assert.equal(
+			(gateway as unknown as { devices: Map<string, unknown> }).devices.has(
+				deviceId,
+			),
+			false,
+		);
+	} finally {
+		await db.delete(devices).where(eq(devices.id, deviceId));
+	}
+});
+
+test("enrolment token is single-use and issues a credential", async () => {
+	const firstDeviceId = crypto.randomUUID();
+	const secondDeviceId = crypto.randomUUID();
+	const token = `axen_${crypto.randomUUID()}`;
+	await db.insert(deviceEnrolmentTokens).values({
+		id: crypto.randomUUID(),
+		tokenHash: hashDeviceSecret(token),
+		expiresAt: new Date(Date.now() + 60_000),
+	});
+	const writes: Array<Record<string, unknown>> = [];
+	const gateway = new Gateway();
+	const stream = {
+		write: (value: Record<string, unknown>) => void writes.push(value),
+		end: () => {},
+		destroy: () => {},
+	} as never;
+	const registerDevice = (
+		gateway as unknown as {
+			registerDevice(
+				deviceId: string,
+				generation: symbol,
+				stream: never,
+				hello: Record<string, unknown>,
+			): Promise<void>;
+		}
+	).registerDevice.bind(gateway);
+	try {
+		await registerDevice(firstDeviceId, Symbol(firstDeviceId), stream, {
+			deviceId: firstDeviceId,
+			hostname: "first",
+			enrolmentToken: token,
+		});
+		assert.ok(
+			String((writes[0]?.enrollment as Record<string, unknown>)?.credential),
+		);
+		await assert.rejects(() =>
+			registerDevice(secondDeviceId, Symbol(secondDeviceId), stream, {
+				deviceId: secondDeviceId,
+				hostname: "second",
+				enrolmentToken: token,
+			}),
+		);
+	} finally {
+		await db.delete(devices).where(eq(devices.id, firstDeviceId));
+		await db
+			.delete(deviceEnrolmentTokens)
+			.where(eq(deviceEnrolmentTokens.tokenHash, hashDeviceSecret(token)));
+	}
 });
 
 test("terminal persistence commits run, ticket, transition, then acknowledges", async () => {

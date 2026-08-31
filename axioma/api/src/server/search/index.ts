@@ -1,7 +1,9 @@
-import { and, desc, inArray, type SQL, sql } from "drizzle-orm";
+import { and, asc, desc, inArray, type SQL, sql } from "drizzle-orm";
 
 import type { createDb } from "@/db";
 import { searchDocuments } from "@/db/schema/search";
+import { env } from "@/env";
+import { createEmbedding } from "./embeddings";
 
 export const SEARCH_OBJECT_TYPES = [
 	"ticket",
@@ -10,12 +12,20 @@ export const SEARCH_OBJECT_TYPES = [
 	"knowledge_article",
 	"cmdb_object",
 	"asset",
+	"known_error",
+	"resolved_ticket",
+	"agent_run",
+	"document",
 ] as const;
 
 export type SearchObjectType = (typeof SEARCH_OBJECT_TYPES)[number];
 type Db = ReturnType<typeof createDb>;
 type SearchDocumentRow = typeof searchDocuments.$inferSelect;
-export type SearchDocumentInput = Omit<SearchDocumentRow, "indexedAt">;
+export type SearchDocumentInput = Omit<
+	SearchDocumentRow,
+	"indexedAt" | "embedding" | "embeddingModel"
+> &
+	Partial<Pick<SearchDocumentRow, "embedding" | "embeddingModel">>;
 
 export interface SearchResult extends SearchDocumentRow {
 	rank: number;
@@ -49,25 +59,127 @@ export function retainAuthorizedResults<
 	);
 }
 
+export function mayEmbed(document: SearchDocumentInput): boolean {
+	const { metadata } = document;
+	if (typeof metadata.fetchId !== "string" || !metadata.fetchId) return false;
+
+	switch (document.objectType) {
+		case "knowledge_article":
+			return (
+				metadata.accessClass === "published_unrestricted" &&
+				metadata.status === "published" &&
+				metadata.isRestricted === false
+			);
+		case "known_error":
+			return (
+				metadata.accessClass === "published_unrestricted" &&
+				metadata.isKnownError === true
+			);
+		case "resolved_ticket":
+		case "agent_run":
+			return metadata.accessClass === "deidentified";
+		case "document":
+			return metadata.accessClass === "current_ticket_link";
+		default:
+			return false;
+	}
+}
+
 export async function upsertSearchDocument(
 	db: Db,
 	document: SearchDocumentInput,
 ): Promise<void> {
+	const embedding = mayEmbed(document)
+		? document.embedding &&
+			document.embeddingModel === env.AXIOMA_EMBEDDING_MODEL
+			? document.embedding
+			: await createEmbedding(`${document.title}\n${document.body}`)
+		: null;
+	const projected = {
+		...document,
+		embedding,
+		embeddingModel: embedding ? env.AXIOMA_EMBEDDING_MODEL : null,
+	};
 	await db
 		.insert(searchDocuments)
-		.values(document)
+		.values(projected)
 		.onConflictDoUpdate({
 			target: [searchDocuments.objectType, searchDocuments.objectId],
 			set: {
-				title: document.title,
-				body: document.body,
-				url: document.url,
-				metadata: document.metadata,
-				sourceUpdatedAt: document.sourceUpdatedAt,
+				title: projected.title,
+				body: projected.body,
+				url: projected.url,
+				metadata: projected.metadata,
+				embedding: projected.embedding,
+				embeddingModel: projected.embeddingModel,
+				sourceUpdatedAt: projected.sourceUpdatedAt,
 				indexedAt: new Date(),
 			},
 			setWhere: sql`${searchDocuments.sourceUpdatedAt} <= ${document.sourceUpdatedAt}`,
 		});
+}
+
+export interface EmbeddingBackfillCursor {
+	objectType: string;
+	objectId: string;
+}
+
+export interface EmbeddingBackfillResult {
+	scanned: number;
+	updated: number;
+	failed: number;
+	nextCursor: EmbeddingBackfillCursor | null;
+}
+
+export async function backfillSearchEmbeddings(
+	db: Db,
+	limit = 100,
+	cursor?: EmbeddingBackfillCursor,
+	embed: (text: string) => Promise<number[] | null> = createEmbedding,
+): Promise<EmbeddingBackfillResult> {
+	const batchSize = Math.min(Math.max(Math.trunc(limit) || 1, 1), 1_000);
+	const stale = await db
+		.select()
+		.from(searchDocuments)
+		.where(
+			and(
+				sql`${searchDocuments.embedding} is null or ${searchDocuments.embeddingModel} is distinct from ${env.AXIOMA_EMBEDDING_MODEL}`,
+				cursor
+					? sql`(${searchDocuments.objectType}, ${searchDocuments.objectId}) > (${cursor.objectType}, ${cursor.objectId})`
+					: undefined,
+			),
+		)
+		.orderBy(asc(searchDocuments.objectType), asc(searchDocuments.objectId))
+		.limit(batchSize);
+	let updated = 0;
+	let failed = 0;
+	for (const row of stale) {
+		if (!mayEmbed(row)) continue;
+		const embedding = await embed(`${row.title}\n${row.body}`);
+		if (!embedding) {
+			failed++;
+			continue;
+		}
+		await db
+			.update(searchDocuments)
+			.set({ embedding, embeddingModel: env.AXIOMA_EMBEDDING_MODEL })
+			.where(
+				and(
+					sql`${searchDocuments.objectType} = ${row.objectType}`,
+					sql`${searchDocuments.objectId} = ${row.objectId}`,
+				),
+			);
+		updated++;
+	}
+	const last = stale.at(-1);
+	return {
+		scanned: stale.length,
+		updated,
+		failed,
+		nextCursor: last
+			? { objectType: last.objectType, objectId: last.objectId }
+			: null,
+	};
 }
 
 export async function search(
@@ -102,6 +214,8 @@ export async function search(
 			body: searchDocuments.body,
 			url: searchDocuments.url,
 			metadata: searchDocuments.metadata,
+			embedding: searchDocuments.embedding,
+			embeddingModel: searchDocuments.embeddingModel,
 			sourceUpdatedAt: searchDocuments.sourceUpdatedAt,
 			indexedAt: searchDocuments.indexedAt,
 			rank: sql<number>`ts_rank_cd(${vector}, ${tsquery})`,

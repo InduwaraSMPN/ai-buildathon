@@ -24,8 +24,11 @@ export async function getRun(id: string) {
 
 export const agentRunsRouter = {
 	startRun: capabilityProcedure("run.start").startRun.handler(
-		async ({ input }) => {
-			const result = await startTicketRun(await findTicket(input.ticketId));
+		async ({ context, input }) => {
+			const result = await startTicketRun(
+				await findTicket(input.ticketId),
+				context.userId,
+			);
 			if ("ticketId" in result) return result;
 			throw new ORPCError("CONFLICT", {
 				message: "Rule-settled ticket does not need an agent run",
