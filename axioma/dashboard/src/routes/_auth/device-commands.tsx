@@ -2,11 +2,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
 import { DeviceProposalsPage } from "@/features/device-proposals/components/device-proposals";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
-export const Route = createFileRoute("/_auth/device-proposals")({
+export const Route = createFileRoute("/_auth/device-commands")({
 	component: DeviceProposalsRoute,
-	beforeLoad: () => ({ breadcrumb: "Device commands" }),
+	beforeLoad: ({ context }) => {
+		requireNav("/device-commands", context);
+		return { breadcrumb: "Device commands" };
+	},
+	head: () => ({ meta: [{ title: "Device commands · Axiōma" }] }),
 });
 
 function DeviceProposalsRoute() {

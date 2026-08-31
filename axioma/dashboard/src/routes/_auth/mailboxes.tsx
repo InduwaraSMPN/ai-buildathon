@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
@@ -24,13 +24,13 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/mailboxes")({
 	component: Mailboxes,
 	beforeLoad: ({ context }) => {
-		if (!context.capabilities.includes("admin.settings"))
-			throw redirect({ to: "/home" });
+		requireNav("/mailboxes", context);
 		return { breadcrumb: "Mailboxes" };
 	},
 	head: () => ({ meta: [{ title: "Mailboxes · Axiōma" }] }),

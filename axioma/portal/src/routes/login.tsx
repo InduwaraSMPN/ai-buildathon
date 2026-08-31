@@ -11,10 +11,11 @@ export const Route = createFileRoute("/login")({
 	beforeLoad: async () => {
 		const session = await authClient.getSession();
 		if (session.error) throw session.error;
-		if (session.data) throw redirect({ to: "/home" });
+		if (session.data) throw redirect({ to: "/my-requests" });
 	},
 	component: RouteComponent,
 	errorComponent: RouteError,
+	head: () => ({ meta: [{ title: "Sign in · Axiōma" }] }),
 });
 
 function RouteComponent() {

@@ -5,11 +5,16 @@ import {
 	ProblemEditor,
 	ProblemsPage,
 } from "@/features/problems/components/problems";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/problems/")({
 	component: ProblemsRoute,
-	beforeLoad: () => ({ breadcrumb: "Problems" }),
+	beforeLoad: ({ context }) => {
+		requireNav("/problems", context);
+		return { breadcrumb: "Problems" };
+	},
+	head: () => ({ meta: [{ title: "Problems · Axiōma" }] }),
 });
 function ProblemsRoute() {
 	const queryClient = useQueryClient();

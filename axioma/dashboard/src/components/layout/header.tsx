@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
+import { LANDING } from "@/lib/navigation";
 import { NotificationCenter } from "./notification-center";
 import { UserNav } from "./user-nav";
 
@@ -32,7 +33,7 @@ export function Header({
 				<Breadcrumb className="min-w-0">
 					<BreadcrumbList className="flex-nowrap">
 						<BreadcrumbItem>
-							<BreadcrumbLink render={<Link to="/home" />}>
+							<BreadcrumbLink render={<Link to={LANDING} />}>
 								Axiōma
 							</BreadcrumbLink>
 						</BreadcrumbItem>
@@ -47,7 +48,7 @@ export function Header({
 									</BreadcrumbItem>
 								) : (
 									<BreadcrumbItem>
-										<BreadcrumbLink render={<Link to={crumb.to ?? "/home"} />}>
+										<BreadcrumbLink render={<Link to={crumb.to ?? LANDING} />}>
 											{crumb.label}
 										</BreadcrumbLink>
 									</BreadcrumbItem>

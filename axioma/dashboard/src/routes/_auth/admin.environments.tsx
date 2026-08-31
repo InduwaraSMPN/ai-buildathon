@@ -1,10 +1,10 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { EnvironmentsPage } from "@/features/admin/environments-page";
+import { requireNav } from "@/lib/navigation";
 
 export const Route = createFileRoute("/_auth/admin/environments")({
 	beforeLoad: ({ context }) => {
-		if (!context.capabilities.includes("admin.environments"))
-			throw redirect({ to: "/home" });
+		requireNav("/admin/environments", context);
 		return { breadcrumb: "Environments" };
 	},
 	component: EnvironmentsPage,

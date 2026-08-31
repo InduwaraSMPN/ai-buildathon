@@ -361,7 +361,7 @@ function IncidentRequestForm({ onSetup }: { onSetup: () => void }) {
 
 				<div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
 					<Link
-						to="/home"
+						to="/my-requests"
 						className={buttonVariants({ variant: "outline", size: "lg" })}
 					>
 						{requestFormCopy.cancel}
@@ -672,7 +672,7 @@ function CatalogueRequestForm({ onIncident }: { onIncident: () => void }) {
 
 				<div className="flex flex-col-reverse gap-3 border-t pt-6 sm:flex-row sm:justify-end">
 					<Link
-						to="/home"
+						to="/my-requests"
 						className={buttonVariants({ variant: "outline", size: "lg" })}
 					>
 						{requestFormCopy.cancel}

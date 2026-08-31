@@ -2,10 +2,21 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
 import { ProblemDetailPage } from "@/features/problems/components/problems";
+import { navCrumb, requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/problems/$problemId")({
 	component: ProblemRoute,
+	beforeLoad: ({ context, params }) => {
+		requireNav("/problems", context);
+		return {
+			breadcrumb: [
+				navCrumb("/problems"),
+				{ label: `Problem ${params.problemId}` },
+			],
+		};
+	},
+	head: () => ({ meta: [{ title: "Problem detail · Axiōma" }] }),
 });
 function ProblemRoute() {
 	const { problemId } = Route.useParams();

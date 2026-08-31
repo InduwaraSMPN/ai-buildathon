@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
@@ -16,13 +16,13 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/mail-templates")({
 	component: MailTemplates,
 	beforeLoad: ({ context }) => {
-		if (!context.capabilities.includes("admin.settings"))
-			throw redirect({ to: "/home" });
+		requireNav("/mail-templates", context);
 		return { breadcrumb: "Mail templates" };
 	},
 	head: () => ({ meta: [{ title: "Mail templates · Axiōma" }] }),

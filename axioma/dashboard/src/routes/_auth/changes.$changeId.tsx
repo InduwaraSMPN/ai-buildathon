@@ -2,10 +2,21 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
 import { ChangeDetailPage } from "@/features/changes/components/changes";
+import { navCrumb, requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/changes/$changeId")({
 	component: ChangeRoute,
+	beforeLoad: ({ context, params }) => {
+		requireNav("/changes", context);
+		return {
+			breadcrumb: [
+				navCrumb("/changes"),
+				{ label: `Change ${params.changeId}` },
+			],
+		};
+	},
+	head: () => ({ meta: [{ title: "Change detail · Axiōma" }] }),
 });
 function ChangeRoute() {
 	const { changeId } = Route.useParams();

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { type FormEvent, useState } from "react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
@@ -25,13 +25,13 @@ import {
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/software-licences")({
 	component: SoftwareLicencesRoute,
 	beforeLoad: ({ context }) => {
-		if (!context.capabilities.includes("admin.settings"))
-			throw redirect({ to: "/home" });
+		requireNav("/software-licences", context);
 		return { breadcrumb: "Software licences" };
 	},
 	head: () => ({ meta: [{ title: "Software licences · Axiōma" }] }),

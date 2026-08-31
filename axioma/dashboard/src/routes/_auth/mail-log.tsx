@@ -2,11 +2,15 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
 import { MailLogPage } from "@/features/mail/components";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/mail-log")({
 	component: MailLogRoute,
-	beforeLoad: () => ({ breadcrumb: "Mail send log" }),
+	beforeLoad: ({ context }) => {
+		requireNav("/mail-log", context);
+		return { breadcrumb: "Mail send log" };
+	},
 	head: () => ({ meta: [{ title: "Mail send log · Axiōma" }] }),
 });
 

@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { KnowledgeBrowser } from "@/features/knowledge/components";
 import { orpc } from "@/utils/orpc";
 
-export const Route = createFileRoute("/_auth/knowledge")({
+export const Route = createFileRoute("/_auth/help-articles/")({
 	component: KnowledgeRoute,
+	head: () => ({ meta: [{ title: "Help articles · Axiōma" }] }),
 });
 function KnowledgeRoute() {
 	const [query, setQuery] = useState("");
@@ -60,7 +61,7 @@ function KnowledgeRoute() {
 				onQueryChange={setQuery}
 				onArticleSelect={(article) =>
 					void navigate({
-						to: "/knowledge/$articleId",
+						to: "/help-articles/$articleId",
 						params: { articleId: article.id },
 					})
 				}

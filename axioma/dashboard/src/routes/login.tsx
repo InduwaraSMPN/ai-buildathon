@@ -4,6 +4,7 @@ import { useState } from "react";
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
 import { authClient } from "@/lib/auth-client";
+import { LANDING } from "@/lib/navigation";
 
 export const Route = createFileRoute("/login")({
 	validateSearch: (search: Record<string, unknown>): { redirect?: string } => {
@@ -17,7 +18,7 @@ export const Route = createFileRoute("/login")({
 	},
 	beforeLoad: async () => {
 		const session = await authClient.getSession();
-		if (session.data) throw redirect({ to: "/home" });
+		if (session.data) throw redirect({ to: LANDING });
 	},
 	component: RouteComponent,
 });
@@ -25,7 +26,7 @@ export const Route = createFileRoute("/login")({
 function RouteComponent() {
 	const [showSignIn, setShowSignIn] = useState(true);
 	const { redirect } = Route.useSearch();
-	const destination = redirect ?? "/home";
+	const destination = redirect ?? LANDING;
 
 	return showSignIn ? (
 		<SignInForm

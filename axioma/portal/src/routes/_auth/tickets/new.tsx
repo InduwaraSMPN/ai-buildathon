@@ -7,14 +7,14 @@ import { RequestForm } from "@/features/tickets/components/request-form";
 
 export const Route = createFileRoute("/_auth/tickets/new")({
 	component: RouteComponent,
-	head: () => ({ meta: [{ title: "New request · Axioma" }] }),
+	head: () => ({ meta: [{ title: "New request · Axiōma" }] }),
 });
 
 function RouteComponent() {
 	return (
 		<PageShell>
 			<Link
-				to="/home"
+				to="/my-requests"
 				className={buttonVariants({
 					variant: "ghost",
 					size: "sm",

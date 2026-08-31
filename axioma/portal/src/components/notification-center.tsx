@@ -75,7 +75,7 @@ export function NotificationCenter() {
 								key={item.id}
 								render={
 									<Link
-										to={isTicket ? "/tickets/$ticketId" : "/home"}
+										to={isTicket ? "/tickets/$ticketId" : "/my-requests"}
 										params={isTicket ? { ticketId: item.recordId } : undefined}
 									/>
 								}

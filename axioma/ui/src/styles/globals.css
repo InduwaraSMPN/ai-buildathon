@@ -164,7 +164,8 @@
 @layer utilities {
 	.scrollbar-thin {
 		scrollbar-width: thin;
-		scrollbar-color: color-mix(in oklch, var(--foreground) 30%, transparent) transparent;
+		scrollbar-color: color-mix(in oklch, var(--foreground) 30%, transparent)
+			transparent;
 	}
 
 	.scrollbar-thin::-webkit-scrollbar {

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { toast } from "sonner";
 import { PageState } from "@/components/support-ui";
@@ -16,13 +16,13 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { AssetsPage } from "@/features/assets/components";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/assets")({
 	component: AssetsRoute,
 	beforeLoad: ({ context }) => {
-		if (!context.capabilities.includes("admin.settings"))
-			throw redirect({ to: "/home" });
+		requireNav("/assets", context);
 		return { breadcrumb: "Assets" };
 	},
 	head: () => ({ meta: [{ title: "Assets · Axiōma" }] }),

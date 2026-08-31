@@ -8,6 +8,7 @@ import {
 	type OverviewWidget,
 	WidgetArrangement,
 } from "@/features/automation/components";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 const available = [
@@ -20,7 +21,10 @@ const available = [
 
 export const Route = createFileRoute("/_auth/overview-widgets")({
 	component: OverviewWidgetsRoute,
-	beforeLoad: () => ({ breadcrumb: "Overview widgets" }),
+	beforeLoad: ({ context }) => {
+		requireNav("/overview-widgets", context);
+		return { breadcrumb: "Overview widgets" };
+	},
 	head: () => ({ meta: [{ title: "Overview widgets · Axiōma" }] }),
 });
 

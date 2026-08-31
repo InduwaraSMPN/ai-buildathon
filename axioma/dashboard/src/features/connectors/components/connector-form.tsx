@@ -87,7 +87,7 @@ export function ConnectorForm() {
 					</DialogDescription>
 				</DialogHeader>
 
-				<div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto py-1 pl-1 pr-3">
+				<div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto py-1 pr-3 pl-1">
 					<FieldGroup>
 						<Field>
 							<FieldLabel htmlFor="connector-key">Key</FieldLabel>

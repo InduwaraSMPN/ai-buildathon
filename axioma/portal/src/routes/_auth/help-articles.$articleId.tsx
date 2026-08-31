@@ -13,8 +13,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { KnowledgeArticle } from "@/features/knowledge/components";
 import { orpc } from "@/utils/orpc";
 
-export const Route = createFileRoute("/_auth/knowledge/$articleId")({
+export const Route = createFileRoute("/_auth/help-articles/$articleId")({
 	component: ArticleRoute,
+	head: () => ({ meta: [{ title: "Help article · Axiōma" }] }),
 });
 function ArticleRoute() {
 	const { articleId } = Route.useParams();
@@ -66,7 +67,7 @@ function ArticleRoute() {
 					</EmptyHeader>
 					<Button
 						variant="outline"
-						onClick={() => void navigate({ to: "/knowledge" })}
+						onClick={() => void navigate({ to: "/help-articles" })}
 					>
 						Back to help articles
 					</Button>
@@ -78,7 +79,7 @@ function ArticleRoute() {
 		<PageShell>
 			<KnowledgeArticle
 				article={query.data}
-				onBack={() => void navigate({ to: "/knowledge" })}
+				onBack={() => void navigate({ to: "/help-articles" })}
 			/>
 		</PageShell>
 	);

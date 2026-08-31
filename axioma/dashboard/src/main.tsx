@@ -3,6 +3,7 @@ import { createRouter, RouterProvider } from "@tanstack/react-router";
 import ReactDOM from "react-dom/client";
 
 import Loader from "./components/loader";
+import { NotFound } from "./components/not-found";
 import { RouteError } from "./components/route-state";
 import { routeTree } from "./routeTree.gen";
 import { queryClient } from "./utils/orpc";
@@ -15,6 +16,7 @@ const router = createRouter({
 	// Leaf errors render at the failed route's own position, inside the shell,
 	// instead of bubbling to a layout boundary and unmounting it.
 	defaultErrorComponent: RouteError,
+	defaultNotFoundComponent: NotFound,
 	context: { queryClient },
 	Wrap: function WrapComponent({ children }: { children: React.ReactNode }) {
 		return (

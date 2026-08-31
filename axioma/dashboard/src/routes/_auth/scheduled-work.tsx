@@ -5,7 +5,7 @@ import { PageState } from "@/components/support-ui";
 import { CalendarPage } from "@/features/scheduling/components";
 import { orpc } from "@/utils/orpc";
 
-export const Route = createFileRoute("/_auth/calendar")({
+export const Route = createFileRoute("/_auth/scheduled-work")({
 	component: CalendarRoute,
 	beforeLoad: () => ({ breadcrumb: "Scheduled work" }),
 	head: () => ({ meta: [{ title: "Scheduled work · Axiōma" }] }),

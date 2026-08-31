@@ -13,8 +13,9 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
+import { type NavPath, visibleNavigation } from "@/lib/navigation";
+import { Route } from "@/routes/_auth/route";
 import { orpc } from "@/utils/orpc";
-import { navigation } from "./app-sidebar";
 
 const labels: Record<string, string> = {
 	ticket: "Tickets",
@@ -33,6 +34,7 @@ export function CommandMenu({
 	onOpenChange: (open: boolean) => void;
 }) {
 	const navigate = useNavigate();
+	const { capabilities } = Route.useRouteContext();
 	const [search, setSearch] = useState("");
 	const [query, setQuery] = useState("");
 	useEffect(() => {
@@ -53,9 +55,18 @@ export function CommandMenu({
 		window.addEventListener("keydown", shortcut);
 		return () => window.removeEventListener("keydown", shortcut);
 	}, [open, onOpenChange]);
-	const go = (to: string) => {
+	// `goTo` is typed to the registry's literal union so a renamed path stops
+	// compiling here, while `goUrl` intentionally widens to a plain string:
+	// backend deep links arrive from the API as free-form URLs.
+	const goTo = (to: NavPath) => {
 		onOpenChange(false);
 		void navigate({ to });
+	};
+	const goUrl = (url: string) => {
+		onOpenChange(false);
+		// Widened on purpose: server-supplied deep links from the API are plain
+		// strings and are deliberately not part of the typed registry.
+		void navigate({ to: url });
 	};
 	const groups = Object.groupBy(
 		results.data ?? [],
@@ -91,12 +102,14 @@ export function CommandMenu({
 								Type to search records.
 							</p>
 							<CommandGroup heading="Views">
-								{navigation.map(({ to, label, icon: Icon }) => (
-									<CommandItem key={to} value={to} onSelect={() => go(to)}>
-										<Icon />
-										{label}
-									</CommandItem>
-								))}
+								{visibleNavigation(capabilities).map(
+									({ to, label, icon: Icon }) => (
+										<CommandItem key={to} value={to} onSelect={() => goTo(to)}>
+											<Icon />
+											{label}
+										</CommandItem>
+									),
+								)}
 							</CommandGroup>
 						</>
 					) : results.isError && results.data == null ? (
@@ -132,7 +145,7 @@ export function CommandMenu({
 										<CommandItem
 											key={`${type}:${item.objectId}`}
 											value={`${type}:${item.objectId}`}
-											onSelect={() => item.url && go(item.url)}
+											onSelect={() => item.url && goUrl(item.url)}
 											disabled={!item.url}
 										>
 											<FileSearch />

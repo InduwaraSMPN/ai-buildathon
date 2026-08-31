@@ -10,11 +10,16 @@ import {
 	NativeSelect,
 	NativeSelectOption,
 } from "@/components/ui/native-select";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/forms")({
 	component: FormsRoute,
-	beforeLoad: () => ({ breadcrumb: "Forms" }),
+	beforeLoad: ({ context }) => {
+		requireNav("/forms", context);
+		return { breadcrumb: "Forms" };
+	},
+	head: () => ({ meta: [{ title: "Request forms · Axiōma" }] }),
 });
 function FormsRoute() {
 	const client = useQueryClient();

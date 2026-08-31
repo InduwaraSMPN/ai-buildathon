@@ -5,12 +5,17 @@ import {
 	KnowledgeArticleEditor,
 	KnowledgePage,
 } from "@/features/knowledge/components/knowledge";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 import { selectQueryState } from "@/utils/query-state";
 
 export const Route = createFileRoute("/_auth/knowledge/")({
 	component: KnowledgeRoute,
-	beforeLoad: () => ({ breadcrumb: "Knowledge" }),
+	beforeLoad: ({ context }) => {
+		requireNav("/knowledge", context);
+		return { breadcrumb: "Knowledge" };
+	},
+	head: () => ({ meta: [{ title: "Knowledge · Axiōma" }] }),
 });
 function KnowledgeRoute() {
 	const client = useQueryClient();

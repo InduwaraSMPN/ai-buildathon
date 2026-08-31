@@ -2,11 +2,22 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
 import { KnowledgeArticleEditor } from "@/features/knowledge/components/knowledge";
+import { navCrumb, requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 import { selectQueryState } from "@/utils/query-state";
 
 export const Route = createFileRoute("/_auth/knowledge/$articleId")({
 	component: ArticleRoute,
+	beforeLoad: ({ context, params }) => {
+		requireNav("/knowledge", context);
+		return {
+			breadcrumb: [
+				navCrumb("/knowledge"),
+				{ label: `Article ${params.articleId}` },
+			],
+		};
+	},
+	head: () => ({ meta: [{ title: "Knowledge article · Axiōma" }] }),
 });
 function ArticleRoute() {
 	const { articleId } = Route.useParams();

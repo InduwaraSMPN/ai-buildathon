@@ -1,10 +1,10 @@
-import { RiArrowLeftLine } from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import Header from "@/components/header";
+import { SkipLink } from "@/components/skip-link";
 import { PageHeading, PageShell } from "@/components/ticket-ui";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { ServiceStatusList } from "@/features/status/components/service-status";
@@ -13,26 +13,16 @@ import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/status")({
 	component: PublicStatusPage,
-	head: () => ({ meta: [{ title: statusCopy.title }] }),
+	head: () => ({ meta: [{ title: `${statusCopy.title} · Axiōma` }] }),
 });
 
 function PublicStatusPage() {
 	const query = useQuery(orpc.readStatus.queryOptions({ input: { days: 90 } }));
 	return (
 		<div className="grid min-h-full grid-rows-[auto_1fr]">
+			<SkipLink />
 			<Header />
 			<PageShell>
-				<Link
-					to="/login"
-					className={buttonVariants({
-						variant: "ghost",
-						size: "sm",
-						className: "mb-6 -ml-2",
-					})}
-				>
-					<RiArrowLeftLine data-icon="inline-start" aria-hidden="true" />
-					{statusCopy.backToSignIn}
-				</Link>
 				<PageHeading
 					eyebrow={statusCopy.eyebrow}
 					title={statusCopy.title}

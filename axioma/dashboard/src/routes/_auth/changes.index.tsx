@@ -5,11 +5,16 @@ import {
 	ChangeEditor,
 	ChangesPage,
 } from "@/features/changes/components/changes";
+import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
 
 export const Route = createFileRoute("/_auth/changes/")({
 	component: ChangesRoute,
-	beforeLoad: () => ({ breadcrumb: "Changes" }),
+	beforeLoad: ({ context }) => {
+		requireNav("/changes", context);
+		return { breadcrumb: "Changes" };
+	},
+	head: () => ({ meta: [{ title: "Changes · Axiōma" }] }),
 });
 function ChangesRoute() {
 	const client = useQueryClient();

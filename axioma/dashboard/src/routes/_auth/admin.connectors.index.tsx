@@ -1,10 +1,10 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { ConnectorsPage } from "@/features/connectors/components/connectors-page";
+import { requireNav } from "@/lib/navigation";
 
 export const Route = createFileRoute("/_auth/admin/connectors/")({
 	beforeLoad: ({ context }) => {
-		if (!context.capabilities.includes("admin.connectors"))
-			throw redirect({ to: "/home" });
+		requireNav("/admin/connectors", context);
 		return { breadcrumb: "Connectors" };
 	},
 	component: ConnectorsPage,

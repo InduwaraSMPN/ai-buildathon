@@ -45,7 +45,7 @@ export default function SignInForm({
 				{
 					onSuccess: () => {
 						navigate({
-							to: "/home",
+							to: "/my-requests",
 						});
 						toast.success("Sign in successful");
 					},
@@ -168,7 +168,7 @@ export default function SignInForm({
 							onClick={async () => {
 								const result = await authClient.signIn.social({
 									provider: provider.providerId,
-									callbackURL: "/home",
+									callbackURL: "/my-requests",
 								});
 								if (result.error) toast.error(ssoCopy.failure);
 							}}

@@ -178,7 +178,7 @@ function RouteComponent() {
 								{ticketDetailCopy.notFoundDescription}
 							</EmptyDescription>
 						</EmptyHeader>
-						<Link to="/home" className={buttonVariants()}>
+						<Link to="/my-requests" className={buttonVariants()}>
 							{ticketDetailCopy.back}
 						</Link>
 					</Empty>
@@ -197,7 +197,7 @@ function RouteComponent() {
 	return (
 		<PageShell>
 			<Link
-				to="/home"
+				to="/my-requests"
 				className={buttonVariants({
 					variant: "ghost",
 					size: "sm",
