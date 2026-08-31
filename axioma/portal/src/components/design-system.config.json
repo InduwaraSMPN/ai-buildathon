@@ -1,0 +1,33 @@
+{
+	"statusPaletteFiles": [
+		"components/ticket-ui.tsx",
+		"features/status/components/service-status.tsx",
+		"features/tickets/components/conversation-card.tsx",
+		"features/tickets/components/resolution-card.tsx"
+	],
+	"groupedCallSites": {
+		"components/header.tsx": { "symbol": "DropdownMenuGroup", "count": 1 },
+		"components/mode-toggle.tsx": { "symbol": "DropdownMenuGroup", "count": 1 },
+		"components/notification-center.tsx": {
+			"symbol": "DropdownMenuGroup",
+			"count": 1
+		},
+		"features/knowledge/components/knowledge-browser.tsx": {
+			"symbol": "SelectGroup",
+			"count": 1
+		},
+		"features/request-catalogue/components/catalogue-field.tsx": {
+			"symbol": "SelectGroup",
+			"count": 1
+		},
+		"features/tickets/components/dynamic-fields.tsx": {
+			"symbol": "SelectGroup",
+			"count": 1
+		},
+		"features/tickets/components/request-form.tsx": {
+			"symbol": "SelectGroup",
+			"count": 1
+		}
+	},
+	"typeScaleAllowlist": []
+}

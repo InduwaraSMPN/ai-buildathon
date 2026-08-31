@@ -76,10 +76,6 @@ export function ServiceStatusList({
 }) {
 	return (
 		<section className="flex flex-col gap-5">
-			<header>
-				<h1 className="font-semibold text-2xl">{statusCopy.title}</h1>
-				<p className="text-muted-foreground">{statusCopy.summary}</p>
-			</header>
 			{services.length ? (
 				services.map((service) => (
 					<ServiceStatusCard key={service.id} service={service} />

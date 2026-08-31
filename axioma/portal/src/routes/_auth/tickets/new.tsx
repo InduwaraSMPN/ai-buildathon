@@ -29,7 +29,7 @@ function RouteComponent() {
 				title="What can we help with?"
 				description="Share what’s getting in your way. Clear details help us get you to the right solution sooner."
 			/>
-			<Card className="max-w-3xl">
+			<Card className="max-w-2xl">
 				<CardHeader className="border-b">
 					<CardTitle className="text-base">Request details</CardTitle>
 				</CardHeader>

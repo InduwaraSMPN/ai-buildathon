@@ -67,11 +67,11 @@ export default function SignUpForm({
 
 	return (
 		<main className="mx-auto w-full max-w-md px-6 py-12 sm:py-16">
-			<div className="mb-8">
-				<h1 className="font-semibold text-3xl tracking-tight">
+			<div className="mb-5">
+				<h1 className="font-heading font-semibold text-2xl tracking-tight">
 					Create your account
 				</h1>
-				<p className="mt-2 text-muted-foreground">
+				<p className="mt-1 text-muted-foreground text-sm">
 					Set up access to workplace support and your requests.
 				</p>
 			</div>
@@ -87,7 +87,8 @@ export default function SignUpForm({
 				<FieldGroup>
 					<form.Field name="name">
 						{(field) => {
-							const invalid = field.state.meta.errors.length > 0;
+							const invalid =
+								field.state.meta.isTouched && !field.state.meta.isValid;
 							return (
 								<Field data-invalid={invalid}>
 									<FieldLabel htmlFor={field.name}>Name</FieldLabel>
@@ -107,7 +108,8 @@ export default function SignUpForm({
 
 					<form.Field name="email">
 						{(field) => {
-							const invalid = field.state.meta.errors.length > 0;
+							const invalid =
+								field.state.meta.isTouched && !field.state.meta.isValid;
 							return (
 								<Field data-invalid={invalid}>
 									<FieldLabel htmlFor={field.name}>Email</FieldLabel>
@@ -128,7 +130,8 @@ export default function SignUpForm({
 
 					<form.Field name="password">
 						{(field) => {
-							const invalid = field.state.meta.errors.length > 0;
+							const invalid =
+								field.state.meta.isTouched && !field.state.meta.isValid;
 							return (
 								<Field data-invalid={invalid}>
 									<FieldLabel htmlFor={field.name}>Password</FieldLabel>

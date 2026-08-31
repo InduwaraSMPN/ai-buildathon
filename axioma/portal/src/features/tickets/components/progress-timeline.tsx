@@ -2,6 +2,7 @@ import { RiCheckLine, RiCircleLine } from "@remixicon/react";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	getProgressMarkerCopy,
+	isStateType,
 	statusDetailCopy,
 	ticketStages,
 	timelineCopy,
@@ -14,6 +15,8 @@ const stageIndex: Record<string, number> = {
 	pending: 1,
 	resolved: 2,
 	closed: 2,
+	merged: 2,
+	cancelled: 2,
 };
 
 export function ProgressTimeline({
@@ -23,9 +26,11 @@ export function ProgressTimeline({
 	stateType: string;
 	progressMarker: string | null;
 }) {
-	const current = stageIndex[stateType] ?? 0;
+	const current = isStateType(stateType) ? (stageIndex[stateType] ?? 0) : 0;
 	const marker = getProgressMarkerCopy(progressMarker);
-	const detail = statusDetailCopy[stateType];
+	const detail = isStateType(stateType)
+		? statusDetailCopy[stateType]
+		: undefined;
 
 	return (
 		<section

@@ -1,3 +1,8 @@
+/* GENERATED — do not edit.
+ * Mirrored from axioma/ui/src by `pnpm --dir axioma/ui mirror`.
+ * Change the source in axioma/ui and re-run that command.
+ */
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -20,16 +25,25 @@
 	--secondary: oklch(0.967 0.001 286.375);
 	--secondary-foreground: oklch(0.21 0.006 285.885);
 	--muted: oklch(0.967 0.001 286.375);
-	--muted-foreground: oklch(0.552 0.016 285.938);
+	/* Light-theme semantic ramps are darker than their dark-theme counterparts
+	 * because here they are read as text on a 10% tint of themselves, which
+	 * composites to near-white. At the dark-theme lightness they measured
+	 * 2.85:1 to 4.49:1 against that tint — below the 4.5:1 WCAG AA bar for the
+	 * 12px badge text that uses them. These values were measured, not guessed:
+	 * each is the lightness at which the composited pair clears ~5:1, leaving
+	 * margin. Every solid fill of these tokens is a textless status dot or bar,
+	 * so darkening them costs nothing elsewhere. --success is deliberately a
+	 * step darker than --primary, which stays the #008236 brand green. */
+	--muted-foreground: oklch(0.505 0.016 285.938);
 	--accent: oklch(0.967 0.001 286.375);
 	--accent-foreground: oklch(0.21 0.006 285.885);
-	--destructive: oklch(0.577 0.245 27.325);
+	--destructive: oklch(0.49 0.245 27.325);
 	--destructive-foreground: oklch(0.985 0 0);
-	--success: oklch(0.527 0.154 150.069);
+	--success: oklch(0.48 0.154 150.069);
 	--success-foreground: oklch(0.982 0.018 155.826);
-	--warning: oklch(0.666 0.179 58.318);
-	--warning-foreground: oklch(0.141 0.005 285.823);
-	--info: oklch(0.546 0.215 262.881);
+	--warning: oklch(0.5 0.179 58.318);
+	--warning-foreground: oklch(0.985 0 0);
+	--info: oklch(0.5 0.215 262.881);
 	--info-foreground: oklch(0.985 0 0);
 	--border: oklch(0.92 0.004 286.32);
 	--input: oklch(0.92 0.004 286.32);
@@ -71,7 +85,7 @@
 	--success-foreground: oklch(0.141 0.005 285.823);
 	--warning: oklch(0.769 0.188 70.08);
 	--warning-foreground: oklch(0.141 0.005 285.823);
-	--info: oklch(0.707 0.165 254.624);
+	--info: oklch(0.76 0.165 254.624);
 	--info-foreground: oklch(0.141 0.005 285.823);
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
@@ -140,6 +154,7 @@
 	--radius-4xl: calc(var(--radius) + 16px);
 	--font-mono: "Geist Mono Variable", monospace;
 	--font-heading: "Instrument Sans Variable", sans-serif;
+	--tracking-eyebrow: 0.18em;
 }
 
 @layer base {

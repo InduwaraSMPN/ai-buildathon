@@ -1,3 +1,5 @@
+import { STATE_TYPES, type StateType } from "@/sdk/shared";
+
 export const attachmentCopy = {
 	title: "Attachments",
 	loading: "Loading attachments…",
@@ -90,12 +92,14 @@ export const timingValues = {
 	blocked: "high",
 } as const;
 
-export const statusDetailCopy: Record<string, string> = {
+export const statusDetailCopy: Record<StateType, string> = {
 	new: "Your request is in the queue and ready for review.",
 	open: "Support is working on your request.",
 	pending: "Support needs a little more information from you.",
 	resolved: "A solution is ready for you.",
 	closed: "This request is complete.",
+	merged: "This request was merged into another request.",
+	cancelled: "This request was cancelled.",
 };
 
 export const approvalStatusCopy: Record<
@@ -120,12 +124,14 @@ export const fallbackStatusCopy = {
 
 export const ticketStages = ["Received", "Working on it", "Done"] as const;
 
-const stages: Record<string, string> = {
+const stages: Record<StateType, string> = {
 	new: ticketStages[0],
 	open: ticketStages[1],
 	pending: "Waiting for your reply",
 	resolved: ticketStages[2],
 	closed: "Finished",
+	merged: ticketStages[2],
+	cancelled: "Finished",
 };
 
 export const progressMarkerCopy: Record<string, string> = {
@@ -139,8 +145,12 @@ export const progressMarkerCopy: Record<string, string> = {
 
 export const isFinishedTicket = (stateType: string) => stateType === "closed";
 
+export function isStateType(value: string): value is StateType {
+	return (STATE_TYPES as readonly string[]).includes(value);
+}
+
 export const getTicketStage = (stateType: string) =>
-	stages[stateType] ?? fallbackStatusCopy.label;
+	isStateType(stateType) ? stages[stateType] : fallbackStatusCopy.label;
 
 export const getProgressMarkerCopy = (marker: string | null) =>
 	marker ? progressMarkerCopy[marker] : undefined;

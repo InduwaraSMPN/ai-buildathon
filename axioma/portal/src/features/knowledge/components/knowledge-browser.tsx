@@ -71,22 +71,7 @@ export function KnowledgeBrowser({
 	const folderSelectId = useId();
 
 	return (
-		<section
-			aria-labelledby={`${searchId}-heading`}
-			className="flex flex-col gap-5"
-		>
-			<div>
-				<h2
-					id={`${searchId}-heading`}
-					className="font-semibold text-2xl tracking-tight"
-				>
-					Help articles
-				</h2>
-				<p className="mt-1 text-muted-foreground text-sm">
-					Find clear steps for common questions and problems.
-				</p>
-			</div>
-
+		<section className="flex flex-col gap-5">
 			<FieldGroup className="grid gap-4 sm:grid-cols-[1fr_14rem]">
 				<Field>
 					<FieldLabel htmlFor={searchId}>Search help articles</FieldLabel>

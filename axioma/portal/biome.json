@@ -31,6 +31,22 @@
 		"enabled": true,
 		"rules": {
 			"preset": "recommended",
+			"a11y": {
+				"noLabelWithoutControl": {
+					"level": "error",
+					"options": {
+						"inputComponents": [
+							"Input",
+							"NativeSelect",
+							"Textarea",
+							"Checkbox",
+							"Select",
+							"RadioGroup",
+							"Combobox"
+						]
+					}
+				}
+			},
 			"correctness": {
 				"useExhaustiveDependencies": "info"
 			},

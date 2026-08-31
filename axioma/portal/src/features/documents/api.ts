@@ -1,6 +1,6 @@
 import { toast } from "sonner";
-import { env } from "@/env";
 import { attachmentCopy } from "@/features/tickets/copy";
+import { apiUrl } from "@/lib/api-url";
 import { orpc, queryClient } from "@/utils/orpc";
 
 export type UploadDocumentsInput = {
@@ -29,13 +29,11 @@ export async function uploadDocuments({
 				body.set("file", file);
 				body.set("targetType", targetType);
 				body.set("targetId", targetId);
-				const response = await fetch(
-					new URL(
-						"api/documents",
-						`${env.VITE_SERVER_URL.replace(/\/$/, "")}/`,
-					),
-					{ method: "POST", body, credentials: "include" },
-				);
+				const response = await fetch(apiUrl("api/documents"), {
+					method: "POST",
+					body,
+					credentials: "include",
+				});
 				if (!response.ok) throw new Error(await response.text());
 				return (await response.json()) as UploadDocumentResult;
 			}),

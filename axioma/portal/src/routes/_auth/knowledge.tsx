@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { LoadingCards, PageShell } from "@/components/ticket-ui";
+import { LoadingCards, PageHeading, PageShell } from "@/components/ticket-ui";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { KnowledgeBrowser } from "@/features/knowledge/components";
@@ -49,6 +49,11 @@ function KnowledgeRoute() {
 	}
 	return (
 		<PageShell>
+			<PageHeading
+				eyebrow="Help centre"
+				title="Help articles"
+				description="Find clear steps for common questions and problems."
+			/>
 			<KnowledgeBrowser
 				articles={filtered}
 				query={query}

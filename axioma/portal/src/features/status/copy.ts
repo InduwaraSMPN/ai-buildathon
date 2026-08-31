@@ -1,4 +1,5 @@
 export const statusCopy = {
+	eyebrow: "Platform reliability",
 	title: "Service status",
 	loading: "Loading service status…",
 	unavailable: "Service status is unavailable",

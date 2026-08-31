@@ -71,9 +71,11 @@ export default function SignInForm({
 
 	return (
 		<main className="mx-auto w-full max-w-md px-6 py-12 sm:py-16">
-			<div className="mb-8">
-				<h1 className="font-semibold text-3xl tracking-tight">Sign in</h1>
-				<p className="mt-2 text-muted-foreground">
+			<div className="mb-5">
+				<h1 className="font-heading font-semibold text-2xl tracking-tight">
+					Sign in
+				</h1>
+				<p className="mt-1 text-muted-foreground text-sm">
 					Access your support requests and see what’s happening.
 				</p>
 			</div>
@@ -89,7 +91,8 @@ export default function SignInForm({
 				<FieldGroup>
 					<form.Field name="email">
 						{(field) => {
-							const invalid = field.state.meta.errors.length > 0;
+							const invalid =
+								field.state.meta.isTouched && !field.state.meta.isValid;
 							return (
 								<Field data-invalid={invalid}>
 									<FieldLabel htmlFor={field.name}>Email</FieldLabel>
@@ -110,7 +113,8 @@ export default function SignInForm({
 
 					<form.Field name="password">
 						{(field) => {
-							const invalid = field.state.meta.errors.length > 0;
+							const invalid =
+								field.state.meta.isTouched && !field.state.meta.isValid;
 							return (
 								<Field data-invalid={invalid}>
 									<FieldLabel htmlFor={field.name}>Password</FieldLabel>

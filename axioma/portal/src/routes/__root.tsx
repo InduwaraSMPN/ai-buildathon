@@ -5,6 +5,8 @@ import {
 	Outlet,
 } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
+import Loader from "@/components/loader";
+import { RouteError } from "@/components/route-error";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -40,6 +42,8 @@ export interface RouterAppContext {
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
 	component: RootComponent,
+	pendingComponent: Loader,
+	errorComponent: RouteError,
 	head: () => ({
 		meta: [
 			{

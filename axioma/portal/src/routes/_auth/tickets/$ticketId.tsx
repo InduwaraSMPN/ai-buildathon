@@ -16,6 +16,7 @@ import {
 	ErrorState,
 	formatDate,
 	getStatus,
+	PageHeading,
 	PageShell,
 	StatusBadge,
 } from "@/components/ticket-ui";
@@ -54,7 +55,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { env } from "@/env";
 import { uploadDocuments } from "@/features/documents/api";
 import { updateMyTicketMutationOptions } from "@/features/tickets/api/mutations";
 import { myTicketQueryOptions } from "@/features/tickets/api/queries";
@@ -73,6 +73,7 @@ import {
 	attachmentCopy,
 	ticketDetailCopy,
 } from "@/features/tickets/copy";
+import { apiUrl } from "@/lib/api-url";
 import { orpc } from "@/utils/orpc";
 
 type DetailValues = { note: string };
@@ -161,7 +162,7 @@ function RouteComponent() {
 	if (ticket.isError) {
 		return (
 			<PageShell>
-				<ErrorState retry={() => ticket.refetch()} />
+				<ErrorState retry={() => ticket.refetch()} error={ticket.error} />
 			</PageShell>
 		);
 	}
@@ -207,35 +208,31 @@ function RouteComponent() {
 				{ticketDetailCopy.back}
 			</Link>
 
-			<header className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
-				<div className="min-w-0 max-w-3xl">
-					<div className="mb-3 flex flex-wrap items-center gap-3">
-						<StatusBadge
-							stateType={data.statusStateType}
-							label={data.statusLabel}
-						/>
-						<span className="text-muted-foreground text-xs">
-							{ticketDetailCopy.opened} {formatDate(data.createdAt)}
-						</span>
-					</div>
-					<h1 className="wrap-break-word font-semibold text-2xl tracking-tight sm:text-4xl">
-						{data.title}
-					</h1>
-					<p className="mt-3 font-mono text-muted-foreground text-sm">
-						{ticketDetailCopy.request} {data.number ?? data.id}
-					</p>
-				</div>
-				{active ? (
-					<Button
-						variant="outline"
-						className="w-full sm:w-auto"
-						onClick={() => setDetailHelpOpen(true)}
-					>
-						<RiAddLine data-icon="inline-start" aria-hidden="true" />
-						{ticketDetailCopy.addDetail}
-					</Button>
-				) : null}
-			</header>
+			<div className="mb-3 flex flex-wrap items-center gap-3">
+				<StatusBadge
+					stateType={data.statusStateType}
+					label={data.statusLabel}
+				/>
+				<span className="text-muted-foreground text-xs">
+					{ticketDetailCopy.opened} {formatDate(data.createdAt)}
+				</span>
+			</div>
+			<PageHeading
+				title={data.title}
+				description={`${ticketDetailCopy.request} ${data.number ?? data.id}`}
+				action={
+					active ? (
+						<Button
+							variant="outline"
+							className="w-full sm:w-auto"
+							onClick={() => setDetailHelpOpen(true)}
+						>
+							<RiAddLine data-icon="inline-start" aria-hidden="true" />
+							{ticketDetailCopy.addDetail}
+						</Button>
+					) : null
+				}
+			/>
 
 			<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
 				<div className="min-w-0 space-y-6">
@@ -355,10 +352,7 @@ function RouteComponent() {
 													href={
 														item.kind === "link"
 															? item.url
-															: new URL(
-																	item.downloadUrl,
-																	`${env.VITE_SERVER_URL.replace(/\/$/, "")}/`,
-																).toString()
+															: apiUrl(item.downloadUrl)
 													}
 												/>
 											}

@@ -1,5 +1,6 @@
 import {
 	RiAddLine,
+	RiArrowDownSLine,
 	RiArrowRightLine,
 	RiCheckboxCircleLine,
 	RiInboxLine,
@@ -17,6 +18,11 @@ import {
 } from "@/components/ticket-ui";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
 	Empty,
 	EmptyContent,
@@ -76,7 +82,7 @@ function RouteComponent() {
 			className="group rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
 		>
 			<Card className="transition-colors group-hover:bg-muted/40">
-				<CardContent className="flex items-center justify-between gap-4 py-1 sm:gap-5">
+				<CardContent className="flex items-center justify-between gap-4 sm:gap-5">
 					<div className="min-w-0">
 						<div className="mb-3 flex flex-wrap items-center gap-2 sm:gap-3">
 							<StatusBadge
@@ -100,7 +106,7 @@ function RouteComponent() {
 							</span>
 						</div>
 						<h3 className="truncate font-semibold text-base">{ticket.title}</h3>
-						<p className="mt-1 font-mono text-[11px] text-muted-foreground">
+						<p className="mt-1 font-mono text-muted-foreground text-xs">
 							{ticket.number ?? ticket.id}
 						</p>
 						<p className="mt-1 line-clamp-2 text-muted-foreground text-sm leading-relaxed">
@@ -116,6 +122,9 @@ function RouteComponent() {
 		</Link>
 	);
 
+	const frontDoor = useQuery(orpc.portalIsFrontDoor.queryOptions({}));
+	const foreignFrontDoor = frontDoor.data?.foreign === true;
+
 	return (
 		<PageShell>
 			<PageHeading
@@ -123,69 +132,82 @@ function RouteComponent() {
 				title={firstName ? homeCopy.welcome(firstName) : homeCopy.title}
 				description={homeCopy.description}
 				action={
-					<Link to="/tickets/new" className={buttonVariants({ size: "lg" })}>
-						<RiAddLine data-icon="inline-start" aria-hidden="true" />
-						{homeCopy.newRequest}
-					</Link>
+					// Hidden when the customer's own service desk is the front door:
+					// two places to file one request is worse than either alone.
+					foreignFrontDoor ? undefined : (
+						<Link to="/tickets/new" className={buttonVariants({ size: "lg" })}>
+							<RiAddLine data-icon="inline-start" aria-hidden="true" />
+							{homeCopy.newRequest}
+						</Link>
+					)
 				}
 			/>
 
 			<Card className="mb-6 py-0">
-				<details>
-					<summary className="cursor-pointer rounded-xl px-4 py-3 font-medium outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring sm:px-6">
-						{homeCopy.connectComputer}
-					</summary>
-					<Separator />
-					<form
-						className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-6"
-						onSubmit={(event) => {
-							event.preventDefault();
-							enrollmentForm.handleSubmit();
-						}}
-					>
-						<enrollmentForm.Field name="code">
-							{(field) => {
-								const invalid = field.state.meta.errors.length > 0;
-								return (
-									<Field className="min-w-0 flex-1" data-invalid={invalid}>
-										<FieldLabel htmlFor="enrollment-code">
-											{homeCopy.codeLabel}
-										</FieldLabel>
-										<Input
-											id="enrollment-code"
-											value={field.state.value}
-											onChange={(event) =>
-												field.handleChange(event.target.value)
-											}
-											maxLength={64}
-											placeholder={homeCopy.codePlaceholder}
-											aria-invalid={invalid}
-										/>
-										<FieldError>
-											{field.state.meta.errors.map(String).join(", ")}
-										</FieldError>
-									</Field>
-								);
+				<Collapsible>
+					<div className="p-4 sm:p-6">
+						<CollapsibleTrigger render={<Button variant="ghost" />}>
+							{homeCopy.connectComputer}
+							<RiArrowDownSLine
+								data-icon="inline-end"
+								aria-hidden="true"
+								className="transition-transform group-aria-expanded/button:rotate-180"
+							/>
+						</CollapsibleTrigger>
+					</div>
+					<CollapsibleContent keepMounted>
+						<Separator />
+						<form
+							className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-6"
+							onSubmit={(event) => {
+								event.preventDefault();
+								enrollmentForm.handleSubmit();
 							}}
-						</enrollmentForm.Field>
-						<Button type="submit" disabled={enroll.isPending}>
-							{enroll.isPending ? <Spinner data-icon="inline-start" /> : null}
-							{enroll.isPending
-								? homeCopy.connecting
-								: homeCopy.connectComputer}
-						</Button>
-					</form>
-					{enroll.isError ? (
-						<FieldError className="px-4 pb-4 sm:px-6">
-							{homeCopy.connectError}
-						</FieldError>
-					) : null}
-					{enroll.isSuccess ? (
-						<p className="px-4 pb-4 text-sm sm:px-6" role="status">
-							{homeCopy.connected}
-						</p>
-					) : null}
-				</details>
+						>
+							<enrollmentForm.Field name="code">
+								{(field) => {
+									const invalid = field.state.meta.errors.length > 0;
+									return (
+										<Field className="min-w-0 flex-1" data-invalid={invalid}>
+											<FieldLabel htmlFor="enrollment-code">
+												{homeCopy.codeLabel}
+											</FieldLabel>
+											<Input
+												id="enrollment-code"
+												value={field.state.value}
+												onChange={(event) =>
+													field.handleChange(event.target.value)
+												}
+												maxLength={64}
+												placeholder={homeCopy.codePlaceholder}
+												aria-invalid={invalid}
+											/>
+											<FieldError>
+												{field.state.meta.errors.map(String).join(", ")}
+											</FieldError>
+										</Field>
+									);
+								}}
+							</enrollmentForm.Field>
+							<Button type="submit" disabled={enroll.isPending}>
+								{enroll.isPending ? <Spinner data-icon="inline-start" /> : null}
+								{enroll.isPending
+									? homeCopy.connecting
+									: homeCopy.connectComputer}
+							</Button>
+						</form>
+						{enroll.isError ? (
+							<FieldError className="px-4 pb-4 sm:px-6">
+								{homeCopy.connectError}
+							</FieldError>
+						) : null}
+						{enroll.isSuccess ? (
+							<p className="px-4 pb-4 text-sm sm:px-6" role="status">
+								{homeCopy.connected}
+							</p>
+						) : null}
+					</CollapsibleContent>
+				</Collapsible>
 			</Card>
 
 			<div className="mb-4 flex items-center justify-between">
@@ -199,7 +221,9 @@ function RouteComponent() {
 			</div>
 
 			{tickets.isPending ? <LoadingCards /> : null}
-			{tickets.isError ? <ErrorState retry={() => tickets.refetch()} /> : null}
+			{tickets.isError ? (
+				<ErrorState retry={() => tickets.refetch()} error={tickets.error} />
+			) : null}
 			{tickets.data && items.length === 0 ? (
 				<Card className="border-dashed bg-transparent">
 					<Empty>
@@ -210,11 +234,16 @@ function RouteComponent() {
 							<EmptyTitle>{homeCopy.emptyTitle}</EmptyTitle>
 							<EmptyDescription>{homeCopy.emptyDescription}</EmptyDescription>
 						</EmptyHeader>
-						<EmptyContent>
-							<Link to="/tickets/new" className={buttonVariants()}>
-								{homeCopy.createFirst}
-							</Link>
-						</EmptyContent>
+						{foreignFrontDoor ? null : (
+							<EmptyContent>
+								<Link
+									to="/tickets/new"
+									className={buttonVariants({ variant: "outline" })}
+								>
+									{homeCopy.createFirst}
+								</Link>
+							</EmptyContent>
+						)}
 					</Empty>
 				</Card>
 			) : null}
@@ -228,15 +257,24 @@ function RouteComponent() {
 			) : null}
 			{finishedTickets?.length ? (
 				<Card className="mt-6 py-0">
-					<details className="group/finished">
-						<summary className="cursor-pointer rounded-xl px-4 py-4 font-semibold outline-none marker:text-muted-foreground hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring sm:px-6">
-							{homeCopy.finished} ({finishedTickets.length})
-						</summary>
-						<Separator />
-						<div className="grid gap-4 p-4 sm:p-6">
-							{finishedTickets.map(ticketCard)}
+					<Collapsible>
+						<div className="p-4 sm:p-6">
+							<CollapsibleTrigger render={<Button variant="ghost" />}>
+								{homeCopy.finished} ({finishedTickets.length})
+								<RiArrowDownSLine
+									data-icon="inline-end"
+									aria-hidden="true"
+									className="transition-transform group-aria-expanded/button:rotate-180"
+								/>
+							</CollapsibleTrigger>
 						</div>
-					</details>
+						<CollapsibleContent keepMounted>
+							<Separator />
+							<div className="grid gap-4 p-4 sm:p-6">
+								{finishedTickets.map(ticketCard)}
+							</div>
+						</CollapsibleContent>
+					</Collapsible>
 				</Card>
 			) : null}
 		</PageShell>

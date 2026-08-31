@@ -6,7 +6,7 @@ import {
 	RiRouteLine,
 	RiTimeLine,
 } from "@remixicon/react";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import {
 	Alert,
 	AlertAction,
@@ -19,10 +19,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
 	fallbackStatusCopy,
+	isStateType,
 	statusDetailCopy,
 	ticketUiCopy,
 } from "@/features/tickets/copy";
-import { STATE_TYPES } from "@/sdk/shared";
+import { ticketStatusTone } from "@/lib/status-tone";
+import { cn } from "@/lib/utils";
+import type { STATE_TYPES } from "@/sdk/shared";
 
 type StateType = (typeof STATE_TYPES)[number];
 
@@ -36,27 +39,12 @@ const statusIcons: Record<StateType, RemixiconComponentType> = {
 	cancelled: RiErrorWarningLine,
 };
 
-const statusVariants: Record<
-	StateType,
-	"default" | "secondary" | "destructive" | "outline"
-> = {
-	new: "secondary",
-	open: "default",
-	pending: "outline",
-	resolved: "secondary",
-	closed: "outline",
-	merged: "secondary",
-	cancelled: "destructive",
-} as const;
-
-function isStateType(value: string): value is StateType {
-	return (STATE_TYPES as readonly string[]).includes(value);
-}
-
 export function getStatus(stateType: string, label = fallbackStatusCopy.label) {
 	return {
 		label,
-		detail: statusDetailCopy[stateType] ?? fallbackStatusCopy.detail,
+		detail: isStateType(stateType)
+			? statusDetailCopy[stateType]
+			: fallbackStatusCopy.detail,
 		icon: isStateType(stateType) ? statusIcons[stateType] : RiTimeLine,
 	};
 }
@@ -69,10 +57,14 @@ export function StatusBadge({
 	label?: string;
 }) {
 	const { label } = getStatus(stateType, configuredLabel);
-	const variant = isStateType(stateType)
-		? statusVariants[stateType]
-		: "outline";
-	return <Badge variant={variant}>{configuredLabel ?? label}</Badge>;
+	return (
+		<Badge
+			variant="outline"
+			tone={isStateType(stateType) ? ticketStatusTone(stateType) : "neutral"}
+		>
+			{configuredLabel ?? label}
+		</Badge>
+	);
 }
 
 export function formatDate(value: Date) {
@@ -82,9 +74,19 @@ export function formatDate(value: Date) {
 	}).format(new Date(value));
 }
 
-export function PageShell({ children }: { children: ReactNode }) {
+export function PageShell({
+	children,
+	id = "main-content",
+	tabIndex = -1,
+	...mainProps
+}: ComponentProps<"main">) {
 	return (
-		<main className="min-h-full bg-muted/20">
+		<main
+			className="min-h-full bg-muted/20"
+			id={id}
+			tabIndex={tabIndex}
+			{...mainProps}
+		>
 			<div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
 				{children}
 			</div>
@@ -95,26 +97,47 @@ export function PageShell({ children }: { children: ReactNode }) {
 export function PageHeading({
 	eyebrow,
 	title,
+	titleId,
 	description,
+	meta,
 	action,
+	className,
 }: {
-	eyebrow: string;
+	eyebrow?: string;
 	title: string;
-	description: string;
+	/** For pages whose region is labelled by its own heading. */
+	titleId?: string;
+	description?: string;
+	/** Secondary line under the description — a timestamp, a count. */
+	meta?: ReactNode;
 	action?: ReactNode;
+	className?: string;
 }) {
 	return (
-		<header className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+		<header
+			className={cn(
+				"mb-5 flex flex-col justify-between gap-5 sm:flex-row sm:items-end",
+				className,
+			)}
+		>
 			<div className="max-w-2xl">
-				<p className="mb-2 font-semibold text-primary text-xs uppercase tracking-[0.18em]">
-					{eyebrow}
-				</p>
-				<h1 className="font-semibold text-3xl tracking-tight sm:text-4xl">
+				{eyebrow ? (
+					<p className="mb-2 font-semibold text-primary text-xs uppercase tracking-eyebrow">
+						{eyebrow}
+					</p>
+				) : null}
+				<h1
+					id={titleId}
+					className="wrap-break-word font-heading font-semibold text-2xl tracking-tight"
+				>
 					{title}
 				</h1>
-				<p className="mt-3 text-base text-muted-foreground leading-relaxed">
-					{description}
-				</p>
+				{description ? (
+					<p className="mt-1 text-muted-foreground text-sm">{description}</p>
+				) : null}
+				{meta ? (
+					<p className="mt-3 text-muted-foreground text-xs">{meta}</p>
+				) : null}
 			</div>
 			{action}
 		</header>
@@ -137,12 +160,21 @@ export function LoadingCards() {
 	);
 }
 
-export function ErrorState({ retry }: { retry: () => void }) {
+export function ErrorState({
+	retry,
+	error,
+}: {
+	retry: () => void;
+	error?: Error | null;
+}) {
 	return (
 		<Alert variant="destructive">
 			<RiErrorWarningLine aria-hidden="true" />
 			<AlertTitle>{ticketUiCopy.errorTitle}</AlertTitle>
-			<AlertDescription>{ticketUiCopy.errorDescription}</AlertDescription>
+			<AlertDescription>
+				<p>{ticketUiCopy.errorDescription}</p>
+				{error?.message ? <p className="text-xs">{error.message}</p> : null}
+			</AlertDescription>
 			<AlertAction>
 				<Button variant="outline" size="sm" onClick={retry}>
 					{ticketUiCopy.tryAgain}

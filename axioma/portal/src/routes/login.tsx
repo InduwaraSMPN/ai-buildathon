@@ -1,10 +1,10 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { AxiomaWordmark } from "@/components/brand";
+import { RouteError } from "@/components/route-error";
 import SignInForm from "@/components/sign-in-form";
 import SignUpForm from "@/components/sign-up-form";
-import { ErrorState, PageShell } from "@/components/ticket-ui";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/login")({
@@ -14,17 +14,8 @@ export const Route = createFileRoute("/login")({
 		if (session.data) throw redirect({ to: "/home" });
 	},
 	component: RouteComponent,
-	errorComponent: LoginError,
+	errorComponent: RouteError,
 });
-
-function LoginError() {
-	const router = useRouter();
-	return (
-		<PageShell>
-			<ErrorState retry={() => router.invalidate()} />
-		</PageShell>
-	);
-}
 
 function RouteComponent() {
 	const [showSignIn, setShowSignIn] = useState(true);

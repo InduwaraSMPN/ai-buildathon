@@ -1,3 +1,7 @@
+// GENERATED — do not edit.
+// Mirrored from axioma/ui/src by `pnpm --dir axioma/ui mirror`.
+// Change the source in axioma/ui and re-run that command.
+
 import { RiArrowDownLine } from "@remixicon/react";
 import {
 	MessageScroller as MessageScrollerPrimitive,
@@ -19,15 +23,20 @@ function MessageScroller({
 	className,
 	...props
 }: React.ComponentProps<typeof MessageScrollerPrimitive.Root>) {
+	// Deviates from the upstream primitive: the Root consumes the scroller
+	// context that only Provider supplies, so the pairing is composed here and
+	// cannot be got wrong. Keep this composition when re-vendoring.
 	return (
-		<MessageScrollerPrimitive.Root
-			data-slot="message-scroller"
-			className={cn(
-				"group/message-scroller relative flex size-full min-h-0 flex-col overflow-hidden",
-				className,
-			)}
-			{...props}
-		/>
+		<MessageScrollerProvider>
+			<MessageScrollerPrimitive.Root
+				data-slot="message-scroller"
+				className={cn(
+					"group/message-scroller relative flex size-full min-h-0 flex-col overflow-hidden",
+					className,
+				)}
+				{...props}
+			/>
+		</MessageScrollerProvider>
 	);
 }
 

@@ -1,6 +1,6 @@
-import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { ErrorState, PageShell } from "@/components/ticket-ui";
+import { RouteError } from "@/components/route-error";
 import { authClient } from "@/lib/auth-client";
 
 export const Route = createFileRoute("/")({
@@ -9,14 +9,5 @@ export const Route = createFileRoute("/")({
 		if (session.error) throw session.error;
 		throw redirect({ to: session.data ? "/home" : "/login" });
 	},
-	errorComponent: RootError,
+	errorComponent: RouteError,
 });
-
-function RootError() {
-	const router = useRouter();
-	return (
-		<PageShell>
-			<ErrorState retry={() => router.invalidate()} />
-		</PageShell>
-	);
-}

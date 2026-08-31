@@ -1,5 +1,6 @@
 import { RiArrowLeftLine } from "@remixicon/react";
 import { useState } from "react";
+import { PageHeading } from "@/components/ticket-ui";
 import { Button } from "@/components/ui/button";
 import {
 	Field,
@@ -45,32 +46,20 @@ export function KnowledgeArticle({
 					Back to help articles
 				</Button>
 			) : null}
-			<header className="border-b pb-5">
-				{article.topic ? (
-					<p className="font-medium text-muted-foreground text-sm">
-						{article.topic}
-					</p>
-				) : null}
-				<h1
-					id="knowledge-article-title"
-					className="mt-1 font-semibold text-3xl tracking-tight"
-				>
-					{article.title}
-				</h1>
-				{article.summary ? (
-					<p className="mt-3 text-muted-foreground leading-relaxed">
-						{article.summary}
-					</p>
-				) : null}
-				{article.updatedAt ? (
-					<p className="mt-3 text-muted-foreground text-xs">
-						Updated{" "}
-						{new Intl.DateTimeFormat(undefined, { dateStyle: "long" }).format(
-							new Date(article.updatedAt),
-						)}
-					</p>
-				) : null}
-			</header>
+			<PageHeading
+				className="border-b pb-5"
+				eyebrow={article.topic ?? undefined}
+				title={article.title}
+				titleId="knowledge-article-title"
+				description={article.summary ?? undefined}
+				meta={
+					article.updatedAt
+						? `Updated ${new Intl.DateTimeFormat(undefined, {
+								dateStyle: "long",
+							}).format(new Date(article.updatedAt))}`
+						: undefined
+				}
+			/>
 			<div className="whitespace-pre-wrap text-sm leading-7">
 				{article.body}
 			</div>
