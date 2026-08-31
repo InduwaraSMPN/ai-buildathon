@@ -18,8 +18,8 @@ with its own toolchain, chosen for what that component actually does.
 | `web/` | TypeScript | Public marketing site. Part of the workspace and the Tiltfile, not of the platform loop. |
 | `deploy/` | Helm, YAML | The Helm chart and example values that install the platform into a cluster. Not a project; nothing runs here. |
 
-Product and design documentation lives in `../context/idea/`. What is being
-built next, and in what order, lives in `../context/plans/`.
+Product and design documentation lives in `../context/idea/`. The demo script
+lives in `../context/plans/`.
 
 ## Contracts across the boundaries
 
@@ -160,8 +160,10 @@ accept the mapping. The checkout is on `D:\`, and `node_modules` on `/mnt/d/` fr
 file I/O, so if development moves into WSL2, move the checkout to the Linux filesystem rather than
 reaching across.
 
-**Postgres** is `pgvector/pgvector:pg18`, in Compose locally and as a CI service. The vector extension is
-available; nothing uses it yet.
+**Postgres** is `pgvector/pgvector:pg18`, in Compose locally and as a CI service. `search_documents`
+carries a `vector(1536)` embedding column behind an HNSW index, and knowledge retrieval fuses lexical and
+vector ranks. Embeddings are only written when `AXIOMA_LLM_KEY` is set; without it retrieval degrades to
+lexical and reports `mode: "lexical"`.
 
 **Protobuf codegen** is wired on both sides. After syncing the agent dependencies, `grpcio-tools`
 provides protoc for `agent/scripts/generate-proto.sh` and `agent/scripts/generate-proto.ps1`. CLI

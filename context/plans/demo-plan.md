@@ -1,7 +1,7 @@
 # Demo Plan
 
 **Document role:** How to show Axiōma without missing what was built, and without claiming what was not.
-**Related:** [07-end-to-end-test-plan.md](07-end-to-end-test-plan.md) proves it works · [idea.md](../idea/idea.md) for the Claim Discipline this document obeys.
+**Related:** `pnpm e2e:local -- --run` from `axioma/api/` proves it works · [idea.md](../idea/idea.md) for the Claim Discipline this document obeys.
 
 A demo is not a test plan run out loud. The test plan is exhaustive and ordered by
 dependency; this is selective and ordered by argument. Six acts, each answering the

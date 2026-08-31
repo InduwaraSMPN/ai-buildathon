@@ -1,7 +1,7 @@
 # Axiōma Architecture
 
 **Document role:** System design — components, boundaries, and how they connect
-**Related:** [idea.md](idea.md) for product intent · [../plans/00-overview.md](../plans/00-overview.md) for what is being built next · `axioma/README.md` for layout, commands and gates
+**Related:** [idea.md](idea.md) for product intent · `axioma/README.md` for layout, commands and gates
 
 ## Shape
 
@@ -168,11 +168,17 @@ It is a table of its own rather than a row in `approvals` because reusing that o
 
 cua is now the fallback rather than the mechanism, and it remains **not implemented**. `execute` in the daemon refuses every computer-use command unconditionally, and `internal/cua` contains a detector that probes `cua-computer-server` on a loopback port, whose only caller is the `doctor` checklist. What it is for is the surfaces UI Automation cannot see — canvas applications, remote desktop, Citrix, some Electron. `cli/docs/cua-spike.md` records what blocks it, and that finding has not moved: `cua-computer-server` exposes no objective-submission endpoint and no server-side reasoning loop, so the contract the design assumed, submit an objective and receive a step transcript, does not exist to call. Putting that reasoning in axel-cli would break the rule that the CLI holds none, and forwarding a free-form objective as a shell or input command would break the typed-action boundary above. That gate stands over the pixel path alone; it no longer stands over GUI remediation.
 
-Device channel authentication is [Phase 3](../plans/03-device-channel-auth.md)'s work and is landing: the gateway requires TLS material and will not start without it, verifies a per-device credential on hello, and refuses a revoked device, and the daemon dials with real transport credentials. That is a precondition being met rather than a standing blocker.
+Device channel authentication is in place: the gateway requires TLS material and will not start without it, verifies a per-device credential on hello, and refuses a revoked device, and the daemon dials with real transport credentials. That precondition is met rather than standing.
 
 The choice of driver stands for the fallback: [cua](https://github.com/trycua/cua) runs locally as `python -m computer_server` with a `[driver]` extra, and axel-cli would drive it over that local API. cua is the choice because its driver runs in the background — agents click, type, and verify *without stealing the cursor or focus* — which is the property that makes this acceptable on a laptop somebody is working on. Agent-S was rejected for using PyAutoGUI, which takes the real mouse and keyboard, and for requiring a separately hosted grounding model. That the accessible path needs no driver at all does not reverse that: UI Automation has the same background property natively, because it is the API screen readers use.
 
 cua is Python and axel-cli is Go, so that language boundary would be a process boundary. Axel itself has no cua dependency, because Axel has no device path at all — it asks the API, the API dispatches to axel-cli, and axel-cli decides which tier can serve the request. A device without cua installed **refuses** rather than falling back: a missing fallback means escalate, not improvise. Today that refusal is universal — a device with cua installed refuses on the same path — so the property is designed but not yet discriminating. It catches far fewer requests than it did, because the accessible GUI no longer goes through it.
+
+**An action nothing can observe is not added.** `refresh_user_policy` was designed, built, and then dropped, because no non-admin, edition-portable, language-neutral read observes a user Group Policy refresh: `gpresult /x` does not exist on Home editions — verified by running it, which reports `Invalid argument/option - '/x'` — and the `Group Policy\State\<SID>\Extension-List` timestamps are absent on non-domain machines. Every write names the read that confirms it, so an unobservable action cannot discharge its own verification obligation. Revisit it against a domain-joined machine; the action itself is one line, and the facet is the missing half.
+
+**Facet scripts are measured on real hardware, not fixtures.** Two of them were rewritten after being run on an actual laptop rather than unit-tested. `Get-Printer` piped into `Get-PrintJob` per printer measured 50 seconds on a six-printer machine, and eight separate `Get-Process -Name` lookups measured 25 seconds — both against what was then a fixed 30-second budget. Rewritten against CIM and a single process query they measure 3 seconds and under 1. Walking a user temp directory still takes 28 seconds with 36,000 files in it, which is inherent rather than fixable.
+
+**Timeouts are per action and per facet.** Every device command originally took a hardcoded 30 seconds from the gateway regardless of what it was, which the original five fast network actions never noticed and the slower diagnostic facets immediately did. A read batch takes the longest allowance it asked for, and everything stays inside the device's own `maxCommandTimeout` of 300 seconds.
 
 ## Kubernetes
 
@@ -188,11 +194,27 @@ The first connector, and it lives in the API because the API owns every side eff
 
 **Rollout status** is polled, not watched — fewer moving parts, and the caller gets a progress stream for free.
 
-**One cluster.** The client is a memoised module singleton built from `KUBECONFIG` and `AXIOMA_K8S_CONTEXT` at first call. There is no way to express which environment a tool call targets. This is the gap [Phase 1](../plans/01-multi-environment.md) closes.
+**Many clusters, one per environment.** `environments` rows carry a connection — an in-cluster ServiceAccount or an encrypted kubeconfig — and clients are cached per environment rather than built once at process start. `KUBECONFIG` and `AXIOMA_K8S_CONTEXT` remain the bootstrap for a single default environment, so an installation that never registers one still works.
+
+**Which environment a run targets is resolved server-side.** The order is ticket, then CMDB, then the configured default, and the agent may only name an environment already linked to that ticket's service. Ticket text is chosen by whoever files the ticket and reaches the model verbatim, so letting it steer the target would put production one sentence away in any ticket. An environment in `shadow` mode refuses every write-effect tool while still recording the attempt in the transcript.
+
+## ITSM Connector
+
+The second connector, and the one that lets Axiōma run *behind* a customer's existing service desk rather than replacing it. Their portal stays the front door; tickets sync inbound, results post back as work notes.
+
+**Authentication is OAuth 2.0 client credentials, not a static bearer.** `itsm_connectors` stores `clientId` and `clientSecretEncrypted` rather than a generic credential, and the transport layer keeps an access-token cache. That is genuinely new work in this tree: directory sync and mail both use a static bearer, and nothing else here refreshes a credential.
+
+**Foreign tickets are keyed by the `(source, external id)` pair.** ServiceNow's own `correlation_id` and `correlation_display` convention is the same shape, arrived at independently; write-back populates their side of the link, which also gives echo suppression a third signal.
+
+**Duplicate suppression is three mechanisms, because no one of them is sufficient.** Trigger on *transitions* rather than states — `State changes to Resolved` rather than `State = Resolved`, since the latter fires on every subsequent save. Write a persistent, checkable marker and exclude on it, which is Zendesk's tag pattern with a domain-specific key. And keep a hard ceiling, because an iteration limit bounds a *run* and nothing otherwise bounds the *number* of runs — `agent/axel/loop.py` is bounded, the count of dispatches was not.
+
+**Migration tooling moves open work and leaves history behind.** Retention obligations that keep an old system alive — HIPAA six years, SOX seven, PCI DSS twelve months — name no service-desk ticket class among them, so wholesale ticket migration buys little and costs a great deal. Co-existence with a phased cutover is the honest shape; "one-click migration" is not a supportable claim.
+
+**Shadow-mode agreement is measured three ways at once, never pooled.** Axel's action distribution is imbalanced by design, so raw percentage agreement flatters a system that always says the common thing, while Cohen's kappa fails in the other direction under the kappa paradox — reporting poor reliability precisely when the distribution is skewed. Raw agreement, kappa, and Gwet's AC1 are reported together and stratified by action class.
 
 ## Data Model
 
-Around 128 tables across 44 schema modules, alongside Better Auth's own. Grouped by what they carry:
+143 tables across 44 schema modules, Better Auth's own included. Grouped by what they carry:
 
 | Area | Carries |
 |---|---|
@@ -249,7 +271,19 @@ The store starts with nine seeded classes and **zero objects**. It fills from ob
 
 The frontends are SPAs rather than a server-rendered framework. The API is a separate service, so there is no benefit in a framework that wants to colocate route handlers with pages.
 
-pgvector is installed and **not used**. Knowledge retrieval is Postgres lexical full-text search over known errors and published articles, returning a `mode` discriminator that currently always reads `lexical`.
+pgvector is used. `search_documents` carries a `vector(1536)` embedding behind an HNSW cosine index alongside a weighted full-text index, and retrieval fuses the two rank lists by reciprocal rank. Embeddings are written only when an embedding key is configured; without one the vector leg is skipped, retrieval reports `mode: "lexical"`, and the run proceeds. Degrading rather than failing is deliberate. Degrading *silently* is not, and it is unfixed.
+
+## Deployment
+
+Four images, a Helm chart, and the customer's own cluster. The Tiltfile is the development path and is not a deployment description.
+
+**Migrations run as a plain Job, one per release revision, not a Helm hook.** A `pre-install` hook runs before the release's own resources exist, so it deadlocks against the bundled Postgres on a clean install; a `post-install` hook runs after `--wait` has already given up on pods waiting for the schema. Instead every API pod runs an init container that blocks until the row count in `drizzle.__drizzle_migrations` reaches the number of journal entries baked into its own image. The Job stays the only writer, so "exactly once" holds at any replica count, and no replica serves traffic against a schema older than its own code.
+
+**The model gateway is configurable and defaults to outbound.** Pointing `agent.model.apiBase` at an OpenAI-compatible endpoint the customer operates is the only change needed to keep inference inside their perimeter, and the chart deploys no inference server of its own. That default has a consequence the chart states in three places rather than hiding: while it points at our host, ticket contents leave the customer's network to reach it. Co-deploying inference was rejected as a larger piece of work than the phase held — it means choosing a model server and owning its hardware requirements — not as a permanent answer.
+
+**Each build context is exactly one project directory.** The four Dockerfiles live with the projects they build rather than at the workspace root, because each project is standalone with its own lockfile and toolchain, and a build context reaching outside its own directory would contradict that.
+
+**Both database shapes are supported, and the one that cannot work fails the render.** `postgresql.enabled` deploys a `pgvector/pgvector:pg18` StatefulSet for evaluation; disabling it and supplying a DSN points at a customer database, whose pgvector requirement is documented. Bundled Postgres with its password in an `existingSecret` is refused at template time with that explanation, because the chart cannot read the password and therefore cannot compose a DSN — a broken release later is worse than a failed render now.
 
 ## What This Architecture Does Not Do
 
@@ -259,9 +293,8 @@ Stated because the gaps are deliberate or known, and someone reading the compone
 - **Nothing constrains blast radius.** A cluster write can patch any deployment the service account reaches, within the one field it is allowed to change; a device action runs with the logged-in user's rights, over a surface that now includes deleting cached application data under that user's profile and driving any control the accessibility tree exposes in that user's own windows. General execution widens that surface furthest, and what bounds it is a person rather than the system: an approved command runs as any program that user could have started, and only the approver's judgement decides what it may touch.
 - **One agent action is approved before it runs; the rest are not.** A proposed device command reaches a device only after a `device.approve` holder authorises that exact argument vector. Everything else — typed actions, GUI steps, cluster patches — runs on the tool boundary alone. The approval machinery that exists otherwise is for humans, CAB voting on changes and manager decisions on catalogue requests, and Axel's own patches are raised as pre-approved standard changes rather than routed through it.
 - **Duplicate suppression exists; durability does not.** A repeated tool call within a run returns its recorded result, and a device rejects a sequence it has already accepted — but that rejection reports the outcome as indeterminate rather than replaying it, and in-flight device commands are lost if the API restarts. Widening the action set widens the consequence of both.
-- **The device channel is authenticated but the binary is unsigned.** [Phase 3](../plans/03-device-channel-auth.md) requires TLS, verifies a hashed per-device bearer credential before registration or replay, supports single-use enrolment, rotation, and revocation, and lets clients add a customer CA without disabling verification. Authenticode signing remains deferred pending certificate procurement.
-- **There is one Kubernetes cluster**, chosen by environment variable at process start.
+- **The device channel is authenticated but the binary is unsigned.** The gateway requires TLS, verifies a hashed per-device bearer credential before registration or replay, supports single-use enrolment, rotation, and revocation, and lets clients add a customer CA without disabling verification. Authenticode signing remains deferred pending certificate procurement.
 - **The deployment artifact is not published.** Four Dockerfiles and a Helm chart exist under each project and `axioma/deploy/`, and images are built locally and loaded into a cluster. There is no image registry, no CI pipeline that produces them, and no high availability, autoscaling, backup or disaster recovery in the chart. The Tiltfile is still the development path and `api/k8s/` still holds demo workloads to break, not the platform.
 - **The pixel fallback is not implemented.** GUI remediation ships through UI Automation, but a surface with no accessibility tree — canvas applications, remote desktop, Citrix, some Electron — has no path at all. The request path for it exists and the daemon refuses it, on every device rather than only where cua is absent. The gate that does not lift with the channel above is the spike finding that `cua-computer-server` offers no objective-submission endpoint to send an objective to.
 
-The first three are scope decisions. The rest are distance between the design and the tree, each with a plan document in [`context/plans/`](../plans/00-overview.md).
+The first three are scope decisions. The rest are distance between the design and the tree.

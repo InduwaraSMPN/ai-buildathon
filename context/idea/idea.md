@@ -1,7 +1,7 @@
 # Axiōma
 
 **Document role:** Product context — what we are building and why
-**Related:** [architecture.md](architecture.md) for system design and the invariants the code holds · [../plans/00-overview.md](../plans/00-overview.md) for what is being built next and in what order
+**Related:** [architecture.md](architecture.md) for system design and the invariants the code holds · [../plans/demo-plan.md](../plans/demo-plan.md) for how this is shown
 
 ## Naming
 
@@ -68,7 +68,7 @@ The pixel fallback is also **installed only where it is needed** rather than shi
 
 **Tier three is no longer only a handoff.** Where no typed action and no GUI step fits, Axel may name an exact command and the reason a person should run it. The proposal is recorded and the run escalates with the diagnosis; nothing waits on the decision, because a run is measured in seconds and a person decides in hours. Someone holding `device.approve` reads that exact argument vector and approves or rejects it, and only then does the command reach the device — dispatched from what was approved rather than from anything Axel said afterwards. It is an argument vector rather than a command line, so no shell is involved and a metacharacter is an ordinary argument. The approval binds to that one vector, authorises one run of it, and expires undecided; the device is opted out unless an operator turned it on and left a marker file on the machine. The separation of duty is deliberate: the analysts who issue typed actions do not hold `device.approve`. The controls have unit coverage and have not been exercised end to end against a live gateway and a real device.
 
-Widening tier one is [Phase 5](../plans/05-device-capability.md) Stage A, the GUI tier is Stage B, and the gate on general execution is Stage C; all three have shipped. Device channel authentication is [Phase 3](../plans/03-device-channel-auth.md)'s work and is landing now. What still gates the pixel fallback, whatever the channel does, is what the spike found: `cua-computer-server` exposes no objective-submission endpoint and no reasoning loop of its own, so there is nothing to send an objective to, and implementing that reasoning in axel-cli would contradict what axel-cli is. That gate is on the pixel path alone. GUI remediation turned out not to need a driver at all.
+The widened typed surface, the GUI tier, and the gate on general execution have all shipped, and the device channel is authenticated. What still gates the pixel fallback, whatever the channel does, is what the spike found: `cua-computer-server` exposes no objective-submission endpoint and no reasoning loop of its own, so there is nothing to send an objective to, and implementing that reasoning in axel-cli would contradict what axel-cli is. That gate is on the pixel path alone. GUI remediation turned out not to need a driver at all.
 
 ## Scope
 
@@ -94,19 +94,18 @@ Widening tier one is [Phase 5](../plans/05-device-capability.md) Stage A, the GU
 - **Proactive detection.** Nothing watches for problems. Every interaction starts with a ticket someone opened.
 - **Multi-tenancy.** One organization per deployment; no `tenant_id` on any table.
 - **Idempotency.** Retrying a dispatched action can apply it twice.
-- **Connectors beyond Kubernetes** for infrastructure, and any connector at all to an incumbent ITSM. Both are planned, neither is built.
+- **Connectors beyond Kubernetes** for infrastructure — cloud consoles, virtual machines, databases. The ITSM connector is built; these are not.
 
-### Known gaps, being worked
+### Known gaps
 
-These are not scope decisions; they are the distance between what the product describes and what the tree does. Each has a plan document.
+Not scope decisions — the distance between what the product describes and what the tree does.
 
-| Gap | Plan |
+| Gap | Consequence |
 |---|---|
-| One Kubernetes cluster, fixed at process start by environment variable | [Phase 1](../plans/01-multi-environment.md) |
-| No Dockerfile, Helm chart, or deployment artifact of any kind | [Phase 2](../plans/02-deployable-artifact.md) |
-| Device channel authentication landing now — TLS and per-device credentials are in the tree, the phase is not recorded complete; binary unsigned | [Phase 3](../plans/03-device-channel-auth.md) |
-| GUI remediation ships through UI Automation; the pixel fallback, for surfaces with no accessibility tree, is an unconditional refusal with no objective endpoint to call even once the channel is authenticated | [Phase 5](../plans/05-device-capability.md) |
-| No path to run behind a customer's existing ITSM | [Phase 6](../plans/06-itsm-connector.md) |
+| The pixel fallback is not implemented | GUI remediation ships through UI Automation, so a surface with no accessibility tree — canvas applications, remote desktop, Citrix, some Electron — has no path at all. The daemon refuses computer-use on every device, and the blocker is not the device channel: `cua-computer-server` exposes no objective-submission endpoint to call |
+| The binary is unsigned | SmartScreen warns, and managed-device policy may block the installer. Deferred pending certificate procurement, not design |
+| Images are not published | Four Dockerfiles and a Helm chart exist; images are built locally and loaded into a cluster. No registry, no release pipeline, and no HA, autoscaling, backup or disaster recovery in the chart |
+| Retrieval runs lexical-only until an embedding key is configured | The vector column, index and fusion are in place and unexercised. It degrades rather than failing, which is correct, and silently, which is not |
 
 ## Scenarios
 
@@ -141,7 +140,7 @@ That is the bar for the loop. It is not the bar for the product: a deployable ar
 | What is the CMDB seeded from? | Nine classes are seeded and zero objects. It fills from observation, so the first ticket about a service has no prior belief about it. A real deployment imports from an existing source of truth |
 | When does Axel stop trying? | There are ceilings on tool calls, model turns, and wall time. Whether those numbers are right is unvalidated |
 
-One question that stood here has an answer. **What gates general execution on a device?** A person does. Axel may propose an exact command but must escalate; a holder of `device.approve` — a capability deliberately withheld from the analysts who issue typed actions — authorises that exact argument vector before anything reaches a device. The approval is single-use, expires undecided, is invalidated if the command is edited after it was given, and applies only to a device an operator opted in. That is [Phase 5](../plans/05-device-capability.md) Stage C.
+One question that stood here has an answer. **What gates general execution on a device?** A person does. Axel may propose an exact command but must escalate; a holder of `device.approve` — a capability deliberately withheld from the analysts who issue typed actions — authorises that exact argument vector before anything reaches a device. The approval is single-use, expires undecided, is invalidated if the command is edited after it was given, and applies only to a device an operator opted in.
 
 ## Claim Discipline
 
