@@ -3,4 +3,5 @@ dist/
 *.tsbuildinfo
 .env
 .env*.local
+certs/
 *.log
