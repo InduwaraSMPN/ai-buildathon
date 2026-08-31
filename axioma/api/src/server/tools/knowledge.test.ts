@@ -109,13 +109,22 @@ test("real knowledge search crosses employee boundaries only through a deidentif
 			resolutionCode: "fixed",
 		},
 	]);
-	await db.insert(searchDocuments).values({
-		objectType: "resolved_ticket",
-		objectId: resolved,
-		title: "De-identified certificate precedent",
-		body: "Restored Avery Chen's frobnicator certificate on WS-104.corp",
-		sourceUpdatedAt: new Date(),
-	});
+	await db.insert(searchDocuments).values([
+		{
+			objectType: "resolved_ticket",
+			objectId: resolved,
+			title: "De-identified certificate precedent",
+			body: "Restored Avery Chen's frobnicator certificate on WS-104.corp",
+			sourceUpdatedAt: new Date(),
+		},
+		{
+			objectType: "ticket",
+			objectId: resolved,
+			title: "Raw private frobnicator ticket",
+			body: "frobnicator certificate raw reporter prose",
+			sourceUpdatedAt: new Date(),
+		},
+	]);
 	try {
 		const result = await knowledgeSearch(
 			{ query: "frobnicator certificate", limit: 8 },
@@ -125,6 +134,10 @@ test("real knowledge search crosses employee boundaries only through a deidentif
 		assert.equal(result.mode, "lexical");
 		assert.equal(result.items[0]?.source, "resolved_ticket");
 		assert.equal(result.items[0]?.id, resolved);
+		assert.deepEqual(
+			new Set(result.items.map(({ source }) => source)),
+			new Set(["resolved_ticket"]),
+		);
 		const serialized = JSON.stringify(result);
 		assert(!serialized.includes("Private employee"));
 		assert(!serialized.includes("Avery Chen"));

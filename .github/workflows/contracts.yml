@@ -36,6 +36,15 @@ jobs:
           node-version: 24
       - run: node scripts/publish-ui.mjs --check
 
+  helm:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: axioma/deploy
+    steps:
+      - uses: actions/checkout@v4
+      - run: pwsh ./scripts/verify-chart.ps1
+
   api:
     runs-on: ubuntu-latest
     env:

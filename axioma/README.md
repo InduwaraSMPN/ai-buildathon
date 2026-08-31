@@ -134,6 +134,20 @@ build rather than drifting.
 
 `pnpm db:check` in `api/` validates the migration ledger against a clean replay.
 
+### Opt-in local E2E evidence
+
+With the local stack running and demo data seeded, run from `api/`:
+
+```bash
+pnpm e2e:local -- --run
+```
+
+The read-only verifier records every test-plan scenario as `ran`, `skipped`, or
+`failed` and always writes timestamped JSON and Markdown under `../../temp/results/`.
+Skips exit 2 by default; use `--allow-skips` when known external prerequisites are
+unavailable. Add `--json` for machine output or `--report=PATH` for an extra Markdown
+copy. Run `pnpm e2e:local -- --self-test` without a stack to test its pure logic.
+
 ## Local environment
 
 Known-good toolchain: Node 24.13.0, pnpm 11.24.0, Python 3.14.2, uv 0.9.28, Go 1.25.6, Docker 29.7.2 with

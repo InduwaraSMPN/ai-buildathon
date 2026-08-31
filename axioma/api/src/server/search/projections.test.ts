@@ -97,7 +97,7 @@ test("resolved ticket projection is deliberately de-identified", () => {
 		status: "resolved",
 		route: null,
 		resolution:
-			"Renewed expired certificate after alice@example.test called +1 202-555-0119",
+			"Restored Avery Chen's mailbox on WS-FIN-014 after contacting avery@example.test",
 		resolutionCode: "fixed",
 		escalationNote: "Private note",
 		progressMarker: null,
@@ -121,11 +121,13 @@ test("resolved ticket projection is deliberately de-identified", () => {
 		lastHumanTransitionAt: null,
 	});
 	const serialized = JSON.stringify(projected);
-	assert.match(serialized, /Renewed expired certificate/);
-	assert.match(serialized, /\[email\].*\[phone\]/);
+	assert.equal(
+		projected.body,
+		"Diagnosis: fixed\nResolution: Restored [person]'s mailbox on [host] after contacting [email]",
+	);
 	assert.doesNotMatch(
 		serialized,
-		/employee-secret|Private employee narrative|Private note|INC-123|VPN stopped connecting|alice@example\.test|202-555-0119/,
+		/employee-secret|Private employee narrative|Private note|INC-123|VPN stopped connecting|Avery Chen|WS-FIN-014|avery@example\.test/,
 	);
 	assert.equal(projected.title, "De-identified resolved ticket");
 	assert.equal(projected.metadata.accessClass, "deidentified");

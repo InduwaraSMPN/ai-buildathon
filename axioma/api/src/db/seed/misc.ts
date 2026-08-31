@@ -71,6 +71,12 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 			})
 			.onConflictDoNothing();
 
+		await tx.update(environments).set({ isDefault: false });
+		await tx
+			.update(environments)
+			.set({ isDefault: true })
+			.where(eq(environments.id, "demo-env-production"));
+
 		await tx
 			.insert(serviceEnvironments)
 			.values(

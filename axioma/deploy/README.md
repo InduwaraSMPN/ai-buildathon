@@ -19,6 +19,13 @@ reached outside its directory would contradict that:
 `api/k8s/` is not part of this. It holds two deliberately broken demo workloads
 for the agent to diagnose. Do not extend it.
 
+Verify the chart without touching a cluster (defaults, both examples, invalid
+Postgres secret configuration, and default RBAC):
+
+```powershell
+./scripts/verify-chart.ps1
+```
+
 `web/` is the public marketing site. It is outside the platform loop, but it is
 packaged, because it publishes the service status page the portal header links
 to on every route — `portal.siteUrl` points at it. It is the one frontend that

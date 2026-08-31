@@ -121,7 +121,10 @@ const PII = [
 	[/\b(?:\+?\d[\d ().-]{7,}\d)\b/g, "[phone]"],
 	[/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, "[ip]"],
 	[/\b[A-Z0-9._-]+\\[A-Z0-9._-]+\b/gi, "[account]"],
-	[/\b(?:[A-Z0-9-]+\.)+(?:local|internal|corp|lan)\b/gi, "[host]"],
+	[
+		/\b(?:WS-[A-Z0-9-]+|(?:[A-Z0-9-]+\.)+(?:local|internal|corp|lan))\b/gi,
+		"[host]",
+	],
 	[/\b(?:INC|REQ|CHG|PRB|TASK)[-_]?\d{3,}\b/gi, "[ticket]"],
 	[
 		/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi,

@@ -13,6 +13,7 @@
 		"fix": "biome check --write .",
 		"check-types": "tsc --noEmit",
 		"test": "tsx --test src/**/*.test.ts",
+		"e2e:local": "node scripts/e2e-local.mjs",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:backfill-embeddings": "tsx src/server/search/backfill.ts",
