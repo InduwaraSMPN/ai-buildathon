@@ -42,6 +42,33 @@ async function insertEnvironment(id: string, key: string, isDefault = false) {
 	});
 }
 
+/**
+ * `environments_default_uidx` allows one default row for the whole database, so
+ * a test that asserts on the default has to own it. Seeded demo data holds one,
+ * which is why these cannot simply insert their own or assume none exists.
+ */
+async function withoutExistingDefault<T>(body: () => Promise<T>): Promise<T> {
+	const [existing] = await db
+		.select({ id: environments.id })
+		.from(environments)
+		.where(eq(environments.isDefault, true))
+		.limit(1);
+	if (existing)
+		await db
+			.update(environments)
+			.set({ isDefault: false })
+			.where(eq(environments.id, existing.id));
+	try {
+		return await body();
+	} finally {
+		if (existing)
+			await db
+				.update(environments)
+				.set({ isDefault: true })
+				.where(eq(environments.id, existing.id));
+	}
+}
+
 async function cleanup(ticketIds: string[], envIds: string[]) {
 	for (const id of envIds) {
 		await db.delete(environments).where(eq(environments.id, id));
@@ -56,14 +83,16 @@ test("resolveRunEnvironment bootstraps a default when no environment rows exist"
 	const ticketId = `rt-bootstrap-${suffix}`;
 	await insertTicket(ticketId);
 	try {
-		const resolved = await resolveRunEnvironment({
-			id: ticketId,
-			serviceId: "svc-general",
-		});
-		assert.deepEqual(resolved, {
-			environmentId: null,
-			environmentKey: "default",
-			environmentSource: "default",
+		await withoutExistingDefault(async () => {
+			const resolved = await resolveRunEnvironment({
+				id: ticketId,
+				serviceId: "svc-general",
+			});
+			assert.deepEqual(resolved, {
+				environmentId: null,
+				environmentKey: "default",
+				environmentSource: "default",
+			});
 		});
 	} finally {
 		await cleanup([ticketId], []);
@@ -110,26 +139,34 @@ test("resolveRunEnvironment falls back to the default environment", async () => 
 	const envId = `rt-env-default-${suffix}`;
 	const envKey = `rt-key-default-${suffix}`;
 	await insertTicket(ticketId);
-	await insertEnvironment(envId, envKey, true);
-	await db.insert(serviceEnvironments).values({
-		serviceId: "svc-general",
-		environmentId: envId,
-	});
 	try {
-		const resolved = await resolveRunEnvironment({
-			id: ticketId,
-			serviceId: "svc-general",
-		});
-		assert.deepEqual(resolved, {
-			environmentId: envId,
-			environmentKey: envKey,
-			environmentSource: "default",
+		await withoutExistingDefault(async () => {
+			// This test's own environment must stop being the default before the
+			// wrapper restores the one it displaced, so it is removed in here.
+			try {
+				await insertEnvironment(envId, envKey, true);
+				await db.insert(serviceEnvironments).values({
+					serviceId: "svc-general",
+					environmentId: envId,
+				});
+				const resolved = await resolveRunEnvironment({
+					id: ticketId,
+					serviceId: "svc-general",
+				});
+				assert.deepEqual(resolved, {
+					environmentId: envId,
+					environmentKey: envKey,
+					environmentSource: "default",
+				});
+			} finally {
+				await db
+					.delete(serviceEnvironments)
+					.where(eq(serviceEnvironments.environmentId, envId));
+				await db.delete(environments).where(eq(environments.id, envId));
+			}
 		});
 	} finally {
-		await db
-			.delete(serviceEnvironments)
-			.where(eq(serviceEnvironments.environmentId, envId));
-		await cleanup([ticketId], [envId]);
+		await cleanup([ticketId], []);
 	}
 });
 

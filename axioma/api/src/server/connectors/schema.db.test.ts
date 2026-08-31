@@ -42,6 +42,22 @@ const databaseUrl = process.env.DATABASE_URL;
  */
 let shared: Client | undefined;
 
+/**
+ * Tickets that carry no connector rows yet.
+ *
+ * Taking the oldest tickets outright was enough until the demo seed grew a
+ * connector: a seeded origin row trips `itsm_ticket_origins_pkey` before the
+ * index under test, and a seeded ledger row inflates the dispatch counts. These
+ * tests assert on constraints, so they have to start from a ticket nothing has
+ * claimed rather than from whichever ticket happens to be oldest.
+ */
+const UNCLAIMED_TICKETS = `
+	SELECT t.id FROM tickets t
+	WHERE NOT EXISTS (SELECT 1 FROM itsm_ticket_origins o WHERE o.ticket_id = t.id)
+	  AND NOT EXISTS (SELECT 1 FROM itsm_dispatch_ledger d WHERE d.ticket_id = t.id)
+	ORDER BY t.created_at
+	LIMIT 2`;
+
 async function connection(): Promise<Client> {
 	if (!shared) {
 		shared = new Client({ connectionString: databaseUrl });
@@ -80,9 +96,7 @@ async function inRollback(
 			         'cid', 'v1:x:y:z', 'itsm', 'env-test-shadow', 'user-test')`,
 		);
 
-		const { rows: tickets } = await client.query(
-			"SELECT id FROM tickets ORDER BY created_at LIMIT 2",
-		);
+		const { rows: tickets } = await client.query(UNCLAIMED_TICKETS);
 		const { rows: runs } = await client.query(
 			"SELECT id FROM agent_runs ORDER BY started_at LIMIT 1",
 		);
@@ -104,9 +118,7 @@ test("the itsm ticket origin is unique per connector and external id", {
 		// Two different tickets: `ticket_id` is the primary key, so reusing one
 		// would trip that instead of the (connector_id, external_id) index this
 		// test is actually about.
-		const { rows } = await client.query(
-			"SELECT id FROM tickets ORDER BY created_at LIMIT 2",
-		);
+		const { rows } = await client.query(UNCLAIMED_TICKETS);
 		if (rows.length < 2) return;
 
 		const insert = (ticketId: string) =>

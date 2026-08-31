@@ -26,8 +26,7 @@ export async function seedCmdb(): Promise<void> {
 			.from(cmdbRelationshipTypes);
 		const relByKey = new Map(relRows.map((r) => [r.key, r.id]));
 
-		for (let i = 0; i < CMDB_OBJECTS.length; i++) {
-			const obj = CMDB_OBJECTS[i]!;
+		for (const [i, obj] of CMDB_OBJECTS.entries()) {
 			const classId = classByKey.get(obj.classKey);
 			if (!classId) {
 				console.warn(
