@@ -77,7 +77,7 @@ export function ConnectorForm() {
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
 			<DialogTrigger render={<Button size="sm">Add connector</Button>} />
-			<DialogContent>
+			<DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-lg">
 				<DialogHeader>
 					<DialogTitle>Add an ITSM connector</DialogTitle>
 					<DialogDescription>
@@ -87,126 +87,133 @@ export function ConnectorForm() {
 					</DialogDescription>
 				</DialogHeader>
 
-				<FieldGroup>
-					<Field>
-						<FieldLabel htmlFor="connector-key">Key</FieldLabel>
-						<Input
-							id="connector-key"
-							value={form.key}
-							onChange={(event) => set("key")(event.target.value)}
-							placeholder="acme-servicenow"
-						/>
-						<FieldDescription>
-							Stable identifier. Not shown to end users.
-						</FieldDescription>
-					</Field>
+				<div className="scrollbar-thin scrollbar-gutter-stable min-h-0 flex-1 overflow-y-auto py-1 pl-1 pr-3">
+					<FieldGroup>
+						<Field>
+							<FieldLabel htmlFor="connector-key">Key</FieldLabel>
+							<Input
+								id="connector-key"
+								value={form.key}
+								onChange={(event) => set("key")(event.target.value)}
+								placeholder="acme-servicenow"
+							/>
+							<FieldDescription>
+								Stable identifier. Not shown to end users.
+							</FieldDescription>
+						</Field>
 
-					<Field>
-						<FieldLabel htmlFor="connector-label">Label</FieldLabel>
-						<Input
-							id="connector-label"
-							value={form.label}
-							onChange={(event) => set("label")(event.target.value)}
-							placeholder="Acme ServiceNow"
-						/>
-					</Field>
+						<Field>
+							<FieldLabel htmlFor="connector-label">Label</FieldLabel>
+							<Input
+								id="connector-label"
+								value={form.label}
+								onChange={(event) => set("label")(event.target.value)}
+								placeholder="Acme ServiceNow"
+							/>
+						</Field>
 
-					<Field>
-						<FieldLabel htmlFor="connector-url">Instance URL</FieldLabel>
-						<Input
-							id="connector-url"
-							value={form.baseUrl}
-							onChange={(event) => set("baseUrl")(event.target.value)}
-							placeholder="https://acme.service-now.com"
-						/>
-					</Field>
+						<Field>
+							<FieldLabel htmlFor="connector-url">Instance URL</FieldLabel>
+							<Input
+								id="connector-url"
+								value={form.baseUrl}
+								onChange={(event) => set("baseUrl")(event.target.value)}
+								placeholder="https://acme.service-now.com"
+							/>
+						</Field>
 
-					<Field>
-						<FieldLabel htmlFor="connector-client">OAuth client ID</FieldLabel>
-						<Input
-							id="connector-client"
-							value={form.clientId}
-							onChange={(event) => set("clientId")(event.target.value)}
-						/>
-						<FieldDescription>
-							Client credentials grant, registered as a confidential client. The
-							service user needs read on the incident table and insert on
-							sys_journal_field — nothing more for a shadow trial.
-						</FieldDescription>
-					</Field>
+						<Field>
+							<FieldLabel htmlFor="connector-client">
+								OAuth client ID
+							</FieldLabel>
+							<Input
+								id="connector-client"
+								value={form.clientId}
+								onChange={(event) => set("clientId")(event.target.value)}
+							/>
+							<FieldDescription>
+								Client credentials grant, registered as a confidential client.
+								The service user needs read on the incident table and insert on
+								sys_journal_field — nothing more for a shadow trial.
+							</FieldDescription>
+						</Field>
 
-					<Field>
-						<FieldLabel htmlFor="connector-secret">
-							OAuth client secret
-						</FieldLabel>
-						<Input
-							id="connector-secret"
-							type="password"
-							autoComplete="off"
-							value={form.clientSecret}
-							onChange={(event) => set("clientSecret")(event.target.value)}
-						/>
-						<FieldDescription>
-							Stored encrypted and never returned by any screen or API.
-						</FieldDescription>
-					</Field>
+						<Field>
+							<FieldLabel htmlFor="connector-secret">
+								OAuth client secret
+							</FieldLabel>
+							<Input
+								id="connector-secret"
+								type="password"
+								autoComplete="off"
+								value={form.clientSecret}
+								onChange={(event) => set("clientSecret")(event.target.value)}
+							/>
+							<FieldDescription>
+								Stored encrypted and never returned by any screen or API.
+							</FieldDescription>
+						</Field>
 
-					<Field>
-						<FieldLabel htmlFor="connector-environment">
-							Default environment
-						</FieldLabel>
-						<NativeSelect
-							id="connector-environment"
-							value={form.defaultEnvironmentId}
-							onChange={(event) =>
-								set("defaultEnvironmentId")(event.target.value)
-							}
-						>
-							<NativeSelectOption value="">Choose…</NativeSelectOption>
-							{(environments.data ?? []).map((environment) => (
-								<NativeSelectOption key={environment.id} value={environment.id}>
-									{environment.key} · {environment.mode}
-								</NativeSelectOption>
-							))}
-						</NativeSelect>
-						<FieldDescription>
-							{chosen?.mode === "act"
-								? "This environment acts. Any ticket that matches no routing rule will be worked for real — point the default at a shadow environment unless that is what you intend."
-								: "Anything that matches no routing rule resolves here. A shadow default means an unmapped ticket gets too little access rather than too much."}
-						</FieldDescription>
-					</Field>
+						<Field>
+							<FieldLabel htmlFor="connector-environment">
+								Default environment
+							</FieldLabel>
+							<NativeSelect
+								id="connector-environment"
+								value={form.defaultEnvironmentId}
+								onChange={(event) =>
+									set("defaultEnvironmentId")(event.target.value)
+								}
+							>
+								<NativeSelectOption value="">Choose…</NativeSelectOption>
+								{(environments.data ?? []).map((environment) => (
+									<NativeSelectOption
+										key={environment.id}
+										value={environment.id}
+									>
+										{environment.key} · {environment.mode}
+									</NativeSelectOption>
+								))}
+							</NativeSelect>
+							<FieldDescription>
+								{chosen?.mode === "act"
+									? "This environment acts. Any ticket that matches no routing rule will be worked for real — point the default at a shadow environment unless that is what you intend."
+									: "Anything that matches no routing rule resolves here. A shadow default means an unmapped ticket gets too little access rather than too much."}
+							</FieldDescription>
+						</Field>
 
-					<Field>
-						<FieldLabel htmlFor="connector-reporter">
-							Fallback reporter
-						</FieldLabel>
-						<Input
-							id="connector-reporter"
-							value={form.fallbackReporterId}
-							onChange={(event) =>
-								set("fallbackReporterId")(event.target.value)
-							}
-						/>
-						<FieldDescription>
-							Used only when a foreign requester cannot be matched by email.
-							Every synced ticket must land on a real user.
-						</FieldDescription>
-					</Field>
+						<Field>
+							<FieldLabel htmlFor="connector-reporter">
+								Fallback reporter
+							</FieldLabel>
+							<Input
+								id="connector-reporter"
+								value={form.fallbackReporterId}
+								onChange={(event) =>
+									set("fallbackReporterId")(event.target.value)
+								}
+							/>
+							<FieldDescription>
+								Used only when a foreign requester cannot be matched by email.
+								Every synced ticket must land on a real user.
+							</FieldDescription>
+						</Field>
 
-					<Field>
-						<FieldLabel htmlFor="connector-filter">Record filter</FieldLabel>
-						<Input
-							id="connector-filter"
-							value={form.recordFilter}
-							onChange={(event) => set("recordFilter")(event.target.value)}
-							placeholder="active=true^assignment_group=Service Desk"
-						/>
-						<FieldDescription>
-							Vendor-native query narrowing which records this connector owns.
-							Leave empty to take every changed incident.
-						</FieldDescription>
-					</Field>
-				</FieldGroup>
+						<Field>
+							<FieldLabel htmlFor="connector-filter">Record filter</FieldLabel>
+							<Input
+								id="connector-filter"
+								value={form.recordFilter}
+								onChange={(event) => set("recordFilter")(event.target.value)}
+								placeholder="active=true^assignment_group=Service Desk"
+							/>
+							<FieldDescription>
+								Vendor-native query narrowing which records this connector owns.
+								Leave empty to take every changed incident.
+							</FieldDescription>
+						</Field>
+					</FieldGroup>
+				</div>
 
 				<DialogFooter>
 					<Button variant="outline" onClick={() => setOpen(false)}>
