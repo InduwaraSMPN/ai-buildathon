@@ -62,6 +62,62 @@ async def test_origin_reaches_run_context_and_prompt(monkeypatch: pytest.MonkeyP
     assert "Origin: monitoring" in captured.transcript[1]["content"]
 
 
+async def test_environment_reaches_run_context_and_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = None
+
+    async def finished(ctx):
+        nonlocal captured
+        captured = ctx
+        return RunResult(RunStatus.RESOLVED, "fixed")
+
+    monkeypatch.setattr(server, "run", finished)
+    connection = server.Connection("worker-1")
+    await connection.execute(
+        pb.StartRun(
+            run_id="run-1",
+            ticket_id="ticket-1",
+            title="Alert",
+            body="CPU saturated",
+            environment="prod",
+        )
+    )
+
+    assert captured.environment == "prod"
+    assert "Environment: prod" in captured.transcript[1]["content"]
+
+
+async def test_reporter_context_reaches_prompt(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured = None
+
+    async def finished(ctx):
+        nonlocal captured
+        captured = ctx
+        return RunResult(RunStatus.RESOLVED, "fixed")
+
+    monkeypatch.setattr(server, "run", finished)
+    connection = server.Connection("worker-1")
+    await connection.execute(
+        pb.StartRun(
+            run_id="run-1",
+            ticket_id="ticket-1",
+            title="VPN",
+            body="Cannot connect",
+            reporter_id="internal-user-123",
+            reporter_name="Avery Chen",
+            reporter_job_title="Finance Analyst",
+            reporter_department="Finance",
+            reporter_manager="Morgan Lee",
+        )
+    )
+
+    prompt = captured.transcript[1]["content"]
+    assert "Name: Avery Chen" in prompt
+    assert "Job title: Finance Analyst" in prompt
+    assert "Department: Finance" in prompt
+    assert "Manager: Morgan Lee" in prompt
+    assert "internal-user-123" not in prompt
+
+
 async def test_gateway_heartbeat_is_not_echoed() -> None:
     connection = server.Connection("worker-1")
     await connection.handle(pb.ApiMessage(heartbeat=pb.Heartbeat(unix_ms=1)))

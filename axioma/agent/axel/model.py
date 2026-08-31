@@ -18,6 +18,22 @@ from axel.prompt import SYSTEM_PROMPT
 
 log = logging.getLogger(__name__)
 
+# Mirrors RESOLUTION_CODES in api/src/shared/index.ts; the parity test asserts
+# the priority matrix, the API validates the code at terminal time.
+_RESOLUTION_CODES = {
+    "fixed": "the reported fault was found and corrected",
+    "workaround": "service is restored without correcting the underlying cause",
+    "not_reproducible": "the reported behaviour could not be reproduced",
+    "duplicate": "the same issue is already tracked on another ticket",
+    "no_action_required": "the report needs no action",
+    "rejected": "the request is invalid or out of scope",
+}
+
+_RESOLUTION_CODE_PROMPT = (
+    "The resolution code that matches the resolution: "
+    + "; ".join(f"{code} ({text})" for code, text in _RESOLUTION_CODES.items())
+)
+
 _DECISION_TOOLS = [
     {
         "type": "function",
@@ -30,8 +46,13 @@ _DECISION_TOOLS = [
                 "properties": {
                     "reasoning": {"type": "string", "minLength": 1},
                     "resolution": {"type": "string", "minLength": 1},
+                    "resolution_code": {
+                        "type": "string",
+                        "enum": list(_RESOLUTION_CODES),
+                        "description": _RESOLUTION_CODE_PROMPT,
+                    },
                 },
-                "required": ["reasoning", "resolution"],
+                "required": ["reasoning", "resolution", "resolution_code"],
                 "additionalProperties": False,
             },
         },
@@ -185,12 +206,20 @@ def _decision(name: str, raw_arguments: str | dict[str, Any]) -> Decision:
     arguments = json.loads(raw_arguments) if isinstance(raw_arguments, str) else dict(raw_arguments)
     reasoning = arguments.pop("reasoning", "")
     if not isinstance(reasoning, str) or not reasoning.strip():
-        reasoning = "Model selected this action without separate reasoning."
+        reasoning = ""
     if name == "resolve_ticket":
         resolution = arguments.get("resolution")
         if not isinstance(resolution, str) or not resolution.strip():
             raise ValueError("resolution must be a non-empty string")
-        return Decision(kind="resolved", reasoning=reasoning, resolution=resolution)
+        resolution_code = arguments.get("resolution_code")
+        if not isinstance(resolution_code, str) or resolution_code not in _RESOLUTION_CODES:
+            resolution_code = ""
+        return Decision(
+            kind="resolved",
+            reasoning=reasoning,
+            resolution=resolution,
+            resolution_code=resolution_code,
+        )
     if name == "escalate_ticket":
         reason = arguments.get("reason")
         if not isinstance(reason, str) or not reason.strip():

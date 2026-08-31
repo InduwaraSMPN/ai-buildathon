@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from axel.loop import Decision, RunStatus, run
-from tests.fixtures import FakeToolBus, ScriptedModel, call, context
+from tests.fixtures import FakeToolBus, ScriptedModel, call, cmdb_call, context
 
 
 async def test_verifier_must_read_same_resource() -> None:
@@ -21,6 +21,7 @@ async def test_verifier_must_read_same_resource() -> None:
                 kind="resolved", reasoning="Wrong deployment checked.", resolution="Premature."
             ),
             call("cluster_read_deployment", {"namespace": "shop", "name": "checkout"}),
+            cmdb_call(),
             Decision(
                 kind="resolved", reasoning="Correct deployment checked.", resolution="Verified."
             ),

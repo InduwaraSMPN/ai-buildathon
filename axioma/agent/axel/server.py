@@ -177,11 +177,14 @@ class Connection:
     async def execute(self, start: pb.StartRun) -> None:
         ordinal = 0
         terminal_evidence = ""
+        terminal_evidence_tone: str | None = None
 
         async def report(step: Step) -> int:
-            nonlocal ordinal, terminal_evidence
+            nonlocal ordinal, terminal_evidence, terminal_evidence_tone
             ordinal += 1
-            terminal_evidence = step.evidence or terminal_evidence
+            if step.evidence:
+                terminal_evidence = step.evidence
+                terminal_evidence_tone = step.evidence_tone
             update = pb.RunUpdate(
                 run_id=start.run_id,
                 ordinal=ordinal,
@@ -192,7 +195,12 @@ class Connection:
                 tool_output_json=_json(step.tool_output),
                 error=step.error or "",
             )
-            _set_if_present(update, evidence=getattr(step, "evidence", None))
+            _set_if_present(
+                update,
+                notice=step.notice,
+                evidence=step.evidence,
+                evidence_tone=step.evidence_tone,
+            )
             await self._send(pb.AgentMessage(run_update=update))
             return ordinal
 
@@ -231,6 +239,10 @@ class Connection:
             or _priority(impact, urgency)
         )
         origin = _proto_value(start, "origin") or _metadata(metadata, "origin", default="portal")
+        # Server-resolved target environment, rendered as fact. Read forward-compatibly
+        # so an older binding without the field still yields "". Never inferred from
+        # ticket prose — the API resolves it and the agent only carries it.
+        environment = _proto_value(start, "environment") or _metadata(metadata, "environment")
         ctx = RunContext(
             run_id=start.run_id,
             ticket_id=start.ticket_id,
@@ -246,6 +258,7 @@ class Connection:
             urgency=urgency,
             priority=priority,
             origin=origin,
+            environment=environment or None,
             transcript=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {
@@ -255,11 +268,16 @@ class Connection:
                         body=start.body,
                         device_id=start.device_id or None,
                         context_json=start.context_json,
+                        reporter_name=start.reporter_name,
+                        reporter_job_title=start.reporter_job_title,
+                        reporter_department=start.reporter_department,
+                        reporter_manager=start.reporter_manager,
                         record_type=record_type,
                         impact=impact,
                         urgency=urgency,
                         priority=priority,
                         origin=origin,
+                        environment=environment or None,
                     ),
                 }
             ],
@@ -292,6 +310,7 @@ class Connection:
                 completion_tokens=getattr(result, "completion_tokens", ctx.completion_tokens),
                 model=getattr(result, "model", ctx.model),
                 evidence=terminal_evidence,
+                evidence_tone=terminal_evidence_tone,
             )
             message = pb.AgentMessage(run_update=update)
             with suppress(ConnectionError):
@@ -338,7 +357,17 @@ async def connect_forever(connected: asyncio.Event) -> None:
         heartbeat: asyncio.Task[None] | None = None
         connected_at: float | None = None
         try:
-            async with grpc.aio.insecure_channel(config.api_grpc_host) as channel:
+            roots = config.api_grpc_ca_file.read_bytes() if config.api_grpc_ca_file else None
+            options = (
+                (("grpc.ssl_target_name_override", config.api_grpc_server_name),)
+                if config.api_grpc_server_name
+                else None
+            )
+            async with grpc.aio.secure_channel(
+                config.api_grpc_host,
+                grpc.ssl_channel_credentials(root_certificates=roots),
+                options=options,
+            ) as channel:
                 await asyncio.wait_for(channel.channel_ready(), timeout=10)
                 stream = pb_grpc.AgentChannelStub(channel).Connect(connection.requests())
                 heartbeat = asyncio.create_task(connection.heartbeat())

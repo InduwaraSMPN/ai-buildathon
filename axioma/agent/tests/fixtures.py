@@ -34,9 +34,13 @@ class FakeToolBus:
     source_step_ordinals: list[int] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        outputs = {
+            "cmdb_record_observation": {"ok": True, "object_id": "ci-test"},
+            **self.outputs,
+        }
         self._outputs = {
             name: deque(value if isinstance(value, list) else [value])
-            for name, value in self.outputs.items()
+            for name, value in outputs.items()
         }
 
     async def __call__(
@@ -83,6 +87,19 @@ def context(
     }
     values.update(overrides)
     return RunContext(**values), bus, recorder
+
+
+def cmdb_call() -> Decision:
+    return call(
+        "cmdb_record_observation",
+        {
+            "class_key": "SoftwareInstance",
+            "external_id": "test/ci",
+            "name": "Test CI",
+            "attributes": {},
+        },
+        "Record the resolved state with provenance.",
+    )
 
 
 def call(

@@ -17,6 +17,8 @@ class Config(BaseSettings):
 
     # gRPC back-channel to the API. The agent dials out; the API listens.
     api_grpc_host: str = "localhost:50051"
+    api_grpc_ca_file: Path | None = None
+    api_grpc_server_name: str | None = None
 
     # OpenAI-compatible Marketrix endpoint; credentials stay in the environment.
     model: str = "openai/gpt-5.6-terra"

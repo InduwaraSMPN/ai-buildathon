@@ -6,12 +6,14 @@ import pytest
 
 from axel.config import config
 from axel.loop import Decision, RunStatus, StepKind, run
-from tests.fixtures import FakeToolBus, ScriptedModel, call, context
+from tests.fixtures import FakeToolBus, ScriptedModel, call, cmdb_call, context
 
 
 async def test_knowledge_search_is_always_the_first_tool_call() -> None:
     ctx, bus, recorder = context(
-        ScriptedModel([Decision(kind="resolved", reasoning="Known fix.", resolution="Done.")]),
+        ScriptedModel(
+            [cmdb_call(), Decision(kind="resolved", reasoning="Known fix.", resolution="Done.")]
+        ),
         FakeToolBus({"knowledge_search": {"mode": "lexical", "items": []}}),
     )
     result = await run(ctx)
@@ -29,6 +31,7 @@ async def test_unknown_invalid_and_malformed_decisions_recover() -> None:
             call("cluster_read_pods", {"namespace": "default"}),
             Decision(kind="invalid", tool="cluster_read_pods", error="malformed JSON arguments"),
             call("cluster_read_pods", {"namespace": "default"}),
+            cmdb_call(),
             Decision(kind="resolved", reasoning="Healthy now.", resolution="Recovered."),
         ]
     )
@@ -38,9 +41,13 @@ async def test_unknown_invalid_and_malformed_decisions_recover() -> None:
     result = await run(ctx)
     assert result.status is RunStatus.RESOLVED
     assert result.resolution_code == "fixed"
-    assert [name for name, _ in bus.calls] == ["knowledge_search", *(["cluster_read_pods"] * 3)]
+    assert [name for name, _ in bus.calls] == [
+        "knowledge_search",
+        *(["cluster_read_pods"] * 3),
+        "cmdb_record_observation",
+    ]
     assert bus.source_step_ordinals[0] == 1
-    assert bus.source_step_ordinals[1:] == [6, 11, 15]
+    assert bus.source_step_ordinals[1:4] == [6, 11, 15]
     errors = [step.error for step in recorder.steps if step.error]
     assert any("unknown tool" in error for error in errors)
     assert any("invalid input" in error and "extra" in error for error in errors)
@@ -54,7 +61,14 @@ async def test_unknown_invalid_and_malformed_decisions_recover() -> None:
 async def test_explicit_duplicate_resolution_is_coded() -> None:
     ctx, _, _ = context(
         ScriptedModel(
-            [Decision(kind="resolved", reasoning="Same incident.", resolution="Duplicate ticket.")]
+            [
+                cmdb_call(),
+                Decision(
+                    kind="resolved",
+                    reasoning="Same incident.",
+                    resolution="Duplicate ticket.",
+                ),
+            ]
         )
     )
     result = await run(ctx)
@@ -99,6 +113,7 @@ async def test_transcript_shape_truncation_and_usage(monkeypatch: pytest.MonkeyP
                 completion_tokens=3,
                 model="provider/model-a",
             ),
+            cmdb_call(),
             Decision(
                 kind="resolved",
                 reasoning="Evidence is sufficient.",
@@ -136,9 +151,36 @@ async def test_transcript_shape_truncation_and_usage(monkeypatch: pytest.MonkeyP
     assert "truncated" not in str(observation.tool_output)
 
 
+async def test_knowledge_fetch_keeps_full_item_in_model_context() -> None:
+    full_body = "prefix-" + "x" * 5000 + "-decisive-tail"
+    model = ScriptedModel(
+        [
+            call("knowledge_fetch", {"source": "article", "id": "kb-1"}),
+            Decision(kind="escalate", reasoning="Read full item.", reason="Done."),
+        ]
+    )
+    ctx, _, _ = context(
+        model,
+        FakeToolBus(
+            {
+                "knowledge_search": {"items": []},
+                "knowledge_fetch": {"source": "article", "id": "kb-1", "body": full_body},
+            }
+        ),
+    )
+    await run(ctx)
+    fetched = next(
+        item
+        for item in model.transcripts[1]
+        if item.get("role") == "tool" and "decisive-tail" in item.get("content", "")
+    )
+    assert "[truncated " not in fetched["content"]
+
+
 async def test_matching_known_error_result_is_recorded_for_citation() -> None:
     model = ScriptedModel(
         [
+            cmdb_call(),
             Decision(
                 kind="resolved",
                 reasoning="Use PRB-42 VPN DNS failure.",

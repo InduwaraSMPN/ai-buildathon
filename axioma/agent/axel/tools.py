@@ -13,7 +13,7 @@ connection, no cluster credentials, and no path to a device_
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -52,17 +52,27 @@ class KnowledgeSearch(StrictToolInput):
     limit: int = Field(default=8, ge=1, le=20)
 
 
+class KnowledgeFetch(StrictToolInput):
+    source: Literal["known_error", "article", "resolved_ticket", "agent_run", "document"]
+    id: str = Field(min_length=1)
+
+
 # --- cluster -----------------------------------------------------------------
 
 
 class ClusterReadPods(StrictToolInput):
     namespace: str = Field(min_length=1)
     label_selector: str | None = None
+    # Stable environment key resolved by the server, e.g. "prod" or "staging".
+    # Optional: the server defaults the run's resolved environment when omitted,
+    # so omitting it can never reach a different cluster than the one the run targets.
+    environment: str | None = Field(default=None, min_length=1)
 
 
 class ClusterReadDeployment(StrictToolInput):
     namespace: str = Field(min_length=1)
     name: str = Field(min_length=1)
+    environment: str | None = Field(default=None, min_length=1)
 
 
 class ClusterPatchImage(StrictToolInput):
@@ -70,17 +80,54 @@ class ClusterPatchImage(StrictToolInput):
     name: str = Field(min_length=1)
     container_index: int = Field(ge=0)
     image: str = Field(min_length=1)
+    environment: str | None = Field(default=None, min_length=1)
 
 
 # --- device ------------------------------------------------------------------
 
 
+# The applications employees actually report as hung or stuck. The device holds the
+# same allowlist and rejects anything unlisted, so a parameter only ever selects a
+# key here — it never becomes a command.
+DEVICE_GUI_STEPS: Final[tuple[str, ...]] = (
+    "gui_invoke_control",
+    "gui_set_control_value",
+    "gui_toggle_control",
+    "gui_select_item",
+    "gui_expand_control",
+)
+
+DEVICE_USER_PROCESSES: Final[tuple[str, ...]] = (
+    "notepad",
+    "explorer",
+    "outlook",
+    "teams",
+    "onedrive",
+    "msedge",
+    "chrome",
+    "slack",
+)
+
+
 class DeviceReadState(StrictToolInput):
     device_id: str = Field(min_length=1)
     facets: list[
-        Literal["resolver", "adapters", "reachability", "proxy", "identity", "processes"]
+        Literal[
+            "resolver",
+            "adapters",
+            "reachability",
+            "proxy",
+            "identity",
+            "processes",
+            "certificates",
+            "storage",
+            "app_cache",
+            "printing",
+            "screen",
+        ]
     ] = Field(min_length=1)
     target: str | None = Field(default=None, min_length=1, max_length=253)
+    window: str | None = Field(default=None, min_length=1, max_length=256)
 
     @model_validator(mode="after")
     def require_reachability_target(self) -> DeviceReadState:
@@ -99,27 +146,76 @@ class DeviceRunAction(StrictToolInput):
         "clear_proxy_override",
         "reset_credential_cache",
         "restart_user_process",
+        "disable_proxy",
+        "refresh_certificate_store",
+        "clear_temp_files",
+        "clear_outlook_cache",
+        "clear_teams_cache",
+        "clear_icon_cache",
+        "clear_print_queue",
+        "gui_invoke_control",
+        "gui_set_control_value",
+        "gui_toggle_control",
+        "gui_select_item",
+        "gui_expand_control",
     ]
     parameters: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def require_action_parameters(self) -> DeviceRunAction:
-        if self.action == "restart_user_process" and not self.parameters.get("process_name"):
-            raise ValueError("process_name is required for restart_user_process")
+        if self.action in DEVICE_GUI_STEPS and not self.parameters.get("control"):
+            raise ValueError("control is required for a GUI step")
+        if self.action == "gui_set_control_value" and "value" not in self.parameters:
+            raise ValueError("value is required for gui_set_control_value")
+        if self.action == "restart_user_process":
+            process = (self.parameters.get("process_name") or "").lower()
+            if not process:
+                raise ValueError("process_name is required for restart_user_process")
+            if process not in DEVICE_USER_PROCESSES:
+                allowed = ", ".join(DEVICE_USER_PROCESSES)
+                raise ValueError(f"process_name must be one of: {allowed}")
         return self
 
 
 class DeviceComputerUse(StrictToolInput):
-    """Tier two: only when no programmatic path exists.
+    """The pixel fallback, for a surface with no accessibility tree.
 
-    Slow, non-deterministic, costs vision tokens per step, and leaves you less
-    able to say precisely what changed. Reach for it after establishing there is
-    no API, CLI, or registry path — not because it is available.
+    Not the ordinary way to drive a GUI: the gui_ actions on device_run_action
+    are, and they are typed and verifiable. Reach here only when the screen facet
+    reports no controls for the window in question. Slow, non-deterministic,
+    costs vision tokens per step, and currently refused by every device.
     """
 
     device_id: str = Field(min_length=1)
     objective: str = Field(min_length=1)
     timeout_seconds: int = Field(default=120, ge=10, le=600)
+
+
+class DeviceProposeCommand(StrictToolInput):
+    """Propose a command for a person to authorise. This does not run anything.
+
+    The typed actions cover almost everything; reach here only when no action and
+    no GUI step fits, and the fix genuinely needs a command. Write reason for the
+    IT staffer who has to decide, not for the transcript: what is wrong, why this
+    exact command fixes it, and what it will change. They see the argument vector
+    verbatim and approve or refuse it.
+
+    After proposing, escalate with your diagnosis. The run ends; the command runs
+    later only if someone approves it.
+    """
+
+    device_id: str = Field(min_length=1)
+    command: list[str] = Field(min_length=1, max_length=32)
+    reason: str = Field(min_length=20, max_length=2000)
+
+    @model_validator(mode="after")
+    def require_clean_arguments(self) -> DeviceProposeCommand:
+        for part in self.command:
+            if not part or len(part) > 1024:
+                raise ValueError("each argument must be between 1 and 1024 characters")
+            if any(ord(character) < 32 or ord(character) == 127 for character in part):
+                raise ValueError("an argument may not contain a control character")
+        return self
 
 
 # --- cmdb --------------------------------------------------------------------
@@ -173,11 +269,17 @@ REGISTRY: dict[str, Tool] = {
             surface=Surface.KNOWLEDGE,
             effect=Effect.READ,
             description=(
-                "Search published known errors and knowledge articles for this ticket. "
-                "Use before exploratory cluster or device reads; cite a matching result by "
-                "identifier and title when using its diagnosis or workaround."
+                "Search the authorized knowledge corpus before exploratory reads. "
+                "Cite a matching result by source, identifier, and title."
             ),
             schema_model=KnowledgeSearch,
+        ),
+        Tool(
+            name="knowledge_fetch",
+            surface=Surface.KNOWLEDGE,
+            effect=Effect.READ,
+            description="Fetch the full authorized item identified by a knowledge search result.",
+            schema_model=KnowledgeFetch,
         ),
         Tool(
             name="cluster_read_pods",
@@ -211,14 +313,22 @@ REGISTRY: dict[str, Tool] = {
             name="device_read_state",
             surface=Surface.DEVICE,
             effect=Effect.READ,
-            description="Read device state: resolver, adapters, services, reachability.",
+            description=(
+                "Read device state. Facets: resolver, adapters, reachability, proxy, "
+                "identity, processes, certificates, storage, app_cache, printing, screen."
+            ),
             schema_model=DeviceReadState,
         ),
         Tool(
             name="device_run_action",
             surface=Surface.DEVICE,
             effect=Effect.WRITE,
-            description="Run a named action from the device's fixed set.",
+            description=(
+                "Run a named action from the device's fixed set. Success means the command was "
+                "accepted, not that it worked, so verify with device_read_state on the facet "
+                "that observes this action — proxy for a proxy change, printing for the print "
+                "queue, and so on."
+            ),
             schema_model=DeviceRunAction,
             verified_by="device_read_state",
         ),
@@ -232,6 +342,16 @@ REGISTRY: dict[str, Tool] = {
             ),
             schema_model=DeviceComputerUse,
             verified_by="device_read_state",
+        ),
+        Tool(
+            name="device_propose_command",
+            surface=Surface.DEVICE,
+            effect=Effect.WRITE,
+            description=(
+                "Propose a command for a person to authorise. Nothing runs now. Use only "
+                "when no typed action and no GUI step fits, then escalate with your diagnosis."
+            ),
+            schema_model=DeviceProposeCommand,
         ),
         Tool(
             name="cmdb_record_observation",

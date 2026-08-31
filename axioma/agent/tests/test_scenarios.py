@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from axel import tools
 from axel.loop import Decision, RunStatus, StepKind, run
-from tests.fixtures import FakeToolBus, ScriptedModel, call, context
+from tests.fixtures import FakeToolBus, ScriptedModel, call, cmdb_call, context
 
 
 async def test_scenario_1_repairs_image_then_verifies() -> None:
@@ -20,6 +20,7 @@ async def test_scenario_1_repairs_image_then_verifies() -> None:
                 "ImagePullBackOff identifies the bad image.",
             ),
             call("cluster_read_deployment", {"namespace": "shop", "name": "checkout"}),
+            cmdb_call(),
             Decision(
                 kind="resolved", reasoning="The rollout now uses v2.", resolution="Image corrected."
             ),
@@ -42,8 +43,12 @@ async def test_scenario_1_repairs_image_then_verifies() -> None:
         "cluster_read_pods",
         "cluster_patch_image",
         "cluster_read_deployment",
+        "cmdb_record_observation",
     ]
     assert [step.kind for step in recorder.steps] == [
+        StepKind.TOOL_CALL,
+        StepKind.OBSERVATION,
+        StepKind.THINK,
         StepKind.TOOL_CALL,
         StepKind.OBSERVATION,
         StepKind.THINK,
@@ -69,6 +74,7 @@ async def test_scenario_2_uses_typed_device_action_and_verifies() -> None:
                 "The resolver cache is stale, so use the typed action.",
             ),
             call("device_read_state", {"device_id": "laptop-7", "facets": ["resolver"]}),
+            cmdb_call(),
             Decision(
                 kind="resolved", reasoning="Resolver state is healthy.", resolution="DNS restored."
             ),
@@ -93,6 +99,7 @@ async def test_scenario_2_uses_typed_device_action_and_verifies() -> None:
         "device_read_state",
         "device_run_action",
         "device_read_state",
+        "cmdb_record_observation",
     ]
     assert all(name != "device_computer_use" for name, _ in bus.calls)
 

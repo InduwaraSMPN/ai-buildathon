@@ -66,6 +66,9 @@ class Step:
     tool_output: object | None = None
     error: str | None = None
     evidence: str | None = None
+    evidence_tone: str | None = None
+    # Informational messages that are not failures.
+    notice: str | None = None
 
 
 @dataclass(slots=True)
@@ -85,6 +88,7 @@ class Decision:
     tool: str | None = None
     tool_input: dict | None = None
     resolution: str = ""
+    resolution_code: str = ""
     reason: str = ""
     proposal: dict | None = None
     call_id: str = ""
@@ -111,6 +115,9 @@ class RunContext:
     urgency: str = "medium"
     priority: str = "P3"
     origin: str = "portal"
+    # Server-resolved target environment. Factual — carried through to the prompt
+    # and defaulted into outgoing cluster calls when the model omits it.
+    environment: str | None = None
     clock: Callable[[], float] = time.monotonic
     transcript: list[Message] = field(default_factory=list)
     prompt_tokens: int = 0
@@ -127,9 +134,11 @@ class PendingVerification:
 
 async def run(ctx: RunContext) -> RunResult:
     started = ctx.clock()
-    model_turns = tool_calls = consecutive_failures = verification_rejections = 0
+    model_turns = tool_calls = consecutive_failures = resolution_rejections = 0
     pending: list[PendingVerification] = []
+    recorded_cmdb_observation = False
     last_evidence: str | None = None
+    last_evidence_tone: str | None = None
 
     # Knowledge retrieval is deliberately a real first tool call so its query and
     # evidence remain replayable in the transcript rather than hidden in the prompt.
@@ -156,13 +165,16 @@ async def run(ctx: RunContext) -> RunResult:
             timeout=max(0.001, remaining),
         )
         tool_calls += 1
-        last_evidence = _evidence(knowledge) or last_evidence
+        evidence, tone = _evidence(knowledge)
+        if evidence:
+            last_evidence, last_evidence_tone = evidence, tone
         await ctx.report(
             Step(
                 kind=StepKind.OBSERVATION,
                 tool_name="knowledge_search",
                 tool_output=knowledge,
                 evidence=last_evidence,
+                evidence_tone=last_evidence_tone,
             )
         )
         ctx.transcript.append(
@@ -193,7 +205,7 @@ async def run(ctx: RunContext) -> RunResult:
         ctx.completion_tokens += decision.completion_tokens
         ctx.model = decision.model or ctx.model
         for event in decision.retry_events:
-            await ctx.report(Step(kind=StepKind.OBSERVATION, error=event))
+            await ctx.report(Step(kind=StepKind.OBSERVATION, notice=event))
 
         call_id = decision.call_id or uuid.uuid4().hex
         if decision.kind == "invalid":
@@ -210,9 +222,14 @@ async def run(ctx: RunContext) -> RunResult:
             continue
 
         if decision.kind == "resolved":
+            blockers = []
             if pending:
                 names = ", ".join(f"{item.write} requires {item.verifier}" for item in pending)
-                message = f"resolution rejected: verification pending ({names})"
+                blockers.append(f"verification pending ({names})")
+            if not recorded_cmdb_observation:
+                blockers.append("successful cmdb_record_observation required")
+            if blockers:
+                message = f"resolution rejected: {'; '.join(blockers)}"
                 _append_call(
                     ctx,
                     call_id,
@@ -221,18 +238,30 @@ async def run(ctx: RunContext) -> RunResult:
                 )
                 await _failure(ctx, call_id, "resolve_ticket", message)
                 consecutive_failures += 1
-                verification_rejections += 1
-                if verification_rejections >= 2:
-                    return await _finish(ctx, RunStatus.ESCALATED, message, evidence=last_evidence)
+                resolution_rejections += 1
+                if resolution_rejections >= 2:
+                    return await _finish(
+                        ctx,
+                        RunStatus.ESCALATED,
+                        message,
+                        evidence=last_evidence,
+                        evidence_tone=last_evidence_tone,
+                    )
                 continue
             await ctx.report(
-                Step(kind=StepKind.DECISION, reasoning=decision.reasoning, evidence=last_evidence)
+                Step(
+                    kind=StepKind.DECISION,
+                    reasoning=decision.reasoning,
+                    evidence=last_evidence,
+                    evidence_tone=last_evidence_tone,
+                )
             )
             return _result(
                 ctx,
                 RunStatus.RESOLVED,
                 decision.resolution,
-                resolution_code=_resolution_code(decision.resolution),
+                resolution_code=decision.resolution_code
+                or _resolution_code(decision.resolution),
             )
 
         if decision.kind == "escalate":
@@ -242,6 +271,7 @@ async def run(ctx: RunContext) -> RunResult:
                     reasoning=decision.reasoning,
                     tool_output=decision.proposal,
                     evidence=last_evidence,
+                    evidence_tone=last_evidence_tone,
                 )
             )
             return _result(ctx, RunStatus.ESCALATED, decision.reason)
@@ -287,6 +317,18 @@ async def run(ctx: RunContext) -> RunResult:
             continue
 
         payload = parsed.model_dump(mode="json", exclude_none=True)
+        # Default the server-resolved environment into outgoing cluster calls so a
+        # model that omits it can never reach a different cluster than the one the
+        # run targets. An explicit model-chosen environment is kept as-is; the API
+        # authorizes any mismatch. This must happen before the payload reaches the
+        # pending-verification bookkeeping so a verifier on another environment
+        # cannot discharge a write's obligation.
+        if (
+            tool.surface is tools.Surface.CLUSTER
+            and ctx.environment
+            and not payload.get("environment")
+        ):
+            payload["environment"] = ctx.environment
         source_step_ordinal = await ctx.report(
             Step(
                 kind=StepKind.TOOL_CALL,
@@ -325,20 +367,28 @@ async def run(ctx: RunContext) -> RunResult:
                 )
             continue
 
-        consecutive_failures = verification_rejections = 0
-        evidence = _evidence(output)
-        last_evidence = evidence or last_evidence
+        consecutive_failures = resolution_rejections = 0
+        if tool.name == "cmdb_record_observation":
+            recorded_cmdb_observation = True
+        evidence, tone = _evidence(output)
+        if evidence:
+            last_evidence, last_evidence_tone = evidence, tone
         await ctx.report(
             Step(
                 kind=StepKind.OBSERVATION,
                 tool_name=tool.name,
                 tool_output=output,
                 evidence=evidence,
+                evidence_tone=tone if evidence else None,
             )
         )
         rendered = json.dumps(output, default=str, separators=(",", ":"))
         ctx.transcript.append(
-            {"role": "tool", "tool_call_id": call_id, "content": _truncate(rendered)}
+            {
+                "role": "tool",
+                "tool_call_id": call_id,
+                "content": rendered if tool.name == "knowledge_fetch" else _truncate(rendered),
+            }
         )
 
         if tool.effect is tools.Effect.WRITE and tool.verified_by is not None:
@@ -347,7 +397,8 @@ async def run(ctx: RunContext) -> RunResult:
             obligation
             for obligation in pending
             if not (
-                tool.name == obligation.verifier and _same_resource(obligation.payload, payload)
+                tool.name == obligation.verifier
+                and _same_resource(obligation.payload, payload, ctx.environment)
             )
         ]
 
@@ -408,7 +459,18 @@ def _tool_failure(output: object) -> str | None:
     return f"tool returned failure: {json.dumps(detail, default=str, separators=(',', ':'))}"
 
 
-def _same_resource(write: dict[str, Any], read: dict[str, Any]) -> bool:
+def _same_resource(
+    write: dict[str, Any], read: dict[str, Any], environment: str | None = None
+) -> bool:
+    """True when a read clears a write's verification obligation.
+
+    `environment` is the run's authoritative server-resolved environment. When it
+    is set, both the write and the read must target that same environment: a write
+    provisioned for one environment (including one that omitted it and was defaulted)
+    is discharged only by a read of that same environment. A read naming a different
+    environment, or a write+read pair agreeing on any environment other than the run's,
+    must never clear the obligation.
+    """
     shared = set(write) & set(read) - {
         "reasoning",
         "facets",
@@ -419,7 +481,17 @@ def _same_resource(write: dict[str, Any], read: dict[str, Any]) -> bool:
         "image",
         "container_index",
     }
-    return bool(shared) and all(write[key] == read[key] for key in shared)
+    if not shared:
+        return False
+    if (
+        environment
+        and ("environment" in write or "environment" in read)
+        and (
+            write.get("environment") != environment or read.get("environment") != environment
+        )
+    ):
+        return False
+    return all(write[key] == read[key] for key in shared)
 
 
 def _truncate(text: str) -> str:
@@ -428,12 +500,15 @@ def _truncate(text: str) -> str:
         return text
     dropped = len(text) - limit
     marker = (
-        f"[truncated {dropped} characters from model context; full output retained in transcript]"
+        f"[truncated {dropped} characters from model context; "
+        "full output retained in run record]"
     )
     return f"{text[:limit]}\n{marker}"
 
 
-def _evidence(output: object) -> str | None:
+def _evidence(output: object) -> tuple[str | None, str]:
+    """Select the evidence line and its tone: destructive when a failure
+    needle matched, otherwise success."""
     values: list[str] = []
     stack = [output]
     scanned_items = scanned_chars = 0
@@ -458,11 +533,18 @@ def _evidence(output: object) -> str | None:
     matches = [
         value for value in values if any(needle.lower() in value.lower() for needle in needles)
     ]
-    return max(matches, key=len)[:1000] if matches else (values[0][:1000] if values else None)
+    if matches:
+        return max(matches, key=len)[:1000], "destructive"
+    return (values[0][:1000] if values else None), "success"
 
 
 async def _finish(
-    ctx: RunContext, status: RunStatus, outcome: str, *, evidence: str | None = None
+    ctx: RunContext,
+    status: RunStatus,
+    outcome: str,
+    *,
+    evidence: str | None = None,
+    evidence_tone: str | None = None,
 ) -> RunResult:
     await ctx.report(
         Step(
@@ -470,6 +552,7 @@ async def _finish(
             error=outcome if status is RunStatus.EXHAUSTED else None,
             reasoning=outcome if status is RunStatus.ESCALATED else None,
             evidence=evidence,
+            evidence_tone=evidence_tone if evidence else None,
         )
     )
     return _result(ctx, status, outcome)
