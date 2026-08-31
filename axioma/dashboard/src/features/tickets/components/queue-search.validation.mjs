@@ -73,7 +73,7 @@ assert.equal(
 const seedSql = readFileSync(
 	join(
 		dirname(fileURLToPath(import.meta.url)),
-		"../../../../../api/src/db/migrations/0008_tier1_core.sql",
+		"../../../../../api/src/db/migrations/0000_baseline.sql",
 	),
 	"utf8",
 );

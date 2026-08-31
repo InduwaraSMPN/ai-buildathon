@@ -267,10 +267,7 @@ test("authorized fetch returns article bodies beyond the search excerpt limit", 
 
 test("knowledge migration contains the projection vector columns", async () => {
 	const migration = await readFile(
-		new URL(
-			"../../db/migrations/0031_knowledge_hybrid_projection.sql",
-			import.meta.url,
-		),
+		new URL("../../db/migrations/0000_baseline.sql", import.meta.url),
 		"utf8",
 	);
 	assert.match(migration, /search_documents.*embedding/s);

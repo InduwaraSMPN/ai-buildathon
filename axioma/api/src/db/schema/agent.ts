@@ -10,6 +10,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 import { EVIDENCE_TONES, RUN_STATUSES, STEP_KINDS } from "@/shared";
+import { user } from "./auth";
 import { environments } from "./environments";
 import { tickets } from "./tickets";
 
@@ -31,7 +32,9 @@ export const agentRuns = pgTable(
 		// The person who started this run, when one did. Auto-dispatch leaves it
 		// null. It exists so a device command proposed by a run cannot be
 		// authorised by whoever set that run going.
-		startedById: text("started_by_id"),
+		startedById: text("started_by_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
 		status: text("status", { enum: RUN_STATUSES }).notNull().default("running"),
 		model: text("model"),
 		outcome: text("outcome"),

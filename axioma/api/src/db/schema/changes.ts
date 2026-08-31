@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
 	boolean,
+	check,
 	index,
 	integer,
 	pgTable,
@@ -128,6 +129,18 @@ export const changes = pgTable(
 		index("changes_verification_deadline_idx")
 			.on(t.verificationDeadlineAt)
 			.where(sql`${t.status} = 'in_progress'`),
+		check(
+			"changes_work_range",
+			sql`${t.workEndAt} is null or ${t.workStartAt} is null or ${t.workEndAt} >= ${t.workStartAt}`,
+		),
+		check(
+			"changes_outage_range",
+			sql`${t.outageEndAt} is null or ${t.outageStartAt} is null or ${t.outageEndAt} >= ${t.outageStartAt}`,
+		),
+		check(
+			"changes_pir_range",
+			sql`${t.pirActualEndAt} is null or ${t.pirActualStartAt} is null or ${t.pirActualEndAt} >= ${t.pirActualStartAt}`,
+		),
 	],
 );
 

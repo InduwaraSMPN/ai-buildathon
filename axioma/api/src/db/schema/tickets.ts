@@ -1,5 +1,4 @@
 import { relations } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
 	foreignKey,
 	index,
@@ -23,6 +22,7 @@ import { user } from "./auth";
 import { serviceSubcategories, services } from "./catalogue";
 import { devices } from "./devices";
 import { teams } from "./org";
+import { pendingReasons } from "./pending";
 import { ticketStatuses } from "./vocabulary";
 
 /**
@@ -78,10 +78,7 @@ export const tickets = pgTable(
 		teamId: text("team_id").references(() => teams.id, {
 			onDelete: "set null",
 		}),
-		mergedIntoId: text("merged_into_id").references(
-			(): AnyPgColumn => tickets.id,
-			{ onDelete: "set null" },
-		),
+		mergedIntoId: text("merged_into_id"),
 		number: text("number").unique(),
 		pendingReasonId: text("pending_reason_id"),
 		pendingUntil: timestamp("pending_until"),
@@ -126,6 +123,16 @@ export const tickets = pgTable(
 			foreignColumns: [serviceSubcategories.id, serviceSubcategories.serviceId],
 			name: "tickets_subcategory_service_fk",
 		}).onDelete("restrict"),
+		foreignKey({
+			columns: [t.mergedIntoId],
+			foreignColumns: [t.id],
+			name: "tickets_merged_into_fk",
+		}).onDelete("set null"),
+		foreignKey({
+			columns: [t.pendingReasonId],
+			foreignColumns: [pendingReasons.id],
+			name: "tickets_pending_reason_fk",
+		}).onDelete("set null"),
 	],
 );
 

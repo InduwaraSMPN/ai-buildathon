@@ -35,7 +35,14 @@ export const knowledgeFolders = pgTable(
 	},
 	(t) => [
 		index("knowledge_folders_parent_idx").on(t.parentId),
-		uniqueIndex("knowledge_folders_parent_name_uidx").on(t.parentId, t.name),
+		uniqueIndex("knowledge_folders_parent_name_uidx")
+			.on(t.parentId, t.name)
+			.where(sql`${t.parentId} is not null`),
+		// Roots have a null parent, which unique indexes treat as distinct, so
+		// root names need their own partial index to stay unique.
+		uniqueIndex("knowledge_folders_root_name_uidx")
+			.on(t.name)
+			.where(sql`${t.parentId} is null`),
 	],
 );
 
@@ -86,6 +93,7 @@ export const knowledgeArticles = pgTable(
 			"gin",
 			sql`to_tsvector('english', coalesce(${t.title}, '') || ' ' || coalesce(${t.body}, ''))`,
 		),
+		check("knowledge_articles_version_positive", sql`${t.currentVersion} > 0`),
 	],
 );
 

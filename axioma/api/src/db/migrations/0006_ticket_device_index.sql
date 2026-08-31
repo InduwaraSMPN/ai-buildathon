@@ -1,1 +1,0 @@
-CREATE INDEX "tickets_device_idx" ON "tickets" USING btree ("device_id");

@@ -1,6 +1,7 @@
 import { relations } from "drizzle-orm";
 import {
 	boolean,
+	foreignKey,
 	index,
 	pgTable,
 	text,
@@ -37,12 +38,8 @@ export const services = pgTable(
 			.references(() => serviceFamilies.id, { onDelete: "cascade" }),
 		name: text("name").notNull(),
 		description: text("description"),
-		slaId: text("sla_id").references(() => slas.id, {
-			onDelete: "set null",
-		}),
-		olaId: text("ola_id").references(() => olas.id, {
-			onDelete: "set null",
-		}),
+		slaId: text("sla_id"),
+		olaId: text("ola_id"),
 		isActive: boolean("is_active").notNull().default(true),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
@@ -54,6 +51,16 @@ export const services = pgTable(
 		uniqueIndex("services_family_name_uidx").on(t.familyId, t.name),
 		index("services_sla_idx").on(t.slaId),
 		index("services_ola_idx").on(t.olaId),
+		foreignKey({
+			columns: [t.slaId],
+			foreignColumns: [slas.id],
+			name: "services_sla_id_fkey",
+		}).onDelete("set null"),
+		foreignKey({
+			columns: [t.olaId],
+			foreignColumns: [olas.id],
+			name: "services_ola_id_fkey",
+		}).onDelete("set null"),
 	],
 );
 
@@ -69,9 +76,7 @@ export const serviceSubcategories = pgTable(
 		approverOverrideId: text("approver_override_id").references(() => user.id, {
 			onDelete: "set null",
 		}),
-		formId: text("form_id").references(() => forms.id, {
-			onDelete: "set null",
-		}),
+		formId: text("form_id"),
 		isActive: boolean("is_active").notNull().default(true),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 		updatedAt: timestamp("updated_at")
@@ -87,6 +92,11 @@ export const serviceSubcategories = pgTable(
 		uniqueIndex("service_subcategories_id_service_uidx").on(t.id, t.serviceId),
 		index("service_subcategories_approver_idx").on(t.approverOverrideId),
 		index("service_subcategories_form_id_idx").on(t.formId),
+		foreignKey({
+			columns: [t.formId],
+			foreignColumns: [forms.id],
+			name: "service_subcategories_form_id_fkey",
+		}).onDelete("set null"),
 	],
 );
 

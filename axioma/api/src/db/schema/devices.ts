@@ -151,7 +151,9 @@ export const deviceCommandProposals = pgTable(
 		digest: text("digest").notNull(),
 		// Whoever started the run that proposed this, copied at proposal time so
 		// the check survives the run being deleted. Null for auto-dispatch.
-		requestedById: text("requested_by_id"),
+		requestedById: text("requested_by_id").references(() => user.id, {
+			onDelete: "set null",
+		}),
 		reason: text("reason").notNull(),
 
 		status: text("status", { enum: DEVICE_PROPOSAL_STATUSES })
