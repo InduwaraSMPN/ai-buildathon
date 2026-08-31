@@ -6,6 +6,7 @@ import {
 import type { ColumnDef } from "@tanstack/react-table";
 import { StatusBadge, timeAgo } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
+import { escalationTones } from "@/lib/status-tone";
 import type { Ticket } from "../api/types";
 
 const priorityVariant = {
@@ -37,7 +38,8 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 				/>
 				{row.original.escalationFlag !== "none" ? (
 					<Badge
-						variant="destructive"
+						variant="outline"
+						tone={escalationTones[row.original.escalationFlag]}
 						title={row.original.escalationReason ?? undefined}
 					>
 						{row.original.escalationFlag}
@@ -62,9 +64,18 @@ export const queueColumns: ColumnDef<Ticket>[] = [
 		cell: ({ row }) => (
 			<div className="max-w-80 whitespace-normal">
 				<div className="font-medium text-foreground">{row.original.title}</div>
-				<div className="font-mono text-[10px] text-muted-foreground">
+				<div className="font-mono text-muted-foreground text-xs">
 					{row.original.number ?? row.original.id}
 				</div>
+				{/* A ticket owned elsewhere: the foreign reference is what its
+				    technicians search by, so it is shown rather than only the
+				    connector's name. */}
+				{row.original.connectorLabel ? (
+					<Badge tone="info" className="mt-1">
+						{row.original.connectorLabel}
+						{row.original.externalKey ? ` · ${row.original.externalKey}` : ""}
+					</Badge>
+				) : null}
 			</div>
 		),
 	},

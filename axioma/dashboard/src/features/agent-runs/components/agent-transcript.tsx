@@ -9,7 +9,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { PageState, StatusBadge } from "@/components/support-ui";
+import { PageState } from "@/components/support-ui";
 import {
 	Alert,
 	AlertAction,
@@ -27,6 +27,7 @@ import {
 	AlertDialogTitle,
 	AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Empty,
@@ -35,10 +36,12 @@ import {
 	EmptyMedia,
 	EmptyTitle,
 } from "@/components/ui/empty";
+import { ProposalCard } from "@/features/connectors/components/proposal-card";
 import type { TicketDetail, TicketStatus } from "@/features/tickets/api/types";
 import { invalidateTicketQueries } from "@/features/tickets/query-behavior";
+import { escalationTones, runStatusTone } from "@/lib/status-tone";
 import { orpc } from "@/utils/orpc";
-import type { AgentRun } from "../api/types";
+import { type AgentRun, environmentSourceLabel } from "../api/types";
 import { type EscalationDetails, extractEscalationDetails } from "./escalation";
 import { runRefetchInterval } from "./run-polling";
 import { RunSelector } from "./run-selector";
@@ -72,7 +75,7 @@ export function AgentTranscript({
 		}),
 		enabled: Boolean(queriedId),
 	});
-	const selectedRun = runQuery.data ?? listedRun;
+	const selectedRun = (runQuery.data as AgentRun | null) ?? listedRun;
 	const queriedStatus = runQuery.data?.status;
 	useEffect(() => {
 		if (
@@ -210,9 +213,24 @@ export function AgentTranscript({
 							onConfirm={cancel}
 						/>
 					)}
-					<StatusBadge status={selectedRun.status} />
+					<Badge variant="outline" tone={runStatusTone(selectedRun.status)}>
+						{selectedRun.status}
+					</Badge>
 				</div>
 			</div>
+			{(selectedRun.environmentKey || selectedRun.environmentSource) && (
+				<div className="mb-3 flex flex-wrap items-center gap-2 text-xs">
+					<span className="text-muted-foreground">Environment:</span>
+					<span className="font-mono">
+						{selectedRun.environmentKey ?? "No environment"}
+					</span>
+					{selectedRun.environmentSource && (
+						<Badge variant="outline">
+							{environmentSourceLabel(selectedRun.environmentSource)}
+						</Badge>
+					)}
+				</div>
+			)}
 			<RunSelector
 				runs={selectorRuns}
 				selectedId={selectedRun.id}
@@ -228,6 +246,7 @@ export function AgentTranscript({
 			{ticketEscalationFlag !== "none" && (
 				<TicketEscalationAlert escalationFlag={ticketEscalationFlag} />
 			)}
+			<ProposalCard ticketId={ticketId} />
 			{steps.length ? (
 				<ol className="mt-3 overflow-hidden border bg-card">
 					{steps.map((step, index) => (
@@ -296,7 +315,10 @@ function TicketEscalationAlert({
 }: {
 	escalationFlag: Exclude<TicketDetail["escalationFlag"], "none">;
 }) {
-	const breached = escalationFlag === "breach";
+	// The Alert primitive has no warning variant, so the tone's styling is
+	// applied via classes; the flag → tone mapping stays in status-tone.
+	const tone = escalationTones[escalationFlag];
+	const breached = tone === "destructive";
 	return (
 		<Alert
 			variant={breached ? "destructive" : "default"}
@@ -333,12 +355,12 @@ function EscalationProposal({
 			<AlertTriangle aria-hidden="true" />
 			<AlertTitle>Scheduler capacity escalation</AlertTitle>
 			<AlertDescription>
-				<p className="text-[10px] text-warning uppercase tracking-wider">
+				<p className="text-warning text-xs uppercase tracking-wider">
 					Escalated run
 				</p>
 				{details?.schedulerMessage && (
 					<div className="mt-3">
-						<p className="mb-1.5 font-medium text-[10px] uppercase tracking-wider">
+						<p className="mb-1.5 font-medium text-xs uppercase tracking-wider">
 							Scheduler message — quoted verbatim
 						</p>
 						<blockquote className="border-warning border-l-2 pl-3 text-foreground text-xs leading-5">
@@ -348,7 +370,7 @@ function EscalationProposal({
 				)}
 				{patch && details && (
 					<div className="mt-3">
-						<p className="mb-1.5 font-medium text-[10px] uppercase tracking-wider">
+						<p className="mb-1.5 font-medium text-xs uppercase tracking-wider">
 							Proposed patch
 						</p>
 						<pre className="overflow-x-auto whitespace-pre-wrap break-words border bg-background p-3 font-mono text-xs leading-5">

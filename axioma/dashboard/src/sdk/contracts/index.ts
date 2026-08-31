@@ -7,8 +7,11 @@ import { automationContract } from "./automation";
 import { catalogueContract } from "./catalogue";
 import { changesContract } from "./changes";
 import { cmdbContract } from "./cmdb";
+import { connectorContract } from "./connectors";
+import { deviceProposalsContract } from "./device-proposals";
 import { devicesContract } from "./devices";
 import { documentsContract } from "./documents";
+import { environmentsContract } from "./environments";
 import { healthContract } from "./health";
 import { identityContract } from "./identity";
 import { knowledgeContract } from "./knowledge";
@@ -46,6 +49,8 @@ export const appContract = {
 	getPublicKnowledgeArticle: knowledgeContract.getPublicKnowledgeArticle,
 	listRequestCatalogue: catalogueContract.listRequestCatalogue,
 	createCatalogueRequest: catalogueContract.createCatalogueRequest,
+	listDeviceProposals: deviceProposalsContract.listDeviceProposals,
+	decideDeviceProposal: deviceProposalsContract.decideDeviceProposal,
 	listApprovals: catalogueContract.listApprovals,
 	decideApproval: catalogueContract.decideApproval,
 	getMyApprovalStatus: catalogueContract.getMyApprovalStatus,
@@ -138,6 +143,12 @@ export const appContract = {
 	unlinkDocument: documentsContract.unlinkDocument,
 	listSuppliers: suppliersContract.listSuppliers,
 	listContracts: suppliersContract.listContracts,
+	listEnvironments: environmentsContract.listEnvironments,
+	createEnvironment: environmentsContract.createEnvironment,
+	updateEnvironment: environmentsContract.updateEnvironment,
+	deleteEnvironment: environmentsContract.deleteEnvironment,
+	linkTicketEnvironment: environmentsContract.linkTicketEnvironment,
+	unlinkTicketEnvironment: environmentsContract.unlinkTicketEnvironment,
 	listEmailSendLog: mailContract.listEmailSendLog,
 	healthCheck: healthContract.healthCheck,
 	privateData: identityContract.privateData,
@@ -169,7 +180,9 @@ export const appContract = {
 	setTicketDynamicFields: ticketsContract.setTicketDynamicFields,
 	updateTicket: ticketsContract.updateTicket,
 	listMyDevices: devicesContract.listMyDevices,
-	enrollDevice: devicesContract.enrollDevice,
+	createDeviceEnrolmentToken: devicesContract.createDeviceEnrolmentToken,
+	rotateDeviceCredential: devicesContract.rotateDeviceCredential,
+	revokeDevice: devicesContract.revokeDevice,
 	listDevices: devicesContract.listDevices,
 	listDeviceCommands: devicesContract.listDeviceCommands,
 	ticketStats: ticketsContract.ticketStats,
@@ -185,6 +198,31 @@ export const appContract = {
 	listTeams: identityContract.listTeams,
 	createTeam: identityContract.createTeam,
 	updateTeam: identityContract.updateTeam,
+
+	// ITSM connector administration.
+	portalIsFrontDoor: connectorContract.portalIsFrontDoor,
+	getTicketConnectorOrigin: connectorContract.getTicketConnectorOrigin,
+	getTicketProposal: connectorContract.getTicketProposal,
+	markProposalOpened: connectorContract.markProposalOpened,
+	recordProposalVerdict: connectorContract.recordProposalVerdict,
+	connectorAgreement: connectorContract.connectorAgreement,
+	listConnectors: connectorContract.listConnectors,
+	createConnector: connectorContract.createConnector,
+	updateConnector: connectorContract.updateConnector,
+	deleteConnector: connectorContract.deleteConnector,
+	testConnector: connectorContract.testConnector,
+	previewConnectorSync: connectorContract.previewConnectorSync,
+	triggerConnectorSync: connectorContract.triggerConnectorSync,
+	listConnectorRuns: connectorContract.listConnectorRuns,
+	listConnectorWritebacks: connectorContract.listConnectorWritebacks,
+	retryConnectorWriteback: connectorContract.retryConnectorWriteback,
+	listDispatchLedger: connectorContract.listDispatchLedger,
+	listFieldMappings: connectorContract.listFieldMappings,
+	upsertFieldMapping: connectorContract.upsertFieldMapping,
+	deleteFieldMapping: connectorContract.deleteFieldMapping,
+	listEnvironmentRoutes: connectorContract.listEnvironmentRoutes,
+	upsertEnvironmentRoute: connectorContract.upsertEnvironmentRoute,
+	deleteEnvironmentRoute: connectorContract.deleteEnvironmentRoute,
 };
 
 export type AppContract = typeof appContract;
@@ -210,7 +248,7 @@ export const portalContract = {
 	addMyTicketMessage: ticketsContract.addMyTicketMessage,
 	updateTicket: reporterUpdateTicket,
 	listMyDevices: devicesContract.listMyDevices,
-	enrollDevice: devicesContract.enrollDevice,
+	portalIsFrontDoor: connectorContract.portalIsFrontDoor,
 };
 
 export type PortalContract = typeof portalContract;

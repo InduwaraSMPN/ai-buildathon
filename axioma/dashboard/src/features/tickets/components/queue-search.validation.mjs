@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	normalizeTicketQueueSearch,
+	SEEDED_TICKET_STATUS_KEYS,
 	toTicketListInput,
 } from "./queue-search.ts";
 
@@ -62,4 +66,26 @@ assert.equal(
 	normalizeTicketQueueSearch({ autonomous: false }).autonomous,
 	undefined,
 );
+// Status keys are runtime rows, so nothing in the type system ties this list
+// to the database. Hold it against the seed migration instead: a status added
+// there but not here is silently unfilterable in the queue, which is exactly
+// the drift a bare "re-listed for URL validation" comment cannot prevent.
+const seedSql = readFileSync(
+	join(
+		dirname(fileURLToPath(import.meta.url)),
+		"../../../../../api/src/db/migrations/0008_tier1_core.sql",
+	),
+	"utf8",
+);
+const insert = seedSql.match(
+	/INSERT INTO "ticket_statuses"[\s\S]*?ON CONFLICT/,
+)?.[0];
+assert.ok(insert, "could not find the ticket_statuses seed insert");
+const seeded = [...insert.matchAll(/\(\s*'([a-z_]+)'\s*,/g)].map((m) => m[1]);
+assert.deepEqual(
+	[...seeded].sort(),
+	[...SEEDED_TICKET_STATUS_KEYS].sort(),
+	"queue-search status keys drifted from the ticket_statuses seed",
+);
+
 console.log("queue search validation passed");

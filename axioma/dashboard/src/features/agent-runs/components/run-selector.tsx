@@ -1,6 +1,8 @@
-import { formatDate, StatusBadge } from "@/components/support-ui";
+import { formatDate } from "@/components/support-ui";
+import { Badge } from "@/components/ui/badge";
 import { Item, ItemContent, ItemGroup } from "@/components/ui/item";
-import type { AgentRun } from "../api/types";
+import { runStatusTone } from "@/lib/status-tone";
+import { type AgentRun, environmentSourceLabel } from "../api/types";
 
 export function RunSelector({
 	runs,
@@ -30,7 +32,9 @@ export function RunSelector({
 									<strong className="tabular-nums">
 										Attempt {runs.length - index}
 									</strong>
-									<StatusBadge status={run.status} />
+									<Badge variant="outline" tone={runStatusTone(run.status)}>
+										{run.status}
+									</Badge>
 								</span>
 								<span className="grid grid-cols-2 gap-x-3 gap-y-1 text-muted-foreground">
 									<span>{run.model ?? "Unknown model"}</span>
@@ -44,6 +48,7 @@ export function RunSelector({
 										{formatDate(run.startedAt)}
 									</time>
 								</span>
+								{environmentProvenance(run)}
 							</ItemContent>
 						</Item>
 					);
@@ -67,4 +72,17 @@ function formatTokens(run: AgentRun) {
 	return (
 		(run.promptTokens ?? 0) + (run.completionTokens ?? 0)
 	).toLocaleString();
+}
+
+function environmentProvenance(run: AgentRun) {
+	if (!run.environmentKey && !run.environmentSource) return null;
+	const label = environmentSourceLabel(run.environmentSource);
+	return (
+		<span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
+			<span className="font-mono">
+				{run.environmentKey ?? "No environment"}
+			</span>
+			{label && <span>{label}</span>}
+		</span>
+	);
 }

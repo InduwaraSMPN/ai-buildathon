@@ -1,6 +1,6 @@
 import { RiUpload2Line } from "@remixicon/react";
 import { PageContainer } from "@/components/layout/page-container";
-import { PageState, StatusBadge } from "@/components/support-ui";
+import { PageState } from "@/components/support-ui";
 import {
 	AlertDialog,
 	AlertDialogAction,
@@ -22,6 +22,11 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import {
+	Collapsible,
+	CollapsibleContent,
+	CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	Table,
@@ -216,14 +221,16 @@ export function AssetsPage({
 								</Button>
 							))}
 							{rejections.map((item) => (
-								<details key={item.id} className="rounded-lg border p-3">
-									<summary className="cursor-pointer font-medium text-destructive">
+								<Collapsible key={item.id} className="rounded-lg border p-3">
+									<CollapsibleTrigger className="w-full cursor-pointer text-left font-medium text-destructive">
 										Row {item.rowNumber}: {item.reason}
-									</summary>
-									<pre className="mt-2 overflow-auto rounded-md bg-muted p-2 text-xs">
-										{JSON.stringify(item.row, null, 2)}
-									</pre>
-								</details>
+									</CollapsibleTrigger>
+									<CollapsibleContent>
+										<pre className="mt-2 overflow-auto rounded-md bg-muted p-2 text-xs">
+											{JSON.stringify(item.row, null, 2)}
+										</pre>
+									</CollapsibleContent>
+								</Collapsible>
 							))}
 						</CardContent>
 					</Card>
@@ -285,7 +292,7 @@ export function AssetsPage({
 											<TableCell>{asset.owner ?? "—"}</TableCell>
 											<TableCell>
 												{asset.status ? (
-													<StatusBadge status={asset.status} />
+													<Badge variant="outline">{asset.status}</Badge>
 												) : (
 													"—"
 												)}

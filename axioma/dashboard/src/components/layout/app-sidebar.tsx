@@ -10,9 +10,12 @@ import {
 	RiListCheck3 as ListChecks,
 	RiMailLine as Mail,
 	RiComputerLine as MonitorCog,
+	RiPlugLine as PlugZap,
 	RiFileList3Line as ScrollText,
+	RiServerLine as Server,
 	RiShieldCheckLine as ShieldCheck,
 	RiStore2Line as Store,
+	RiTerminalBoxLine as Terminal,
 	RiThumbUpLine as ThumbsUp,
 	RiFlowChart as Workflow,
 } from "@remixicon/react";
@@ -39,6 +42,7 @@ export const navigation = [
 	{ to: "/changes", label: "Changes", icon: GitPullRequest },
 	{ to: "/knowledge", label: "Knowledge", icon: BookOpen },
 	{ to: "/approvals", label: "Approvals", icon: ThumbsUp },
+	{ to: "/device-proposals", label: "Device commands", icon: Terminal },
 	{ to: "/assets", label: "Assets", icon: Boxes },
 	{
 		to: "/software-licences",
@@ -83,16 +87,20 @@ export function AppSidebar() {
 			<SidebarContent>
 				<SidebarGroup>
 					<SidebarGroupLabel>Operations</SidebarGroupLabel>
-					<SidebarMenu aria-label="Operations">
+					<SidebarMenu className="gap-1" aria-label="Operations">
 						{navigation
 							.filter(
 								({ to }) =>
-									!(
-										to === "/ticket-rules" ||
-										to === "/workflows" ||
-										to === "/mailboxes" ||
-										to === "/mail-templates"
-									) || capabilities.includes("admin.settings"),
+									((to !== "/devices" ||
+										capabilities.includes("device.read") ||
+										capabilities.includes("device.enroll")) &&
+										!(
+											to === "/ticket-rules" ||
+											to === "/workflows" ||
+											to === "/mailboxes" ||
+											to === "/mail-templates"
+										)) ||
+									capabilities.includes("admin.settings"),
 							)
 							.map(({ to, label, icon: Icon }) => (
 								<SidebarMenuItem key={to}>
@@ -125,6 +133,40 @@ export function AppSidebar() {
 								>
 									<ShieldCheck />
 									<span>Roles</span>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+						)}
+						{capabilities.includes("admin.connectors") && (
+							<SidebarMenuItem>
+								<SidebarMenuButton
+									tooltip="ITSM connectors"
+									isActive={pathname.startsWith("/admin/connectors")}
+									render={
+										<Link
+											to="/admin/connectors"
+											onClick={() => setOpenMobile(false)}
+										/>
+									}
+								>
+									<PlugZap />
+									<span>ITSM connectors</span>
+								</SidebarMenuButton>
+							</SidebarMenuItem>
+						)}
+						{capabilities.includes("admin.environments") && (
+							<SidebarMenuItem>
+								<SidebarMenuButton
+									tooltip="Environments"
+									isActive={pathname.startsWith("/admin/environments")}
+									render={
+										<Link
+											to="/admin/environments"
+											onClick={() => setOpenMobile(false)}
+										/>
+									}
+								>
+									<Server />
+									<span>Environments</span>
 								</SidebarMenuButton>
 							</SidebarMenuItem>
 						)}

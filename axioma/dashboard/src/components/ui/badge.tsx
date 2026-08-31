@@ -1,3 +1,7 @@
+// GENERATED — do not edit.
+// Mirrored from axioma/ui/src by `pnpm --dir axioma/ui mirror`.
+// Change the source in axioma/ui and re-run that command.
+
 import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -20,6 +24,16 @@ const badgeVariants = cva(
 					"hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
 				link: "text-primary underline-offset-4 hover:underline",
 			},
+			// Deviates from the upstream primitive: semantic status tones as a
+			// prop, so both apps resolve a status to the same colours instead of
+			// pasting tone classNames. Keep when re-vendoring.
+			tone: {
+				info: "border-info/30 bg-info/10 text-info",
+				warning: "border-warning/30 bg-warning/10 text-warning",
+				success: "border-success/30 bg-success/10 text-success",
+				destructive: "border-destructive/30 bg-destructive/10 text-destructive",
+				neutral: "border-border bg-muted text-muted-foreground",
+			},
 		},
 		defaultVariants: {
 			variant: "default",
@@ -30,6 +44,7 @@ const badgeVariants = cva(
 function Badge({
 	className,
 	variant = "default",
+	tone,
 	render,
 	...props
 }: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
@@ -37,7 +52,7 @@ function Badge({
 		defaultTagName: "span",
 		props: mergeProps<"span">(
 			{
-				className: cn(badgeVariants({ variant }), className),
+				className: cn(badgeVariants({ variant, tone }), className),
 			},
 			props,
 		),
@@ -45,6 +60,7 @@ function Badge({
 		state: {
 			slot: "badge",
 			variant,
+			tone,
 		},
 	});
 }

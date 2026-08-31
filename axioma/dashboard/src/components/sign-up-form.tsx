@@ -1,7 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { toast } from "sonner";
 import z from "zod";
-import { AxiomaWordmark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
 import {
 	Field,
@@ -47,11 +46,12 @@ export default function SignUpForm({
 	if (isPending) return <Loader />;
 
 	return (
-		<div className="mx-auto mt-10 w-full max-w-md p-6">
-			<div className="mb-6 flex flex-col items-center gap-3">
-				<AxiomaWordmark className="h-8 w-auto text-primary" title="Axiōma" />
-				<h1 className="text-center font-bold text-3xl">Create Account</h1>
-				<p className="text-center text-muted-foreground text-sm">
+		<main className="mx-auto w-full max-w-md px-6 py-12 sm:py-16">
+			<div className="mb-5">
+				<h1 className="font-heading font-semibold text-2xl tracking-tight">
+					Create account
+				</h1>
+				<p className="mt-1 text-muted-foreground text-sm">
 					Set up your Axiōma console access.
 				</p>
 			</div>
@@ -124,6 +124,6 @@ export default function SignUpForm({
 					Already have an account? Sign In
 				</Button>
 			</div>
-		</div>
+		</main>
 	);
 }

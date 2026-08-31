@@ -1,9 +1,12 @@
 import {
 	RiCheckboxCircleLine as CheckCircle2,
 	RiArrowDownSLine as ChevronDown,
+	RiErrorWarningLine as ErrorWarning,
 	RiEyeLine as Eye,
 	RiFlagLine as Flag,
+	RiInformationLine as Information,
 	RiLightbulbLine as Lightbulb,
+	RiAlarmWarningLine as TriangleAlert,
 	RiToolsLine as Wrench,
 } from "@remixicon/react";
 import { formatDate } from "@/components/support-ui";
@@ -15,6 +18,7 @@ import {
 	CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
+import type { EvidenceTone } from "@/sdk/shared";
 import type { AgentStep } from "../api/types";
 
 const stepKinds = {
@@ -38,7 +42,7 @@ export function StepCard({
 	return (
 		<li className="grid grid-cols-[42px_1fr] border-b last:border-b-0">
 			<div className="flex justify-center border-r bg-muted/30 py-4">
-				<span className="grid size-5 place-items-center bg-foreground font-mono text-[9px] text-background">
+				<span className="grid size-5 place-items-center bg-foreground font-mono text-background text-xs">
 					{number}
 				</span>
 			</div>
@@ -53,7 +57,7 @@ export function StepCard({
 							{step.toolName}
 						</Badge>
 					)}
-					<time className="ml-auto text-[10px] text-muted-foreground">
+					<time className="ml-auto text-muted-foreground text-xs">
 						{formatDate(step.createdAt)}
 					</time>
 				</div>
@@ -66,21 +70,47 @@ export function StepCard({
 				{isToolCall && step.toolInput != null && (
 					<ValueBlock title="Tool input" value={step.toolInput} code />
 				)}
-				{step.evidence && <EvidenceBlock evidence={step.evidence} />}
+				{step.evidence && (
+					<EvidenceBlock evidence={step.evidence} tone={step.evidenceTone} />
+				)}
 				{step.toolOutput != null && <CollapsedOutput value={step.toolOutput} />}
 				{!isToolCall && step.toolInput != null && (
 					<ValueBlock title="Input" value={step.toolInput} code />
 				)}
 				{step.error && <ValueBlock title="Error" value={step.error} error />}
+				{step.notice && <NoticeBlock notice={step.notice} />}
 			</article>
 		</li>
 	);
 }
 
-function EvidenceBlock({ evidence }: { evidence: string }) {
+// The Alert primitive has no tone variants, so each evidence tone maps to
+// semantic-token classes locally; the tone itself comes from the agent.
+const evidenceToneClass = {
+	success: "border-success/40 bg-success/10",
+	warning: "border-warning/40 bg-warning/10",
+	destructive: "border-destructive/40 bg-destructive/10",
+	neutral: "border-border bg-muted/40",
+} satisfies Record<EvidenceTone, string>;
+
+const evidenceToneIcon = {
+	success: CheckCircle2,
+	warning: TriangleAlert,
+	destructive: ErrorWarning,
+	neutral: Information,
+} satisfies Record<EvidenceTone, typeof CheckCircle2>;
+
+function EvidenceBlock({
+	evidence,
+	tone = "success",
+}: {
+	evidence: string;
+	tone?: EvidenceTone;
+}) {
+	const Icon = evidenceToneIcon[tone];
 	return (
-		<Alert className="mt-3 border-success/40 bg-success/10">
-			<CheckCircle2 aria-hidden="true" />
+		<Alert className={cn("mt-3", evidenceToneClass[tone])}>
+			<Icon aria-hidden="true" />
 			<AlertTitle>Evidence</AlertTitle>
 			<AlertDescription>
 				<pre className="whitespace-pre-wrap break-words font-sans text-foreground text-xs leading-5">
@@ -91,15 +121,24 @@ function EvidenceBlock({ evidence }: { evidence: string }) {
 	);
 }
 
+function NoticeBlock({ notice }: { notice: string }) {
+	return (
+		<Alert className="mt-3 border-border bg-muted/40">
+			<AlertTitle>Notice</AlertTitle>
+			<AlertDescription>{notice}</AlertDescription>
+		</Alert>
+	);
+}
+
 function CollapsedOutput({ value }: { value: unknown }) {
 	return (
 		<Collapsible className="mt-3 border bg-muted/30">
-			<CollapsibleTrigger className="flex w-full items-center justify-between p-3 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
+			<CollapsibleTrigger className="flex w-full items-center justify-between p-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">
 				Full tool output
 				<ChevronDown className="size-3.5" aria-hidden="true" />
 			</CollapsibleTrigger>
 			<CollapsibleContent>
-				<pre className="overflow-x-auto whitespace-pre-wrap break-words border-t p-3 font-mono text-[11px] leading-5">
+				<pre className="overflow-x-auto whitespace-pre-wrap break-words border-t p-3 font-mono text-xs leading-5">
 					{serialize(value)}
 				</pre>
 			</CollapsibleContent>
@@ -122,7 +161,7 @@ function ValueBlock({
 		<pre
 			className={
 				code
-					? "overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5"
+					? "overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-5"
 					: "whitespace-pre-wrap font-sans text-xs leading-5"
 			}
 		>
@@ -138,7 +177,7 @@ function ValueBlock({
 		);
 	return (
 		<div className="mt-3">
-			<p className="mb-1.5 font-medium text-[10px] text-muted-foreground uppercase tracking-wider">
+			<p className="mb-1.5 font-medium text-muted-foreground text-xs uppercase tracking-wider">
 				{title}
 			</p>
 			{content}

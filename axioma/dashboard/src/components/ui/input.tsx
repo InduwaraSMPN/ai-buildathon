@@ -1,3 +1,7 @@
+// GENERATED — do not edit.
+// Mirrored from axioma/ui/src by `pnpm --dir axioma/ui mirror`.
+// Change the source in axioma/ui and re-run that command.
+
 import { Input as InputPrimitive } from "@base-ui/react/input";
 import type * as React from "react";
 

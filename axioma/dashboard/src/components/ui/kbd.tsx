@@ -1,3 +1,7 @@
+// GENERATED — do not edit.
+// Mirrored from axioma/ui/src by `pnpm --dir axioma/ui mirror`.
+// Change the source in axioma/ui and re-run that command.
+
 import { cn } from "@/lib/utils";
 
 function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {

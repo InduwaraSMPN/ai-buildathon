@@ -32,7 +32,9 @@ const columns = [
 	column.accessor("hostname", {
 		header: "Device",
 		cell: ({ row }) => {
-			const online = Date.now() - row.original.lastSeenAt.getTime() <= 30_000;
+			const online =
+				!row.original.revokedAt &&
+				Date.now() - row.original.lastSeenAt.getTime() <= 30_000;
 			return (
 				<div>
 					<p className="flex items-center gap-2 font-medium">
@@ -41,9 +43,15 @@ const columns = [
 							aria-hidden="true"
 						/>
 						{row.original.hostname}
-						<span className="sr-only">{online ? "Online" : "Offline"}</span>
+						<span className="sr-only">
+							{row.original.revokedAt
+								? "Revoked"
+								: online
+									? "Online"
+									: "Offline"}
+						</span>
 					</p>
-					<p className="font-mono text-[10px] text-muted-foreground">
+					<p className="font-mono text-muted-foreground text-xs">
 						{row.original.id}
 					</p>
 				</div>
@@ -59,7 +67,7 @@ const columns = [
 			cell: ({ row }) => (
 				<div>
 					<p>{row.original.ownerName ?? "Unassigned"}</p>
-					<p className="text-[10px] text-muted-foreground">
+					<p className="text-muted-foreground text-xs">
 						{row.original.ownerEmail ??
 							row.original.username ??
 							"No user details"}
@@ -78,7 +86,7 @@ const columns = [
 					<p>
 						{row.original.platform ?? "Unknown"} {row.original.release ?? ""}
 					</p>
-					<p className="text-[10px] text-muted-foreground">
+					<p className="text-muted-foreground text-xs">
 						Agent {row.original.agentVersion ?? "unknown"}
 					</p>
 				</div>
@@ -98,6 +106,14 @@ const columns = [
 				"—"
 			);
 		},
+	}),
+	column.accessor("credentialStatus", {
+		header: "Credential",
+		cell: ({ row, getValue }) => (
+			<Badge variant={row.original.revokedAt ? "destructive" : "outline"}>
+				{getValue()}
+			</Badge>
+		),
 	}),
 	column.accessor("lastSeenAt", {
 		header: "Last seen",

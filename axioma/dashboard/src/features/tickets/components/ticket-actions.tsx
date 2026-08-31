@@ -38,6 +38,7 @@ import {
 	SheetTitle,
 } from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
+import { useForeignOwned } from "@/features/connectors/components/ticket-origin-banner";
 import { orpc } from "@/utils/orpc";
 import type {
 	TicketActionInput,
@@ -68,6 +69,21 @@ const resolutionCodes = [
 	["rejected", "Rejected"],
 ] as const;
 
+/**
+ * Actions withheld on a ticket owned by a foreign system.
+ *
+ * Only the ones that change the record's state. Reading, commenting, and
+ * running the agent stay available: the ticket is worked here, it is merely
+ * owned there.
+ */
+const FOREIGN_WITHHELD = new Set<TicketOperatorAction>([
+	"resolve",
+	"close",
+	"reopen",
+	"assign",
+	"reclassify",
+]);
+
 export function TicketActions({
 	ticket,
 	capabilities,
@@ -80,7 +96,13 @@ export function TicketActions({
 	onAction: (input: ActionInput) => Promise<unknown>;
 }) {
 	const actions = allowedActions(ticket, capabilities);
-	const has = (action: TicketOperatorAction) => actions.includes(action);
+	// A ticket whose record lives in the customer's own service desk: state
+	// changes here would diverge the two systems, so they are withheld. The
+	// banner above the tabs is what explains why — a disabled control with no
+	// stated reason reads as a bug rather than as a boundary.
+	const foreignOwned = useForeignOwned(ticket.id);
+	const has = (action: TicketOperatorAction) =>
+		actions.includes(action) && !(foreignOwned && FOREIGN_WITHHELD.has(action));
 	const canResolve = has("resolve");
 	const canAssign = has("assign");
 	const canReclassify = has("reclassify");

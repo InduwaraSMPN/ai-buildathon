@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { allowedActions, ticketStatusTone } from "./allowed-actions.ts";
+import { ticketStatusTone } from "../../../lib/status-tone.ts";
+import { allowedActions } from "./allowed-actions.ts";
 
 const now = Date.UTC(2026, 7, 29);
 const ticket = (

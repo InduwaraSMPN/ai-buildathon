@@ -32,6 +32,7 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
+import { cn } from "@/lib/utils";
 import { orpc } from "@/utils/orpc";
 
 const DAYS = 30;
@@ -133,7 +134,13 @@ export function OverviewPage() {
 						{key === "median-ttr" ? (
 							<Stat
 								label="Median TTR"
-								value={formatDuration(stats.medianTimeToResolutionMs)}
+								value={
+									formatDuration(stats.medianTimeToResolutionMs) ?? (
+										<span className="font-normal text-muted-foreground text-sm">
+											No resolved tickets
+										</span>
+									)
+								}
 								detail="All resolved tickets"
 								icon={Clock3}
 								search={{ resolvedAt: true }}
@@ -196,7 +203,7 @@ export function OverviewPage() {
 				>
 					<ChartContainer
 						config={volumeConfig}
-						className="aspect-auto h-[280px] w-full"
+						className="aspect-auto h-72 w-full"
 					>
 						<AreaChart
 							data={stats.daily}
@@ -251,7 +258,7 @@ export function OverviewPage() {
 				>
 					<ChartContainer
 						config={outcomeConfig}
-						className="aspect-auto h-[280px] w-full"
+						className="aspect-auto h-72 w-full"
 					>
 						<BarChart
 							data={stats.daily}
@@ -320,29 +327,62 @@ function PriorityStat({
 	values: Record<"P1" | "P2" | "P3" | "P4", number>;
 }) {
 	return (
-		<Card className="h-full">
+		<StatTile
+			label="Open by priority"
+			detail="Tickets currently being worked"
+			icon={TriangleAlert}
+			valueClassName="flex flex-wrap gap-x-4 gap-y-1"
+			value={(["P1", "P2", "P3", "P4"] as const).map((priority) => (
+				<Link
+					key={priority}
+					to="/tickets"
+					search={{ priority: [priority] }}
+					className={
+						priority === "P1"
+							? "text-destructive hover:underline"
+							: "hover:underline"
+					}
+				>
+					{priority} {values[priority]}
+				</Link>
+			))}
+		/>
+	);
+}
+
+/**
+ * KPI tile that follows the Card contract: the metric name is the title
+ * (announced as the label), the figure is a plain emphasized value, and the
+ * supporting context is the description.
+ */
+function StatTile({
+	label,
+	detail,
+	icon: Icon,
+	value,
+	valueClassName,
+	className,
+}: {
+	label: string;
+	detail: string;
+	icon: typeof Clock3;
+	value: React.ReactNode;
+	valueClassName?: string;
+	className?: string;
+}) {
+	return (
+		<Card className={cn("h-full", className)}>
 			<CardHeader>
-				<CardDescription>Open by priority</CardDescription>
-				<CardTitle className="flex flex-wrap gap-x-4 gap-y-1 text-2xl tabular-nums">
-					{(["P1", "P2", "P3", "P4"] as const).map((priority) => (
-						<Link
-							key={priority}
-							to="/tickets"
-							search={{ priority: [priority] }}
-							className={
-								priority === "P1"
-									? "text-destructive hover:underline"
-									: "hover:underline"
-							}
-						>
-							{priority} {values[priority]}
-						</Link>
-					))}
-				</CardTitle>
-				<CardDescription>Tickets currently being worked</CardDescription>
+				<CardTitle>{label}</CardTitle>
+				<div
+					className={cn("font-semibold text-3xl tabular-nums", valueClassName)}
+				>
+					{value}
+				</div>
+				<CardDescription>{detail}</CardDescription>
 				<CardAction>
 					<span className="grid size-8 place-items-center rounded-md border bg-background">
-						<TriangleAlert className="size-4 text-destructive" />
+						<Icon className="size-4" />
 					</span>
 				</CardAction>
 			</CardHeader>
@@ -359,7 +399,7 @@ function Stat({
 	alert = false,
 }: {
 	label: string;
-	value: number | string;
+	value: React.ReactNode;
 	detail: string;
 	icon: typeof Clock3;
 	search:
@@ -373,22 +413,14 @@ function Stat({
 			search={search}
 			className="rounded-xl focus-visible:outline-2 focus-visible:outline-offset-2"
 		>
-			<Card className="h-full transition-colors hover:ring-foreground/30">
-				<CardHeader>
-					<CardDescription>{label}</CardDescription>
-					<CardTitle
-						className={`text-3xl tabular-nums ${alert ? "text-destructive" : ""}`}
-					>
-						{value}
-					</CardTitle>
-					<CardDescription>{detail}</CardDescription>
-					<CardAction>
-						<span className="grid size-8 place-items-center rounded-md border bg-background">
-							<Icon className="size-4" />
-						</span>
-					</CardAction>
-				</CardHeader>
-			</Card>
+			<StatTile
+				label={label}
+				detail={detail}
+				icon={Icon}
+				value={value}
+				valueClassName={alert ? "text-destructive" : undefined}
+				className="transition-colors hover:ring-foreground/30"
+			/>
 		</Link>
 	);
 }
@@ -431,7 +463,7 @@ function formatPercent(rate: number | null) {
 }
 
 function formatDuration(milliseconds: number | null) {
-	if (milliseconds === null) return "No resolved tickets";
+	if (milliseconds === null) return null;
 	const hours = milliseconds / 3_600_000;
 	return hours < 24
 		? `${hours.toFixed(hours < 10 ? 1 : 0)}h`

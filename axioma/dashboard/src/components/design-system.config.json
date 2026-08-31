@@ -1,0 +1,44 @@
+{
+	"statusPaletteFiles": [
+		"components/sign-in-form.tsx",
+		"components/sign-up-form.tsx",
+		"components/support-ui.tsx",
+		"features/agent-runs/components/agent-transcript.tsx",
+		"features/agent-runs/components/step-card.tsx",
+		"features/devices/components/device-detail-sheet.tsx",
+		"features/devices/components/devices-table.tsx",
+		"features/tickets/components/allowed-actions.ts",
+		"features/tickets/components/queue-columns.tsx",
+		"features/tickets/components/ticket-collaboration.tsx",
+		"features/tickets/components/ticket-queue.tsx"
+	],
+	"groupedCallSites": {
+		"components/mode-toggle.tsx": { "symbol": "DropdownMenuGroup", "count": 1 },
+		"features/tickets/components/dynamic-fields.tsx": {
+			"symbol": "SelectGroup",
+			"count": 1
+		},
+		"features/tickets/components/queue-facet.tsx": {
+			"symbol": "DropdownMenuGroup",
+			"count": 1
+		},
+		"features/tickets/components/ticket-actions.tsx": {
+			"symbol": "SelectGroup",
+			"count": 4
+		},
+		"features/tickets/components/ticket-classification-form.tsx": {
+			"symbol": "SelectGroup",
+			"count": 4
+		},
+		"features/tickets/components/ticket-collaboration.tsx": {
+			"symbol": "SelectGroup",
+			"count": 1
+		},
+		"features/tickets/components/ticket-queue.tsx": {
+			"symbol": "DropdownMenuGroup",
+			"count": 2
+		},
+		"routes/_auth/mailboxes.tsx": { "symbol": "SelectGroup", "count": 1 }
+	},
+	"typeScaleAllowlist": []
+}

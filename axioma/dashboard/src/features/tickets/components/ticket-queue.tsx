@@ -285,6 +285,20 @@ export function TicketQueue({
 							onSearchChange({ teamId: team?.[0] ?? undefined })
 						}
 					/>
+					{/* Only rendered where a connector owns tickets, so a deployment
+					    without one is not shown an always-empty control. */}
+					{(result?.facets.connector ?? []).length ? (
+						<QueueFacet
+							label="Source"
+							value={search.connectorId ? [search.connectorId] : undefined}
+							items={(result?.facets.connector ?? []).map(
+								({ id, name, count }) => ({ value: id, label: name, count }),
+							)}
+							onChange={(connector) =>
+								onSearchChange({ connectorId: connector?.[0] ?? undefined })
+							}
+						/>
+					) : null}
 					<QueueFacet
 						label="Record type"
 						value={search.recordType}
@@ -347,7 +361,7 @@ export function TicketQueue({
 				/>
 			) : (
 				<div className="max-h-[calc(100vh-20rem)] overflow-auto [&>[data-slot=table-container]]:overflow-visible">
-					<Table className="min-w-[1100px] border-collapse text-left text-xs">
+					<Table className="min-w-5xl border-collapse text-left text-xs">
 						<TableHeader className="sticky top-0 z-10 bg-card text-muted-foreground shadow-[0_1px_0_var(--border)]">
 							{table.getHeaderGroups().map((group) => (
 								<TableRow key={group.id}>

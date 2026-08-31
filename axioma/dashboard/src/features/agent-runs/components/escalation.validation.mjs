@@ -28,6 +28,9 @@ const step = (ordinal, values) => ({
 	...values,
 });
 
+// The scheduler message is the last observation carrying evidence — the
+// dashboard no longer re-scans evidence text with failure keywords (the
+// agent now marks each step's evidenceTone instead).
 const details = extractEscalationDetails({
 	...base,
 	steps: [

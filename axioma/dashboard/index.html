@@ -8,6 +8,35 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
     <title>Axiōma Console</title>
+    <script>
+      // Both apps are client-rendered SPAs, so next-themes' script never runs
+      // before first paint. Apply the stored theme class here instead; the
+      // cold load then paints in the stored theme rather than light-then-flip.
+      ;(() => {
+        try {
+          const stored = localStorage.getItem('vite-ui-theme')
+          // The no-stored-value branch must name the same theme as the
+          // ThemeProvider's defaultTheme in routes/__root.tsx, or a first-time
+          // visitor gets this script's choice painted and next-themes' choice a
+          // frame later — the very flash this script exists to remove. Only an
+          // explicit 'system' consults the OS.
+          const theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : stored === 'system'
+                ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                  ? 'dark'
+                  : 'light'
+                : 'dark'
+          document.documentElement.classList.remove('light', 'dark')
+          document.documentElement.classList.add(theme)
+          document.documentElement.style.colorScheme = theme
+        } catch {}
+      })()
+    </script>
+    <!-- Runtime config, written by the container entrypoint at start. Classic
+         script on purpose: it must run before the module bundle reads it. -->
+    <script src="/config.js"></script>
   </head>
 
   <body>

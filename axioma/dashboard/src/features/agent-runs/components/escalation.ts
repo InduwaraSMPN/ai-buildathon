@@ -10,17 +10,12 @@ export function extractEscalationDetails(
 ): EscalationDetails | null {
 	if (run.status !== "escalated") return null;
 
-	const evidenceSteps = run.steps.filter((step) => step.evidence?.trim());
-	const schedulerStep =
-		evidenceSteps.find(
-			(step) =>
-				step.kind === "observation" &&
-				/scheduler|unschedulable|insufficient/i.test(step.evidence ?? ""),
-		) ??
-		evidenceSteps.find((step) =>
-			/scheduler|unschedulable|insufficient/i.test(step.evidence ?? ""),
-		) ??
-		evidenceSteps.findLast((step) => step.kind === "observation");
+	// The agent marks each step's evidence tone, so the dashboard no longer
+	// re-scans evidence text with its own failure-keyword heuristic. The
+	// quoted scheduler message is the last observation that carried evidence.
+	const schedulerStep = run.steps
+		.filter((step) => step.evidence?.trim())
+		.findLast((step) => step.kind === "observation");
 	const patch =
 		run.steps.findLast((step) => step.toolName === "cluster_patch_image")
 			?.toolInput ?? findDecisionPatch(run.steps);

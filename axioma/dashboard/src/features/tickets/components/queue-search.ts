@@ -23,7 +23,18 @@ const values =
 		return normalized.length ? [...new Set(normalized)] : undefined;
 	};
 
-const status = values<TicketStatus>([
+/**
+ * The seeded status keys.
+ *
+ * Status keys are runtime rows in `ticket_statuses`, not a compile-time enum,
+ * so `TicketStatus` is a bare string and there is no shared constant to import.
+ * URL validation still has to reject unknown values before they reach the API,
+ * which means re-listing the seeds. Exported rather than inlined so
+ * queue-search.validation.mjs can hold it against the seed migration — adding a
+ * status row without adding it here silently drops it from queue filters, and
+ * that check is the only thing that catches it.
+ */
+export const SEEDED_TICKET_STATUS_KEYS = [
 	"open",
 	"routing",
 	"resolving",
@@ -31,7 +42,9 @@ const status = values<TicketStatus>([
 	"resolved",
 	"escalated",
 	"closed",
-]);
+] as const;
+
+const status = values<TicketStatus>([...SEEDED_TICKET_STATUS_KEYS]);
 const priority = values<TicketPriority>(["P1", "P2", "P3", "P4"]);
 const recordType = values<TicketRecordType>(["incident", "service_request"]);
 const serviceIds = (value: unknown) => {
@@ -67,6 +80,7 @@ export type TicketQueueSearch = Partial<
 		| "route"
 		| "assigneeId"
 		| "teamId"
+		| "connectorId"
 		| "myQueue"
 		| "deviceId"
 		| "unassigned"
@@ -98,6 +112,7 @@ export function normalizeTicketQueueSearch(
 		route: route(search.route),
 		assigneeId: text(search.assigneeId, 160),
 		teamId: text(search.teamId, 160),
+		connectorId: text(search.connectorId, 160),
 		myQueue: search.myQueue === true || search.myQueue === "true" || undefined,
 		deviceId: text(search.deviceId, 160),
 		unassigned:
@@ -136,6 +151,7 @@ export function toTicketListInput(search: TicketQueueSearch): TicketListInput {
 		route: search.route,
 		assigneeId: search.assigneeId,
 		teamId: search.teamId,
+		connectorId: search.connectorId,
 		myQueue: search.myQueue,
 		deviceId: search.deviceId,
 		unassigned: search.unassigned,

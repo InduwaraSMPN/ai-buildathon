@@ -22,7 +22,16 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 					onSearch={() => setSearchOpen(true)}
 					showTier3={capabilities.includes("admin.settings")}
 				/>
-				{children}
+				{/* One main landmark for every authed route, including the loading,
+				    error and empty states that never reach PageContainer. The header
+				    is deliberately outside it: a banner must not sit inside main. */}
+				<main
+					id="main-content"
+					className="flex min-w-0 flex-1 flex-col"
+					tabIndex={-1}
+				>
+					{children}
+				</main>
 			</SidebarInset>
 			{capabilities.includes("admin.settings") ? (
 				<CommandMenu open={searchOpen} onOpenChange={setSearchOpen} />

@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { ticketStatusTone } from "@/features/tickets/components/allowed-actions";
+import { ticketStatusTone } from "@/lib/status-tone";
 import type { StateType } from "@/sdk/shared";
 
 export function StatusBadge({
@@ -29,10 +29,10 @@ export function StatusBadge({
 }: {
 	status: string;
 	label?: string;
-	stateType?: StateType;
+	stateType: StateType;
 }) {
 	return (
-		<Badge variant="outline" className={ticketStatusTone(stateType ?? status)}>
+		<Badge variant="outline" tone={ticketStatusTone(stateType)}>
 			{label}
 		</Badge>
 	);

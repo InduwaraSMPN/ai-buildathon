@@ -34,6 +34,9 @@ export const CAPABILITIES = [
 	"device.read",
 	"device.enroll",
 	"device.command",
+	// Authorising a device to run something is a different act from issuing a
+	// typed action, and is deliberately held by a different role.
+	"device.approve",
 	"stats.read",
 	"problem.manage",
 	"change.manage",
@@ -45,6 +48,8 @@ export const CAPABILITIES = [
 	"catalogue.manage",
 	"admin.roles",
 	"admin.settings",
+	"admin.environments",
+	"admin.connectors",
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -60,14 +65,6 @@ export const STATE_TYPES = [
 export type StateType = (typeof STATE_TYPES)[number];
 
 /** Seed keys only. Status keys are runtime vocabulary and cross boundaries as strings. */
-export const DEFAULT_TICKET_STATUSES = [
-	"open",
-	"routing",
-	"resolving",
-	"resolved",
-	"escalated",
-	"closed",
-] as const;
 export type TicketStatus = string;
 
 export const RESOLUTION_CODES = [
@@ -142,8 +139,32 @@ export const STEP_KINDS = [
 ] as const;
 export type StepKind = (typeof STEP_KINDS)[number];
 
+export const EVIDENCE_TONES = [
+	"success",
+	"warning",
+	"destructive",
+	"neutral",
+] as const;
+export type EvidenceTone = (typeof EVIDENCE_TONES)[number];
+
 export const DEVICE_CONNECTION_STATES = ["online", "offline"] as const;
 export type DeviceConnectionState = (typeof DEVICE_CONNECTION_STATES)[number];
+
+/**
+ * A proposed device command awaiting a human decision.
+ *
+ * `dispatched` is terminal for the proposal: dispatch consumes it, so one
+ * approval can authorise exactly one execution.
+ */
+export const DEVICE_PROPOSAL_STATUSES = [
+	"proposed",
+	"approved",
+	"rejected",
+	"expired",
+	"dispatched",
+] as const;
+
+export type DeviceProposalStatus = (typeof DEVICE_PROPOSAL_STATUSES)[number];
 
 export const COMMAND_STATUSES = [
 	"pending",
@@ -151,5 +172,70 @@ export const COMMAND_STATUSES = [
 	"succeeded",
 	"failed",
 	"timed_out",
+	"indeterminate",
 ] as const;
 export type CommandStatus = (typeof COMMAND_STATUSES)[number];
+
+/**
+ * The statuses a device may name for itself on a finished command. `pending`
+ * and `dispatched` describe work still in flight, so a result message — which
+ * is terminal by definition — can never report them.
+ */
+export const TERMINAL_COMMAND_STATUSES = [
+	"succeeded",
+	"failed",
+	"timed_out",
+	"indeterminate",
+] as const satisfies readonly CommandStatus[];
+
+/** ITSM connector vocabulary. Shared so contracts and schema cannot drift. */
+export const ITSM_VENDORS = ["servicenow"] as const;
+export type ItsmVendor = (typeof ITSM_VENDORS)[number];
+
+export const ITSM_SYNC_MODES = ["preview", "apply"] as const;
+export type ItsmSyncMode = (typeof ITSM_SYNC_MODES)[number];
+
+export const ITSM_SYNC_STATUSES = ["completed", "rejected", "failed"] as const;
+export type ItsmSyncStatus = (typeof ITSM_SYNC_STATUSES)[number];
+
+/** Every dispatch decision is explained, as `mailbox_activity_log` explains mail. */
+export const ITSM_DISPATCH_OUTCOMES = [
+	"dispatched",
+	"deferred_no_worker",
+	"refused",
+] as const;
+export type ItsmDispatchOutcome = (typeof ITSM_DISPATCH_OUTCOMES)[number];
+
+export const ITSM_WRITEBACK_STATUSES = [
+	"pending",
+	"delivering",
+	"succeeded",
+	"retrying",
+	"failed",
+] as const;
+export type ItsmWritebackStatus = (typeof ITSM_WRITEBACK_STATUSES)[number];
+
+export const ITSM_UNMAPPED_POLICIES = [
+	"reject",
+	"default",
+	"quarantine",
+] as const;
+export type ItsmUnmappedPolicy = (typeof ITSM_UNMAPPED_POLICIES)[number];
+
+/**
+ * Fields a connector mapping may target. `priority` is deliberately absent —
+ * it is derived from impact and urgency by `derivePriority`, so offering it
+ * would let an administrator configure something the system cannot honour.
+ */
+export const ITSM_MAPPABLE_FIELDS = [
+	"recordType",
+	"impact",
+	"urgency",
+	"status",
+	"serviceId",
+	"serviceSubcategoryId",
+] as const;
+export type ItsmMappableField = (typeof ITSM_MAPPABLE_FIELDS)[number];
+
+export const ITSM_PROPOSAL_VERDICTS = ["accepted", "rejected"] as const;
+export type ItsmProposalVerdict = (typeof ITSM_PROPOSAL_VERDICTS)[number];

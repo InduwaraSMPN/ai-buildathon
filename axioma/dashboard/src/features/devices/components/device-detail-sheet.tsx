@@ -2,9 +2,22 @@ import {
 	RiExternalLinkLine as ExternalLink,
 	RiRefreshLine as RefreshCw,
 } from "@remixicon/react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { formatDate, PageState } from "@/components/support-ui";
+import {
+	AlertDialog,
+	AlertDialogAction,
+	AlertDialogCancel,
+	AlertDialogContent,
+	AlertDialogDescription,
+	AlertDialogFooter,
+	AlertDialogHeader,
+	AlertDialogTitle,
+	AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Sheet,
 	SheetContent,
@@ -12,6 +25,7 @@ import {
 	SheetHeader,
 	SheetTitle,
 } from "@/components/ui/sheet";
+import { Spinner } from "@/components/ui/spinner";
 import {
 	Table,
 	TableBody,
@@ -20,6 +34,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
+import { Route } from "@/routes/_auth/devices";
 import { orpc } from "@/utils/orpc";
 import type { Device, DeviceCommand } from "../api/types";
 
@@ -38,9 +53,34 @@ export function DeviceDetailSheet({
 }
 
 function DeviceDetail({ device }: { device: Device }) {
+	const { capabilities } = Route.useRouteContext();
+	const canManageCredentials = capabilities.includes("device.enroll");
+	const canCommand = capabilities.includes("device.command");
+	const queryClient = useQueryClient();
+	const rotate = useMutation(
+		orpc.rotateDeviceCredential.mutationOptions({
+			onSuccess: ({ delivered }) =>
+				delivered
+					? toast.success("Credential rotation delivered")
+					: toast.error("Device did not receive the credential"),
+			onError: (error) => toast.error(error.message),
+		}),
+	);
+	const revoke = useMutation(
+		orpc.revokeDevice.mutationOptions({
+			onSuccess: async () => {
+				await queryClient.invalidateQueries({
+					queryKey: orpc.listDevices.key(),
+				});
+				toast.success("Device revoked");
+			},
+			onError: (error) => toast.error(error.message),
+		}),
+	);
 	const commands = useQuery(
 		orpc.listDeviceCommands.queryOptions({
 			input: { deviceId: device.id, limit: 20 },
+			enabled: canCommand,
 			refetchInterval: 5_000,
 			refetchIntervalInBackground: false,
 		}),
@@ -57,11 +97,13 @@ function DeviceDetail({ device }: { device: Device }) {
 			<SheetHeader className="border-b pr-12">
 				<div className="flex items-center gap-2">
 					<span
-						className={`size-2 rounded-full ${online ? "bg-success" : "bg-muted-foreground/50"}`}
+						className={`size-2 rounded-full ${online && !device.revokedAt ? "bg-success" : "bg-muted-foreground/50"}`}
 						aria-hidden="true"
 					/>
 					<SheetTitle>{device.hostname}</SheetTitle>
-					<Badge variant="outline">{online ? "Online" : "Offline"}</Badge>
+					<Badge variant="outline">
+						{device.revokedAt ? "Revoked" : online ? "Online" : "Offline"}
+					</Badge>
 				</div>
 				<SheetDescription>
 					Device details and the latest 20 commands. Online requires activity
@@ -87,6 +129,12 @@ function DeviceDetail({ device }: { device: Device }) {
 					<Detail
 						label="Enrolled"
 						value={device.enrolledAt ? formatDate(device.enrolledAt) : null}
+						tabular
+					/>
+					<Detail label="Credential" value={device.credentialStatus} />
+					<Detail
+						label="Revoked"
+						value={device.revokedAt ? formatDate(device.revokedAt) : null}
 						tabular
 					/>
 					<Detail
@@ -121,6 +169,46 @@ function DeviceDetail({ device }: { device: Device }) {
 						tabular
 					/>
 				</dl>
+
+				{device.revokedAt || !canManageCredentials ? null : (
+					<div className="flex gap-2">
+						<Button
+							variant="outline"
+							disabled={!online || rotate.isPending}
+							onClick={() => rotate.mutate({ deviceId: device.id })}
+						>
+							{rotate.isPending ? <Spinner data-icon="inline-start" /> : null}
+							Rotate credential
+						</Button>
+						<AlertDialog>
+							<AlertDialogTrigger render={<Button variant="destructive" />}>
+								Revoke device
+							</AlertDialogTrigger>
+							<AlertDialogContent>
+								<AlertDialogHeader>
+									<AlertDialogTitle>Revoke {device.hostname}?</AlertDialogTitle>
+									<AlertDialogDescription>
+										The device will be refused on its next connection. This
+										cannot be undone.
+									</AlertDialogDescription>
+								</AlertDialogHeader>
+								<AlertDialogFooter>
+									<AlertDialogCancel>Cancel</AlertDialogCancel>
+									<AlertDialogAction
+										variant="destructive"
+										disabled={revoke.isPending}
+										onClick={() => revoke.mutate({ deviceId: device.id })}
+									>
+										{revoke.isPending ? (
+											<Spinner data-icon="inline-start" />
+										) : null}
+										Revoke
+									</AlertDialogAction>
+								</AlertDialogFooter>
+							</AlertDialogContent>
+						</AlertDialog>
+					</div>
+				)}
 
 				<section
 					className="space-y-3"
@@ -203,7 +291,11 @@ function DeviceDetail({ device }: { device: Device }) {
 								: "Refreshes every 5 seconds"}
 						</span>
 					</div>
-					{commands.isPending && commands.data == null ? (
+					{!canCommand ? (
+						<p className="text-muted-foreground text-sm">
+							Command history requires device.command access.
+						</p>
+					) : commands.isPending && commands.data == null ? (
 						<PageState
 							kind="loading"
 							title="Loading commands"
@@ -216,7 +308,7 @@ function DeviceDetail({ device }: { device: Device }) {
 							description={commands.error.message}
 							onRetry={() => commands.refetch()}
 						/>
-					) : commands.data.length === 0 ? (
+					) : (commands.data?.length ?? 0) === 0 ? (
 						<PageState
 							kind="empty"
 							title="No commands"
@@ -235,7 +327,7 @@ function DeviceDetail({ device }: { device: Device }) {
 									</TableRow>
 								</TableHeader>
 								<TableBody>
-									{commands.data.map((command) => (
+									{commands.data?.map((command) => (
 										<CommandRow key={command.id} command={command} />
 									))}
 								</TableBody>
@@ -261,7 +353,7 @@ function Detail({
 }) {
 	return (
 		<div>
-			<dt className="text-[10px] text-muted-foreground uppercase tracking-wider">
+			<dt className="text-muted-foreground text-xs uppercase tracking-wider">
 				{label}
 			</dt>
 			<dd
@@ -287,7 +379,7 @@ function CommandRow({ command }: { command: DeviceCommand }) {
 			<TableCell className="font-mono">
 				{command.tool}
 				{commandAction(command.input) && (
-					<span className="block text-[10px] text-muted-foreground">
+					<span className="block text-muted-foreground text-xs">
 						{commandAction(command.input)}
 					</span>
 				)}

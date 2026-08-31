@@ -1,3 +1,7 @@
+// GENERATED — do not edit.
+// Mirrored from axioma/ui/src by `pnpm --dir axioma/ui mirror`.
+// Change the source in axioma/ui and re-run that command.
+
 "use client";
 
 import { mergeProps } from "@base-ui/react/merge-props";
@@ -302,9 +306,12 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
 	);
 }
 
-function SidebarInset({ className, ...props }: React.ComponentProps<"main">) {
+// Deviates from the upstream primitive: renders a div, not <main>, because
+// PageContainer already renders the page's main landmark and the banner header
+// must not sit inside main. Keep when re-vendoring.
+function SidebarInset({ className, ...props }: React.ComponentProps<"div">) {
 	return (
-		<main
+		<div
 			data-slot="sidebar-inset"
 			className={cn(
 				"relative flex w-full flex-1 flex-col bg-background md:peer-data-[variant=inset]:peer-data-[state=collapsed]:ml-2 md:peer-data-[variant=inset]:m-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow-sm",

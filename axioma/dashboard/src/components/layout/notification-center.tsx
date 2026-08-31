@@ -52,7 +52,7 @@ export function NotificationCenter() {
 				{unread ? (
 					<Badge
 						variant="destructive"
-						className="absolute top-1 right-1 h-4 min-w-4 px-1 text-[10px]"
+						className="absolute top-1 right-1 h-4 min-w-4 px-1 text-xs"
 					>
 						{unread}
 					</Badge>

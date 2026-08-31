@@ -15,6 +15,10 @@ import {
 } from "@/components/ui/tooltip";
 import { AgentTranscript } from "@/features/agent-runs/components/agent-transcript";
 import { TicketImpact } from "@/features/cmdb/components/ticket-impact";
+import {
+	TicketOriginBanner,
+	useForeignOwned,
+} from "@/features/connectors/components/ticket-origin-banner";
 import { TicketAttachments } from "@/features/documents/components";
 import { Route } from "@/routes/_auth/tickets.$ticketId";
 import { orpc } from "@/utils/orpc";
@@ -71,6 +75,7 @@ function TicketDetail({
 	ticket: TicketDetailData;
 	capabilities: readonly string[];
 }) {
+	const foreignOwned = useForeignOwned(ticket.id);
 	const queryClient = useQueryClient();
 	const fieldDefinitions = useQuery(
 		orpc.listFieldDefinitions.queryOptions({ input: { objectType: "ticket" } }),
@@ -166,6 +171,7 @@ function TicketDetail({
 				</div>
 			}
 		>
+			<TicketOriginBanner ticketId={ticket.id} />
 			<div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
 				<Card className="min-w-0">
 					<Tabs defaultValue="conversation">
@@ -207,7 +213,7 @@ function TicketDetail({
 				</Card>
 				<aside className="flex flex-col gap-4">
 					<Metadata ticket={ticket} />
-					<SlaCountdown targets={sla.data ?? []} />
+					<SlaCountdown targets={sla.data ?? []} foreignOwned={foreignOwned} />
 					<DynamicFields
 						definitions={fieldDefinitions.data ?? []}
 						values={customFields}

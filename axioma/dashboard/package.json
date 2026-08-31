@@ -22,7 +22,7 @@
 		"@orpc/contract": "^1.15.0",
 		"@orpc/tanstack-query": "^1.14.12",
 		"@remixicon/react": "^4.9.0",
-		"@shadcn/react": "^0.2.1",
+		"@shadcn/react": "^0.3.0",
 		"@t3-oss/env-core": "^0.13.11",
 		"@tailwindcss/vite": "^4.3.3",
 		"@tanstack/react-form": "^1.33.2",
