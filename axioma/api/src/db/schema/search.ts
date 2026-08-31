@@ -6,6 +6,7 @@ import {
 	primaryKey,
 	text,
 	timestamp,
+	vector,
 } from "drizzle-orm/pg-core";
 
 /** Denormalized, authorization-neutral search projection. Authorization is applied at query time. */
@@ -29,6 +30,9 @@ export const searchDocuments = pgTable(
 			.$type<Record<string, unknown>>()
 			.notNull()
 			.default({}),
+		// OpenAI text-embedding-3-small dimensions; null keeps lexical retrieval usable.
+		embedding: vector("embedding", { dimensions: 1536 }),
+		embeddingModel: text("embedding_model"),
 		sourceUpdatedAt: timestamp("source_updated_at").notNull(),
 		indexedAt: timestamp("indexed_at").defaultNow().notNull(),
 	},
@@ -42,5 +46,9 @@ export const searchDocuments = pgTable(
 			)`,
 		),
 		index("search_documents_changed_idx").on(t.objectType, t.sourceUpdatedAt),
+		index("search_documents_embedding_idx").using(
+			"hnsw",
+			t.embedding.op("vector_cosine_ops"),
+		),
 	],
 );

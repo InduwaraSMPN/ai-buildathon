@@ -18,7 +18,9 @@ export const ticketStatuses = pgTable(
 		isClosed: boolean("is_closed").notNull().default(false),
 		pausesSla: boolean("pauses_sla").notNull().default(false),
 		isDefault: boolean("is_default").notNull().default(false),
-		colour: text("colour"),
+		// No colour column: a status's tone is derived from state_type by the
+		// shared status-tone map, so storing a colour name per row offered a knob
+		// that changed nothing. Dropped in 0047.
 		displayOrder: integer("display_order").notNull().default(0),
 		isActive: boolean("is_active").notNull().default(true),
 	},

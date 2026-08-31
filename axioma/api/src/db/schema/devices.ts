@@ -1,5 +1,6 @@
 import { relations } from "drizzle-orm";
 import {
+	boolean,
 	index,
 	integer,
 	jsonb,
@@ -9,7 +10,11 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { COMMAND_STATUSES, DEVICE_CONNECTION_STATES } from "@/shared";
+import {
+	COMMAND_STATUSES,
+	DEVICE_CONNECTION_STATES,
+	DEVICE_PROPOSAL_STATUSES,
+} from "@/shared";
 import { agentRuns, agentSteps } from "./agent";
 import { user } from "./auth";
 
@@ -35,8 +40,12 @@ export const devices = pgTable(
 		platform: text("platform"),
 		release: text("release"),
 		agentVersion: text("agent_version"),
-		enrolmentCode: text("enrolment_code"),
-		enrolmentCodeExpiresAt: timestamp("enrolment_code_expires_at"),
+		credentialHash: text("credential_hash"),
+		credentialRotatedAt: timestamp("credential_rotated_at"),
+		revokedAt: timestamp("revoked_at"),
+		// Whether this machine may run a proposed command at all. Off unless an
+		// operator turns it on, and the device refuses independently as well.
+		executionEnabled: boolean("execution_enabled").notNull().default(false),
 
 		connected: text("connected", { enum: DEVICE_CONNECTION_STATES })
 			.notNull()
@@ -47,8 +56,23 @@ export const devices = pgTable(
 	(t) => [
 		index("devices_owner_idx").on(t.ownerId),
 		index("devices_connected_idx").on(t.connected),
-		uniqueIndex("devices_enrolment_code_uidx").on(t.enrolmentCode),
 	],
+);
+
+export const deviceEnrolmentTokens = pgTable(
+	"device_enrolment_tokens",
+	{
+		id: text("id").primaryKey(),
+		tokenHash: text("token_hash").notNull(),
+		createdBy: text("created_by").references(() => user.id, {
+			onDelete: "set null",
+		}),
+		expiresAt: timestamp("expires_at").notNull(),
+		usedAt: timestamp("used_at"),
+		usedByDeviceId: text("used_by_device_id"),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(t) => [uniqueIndex("device_enrolment_tokens_hash_uidx").on(t.tokenHash)],
 );
 
 /**
@@ -71,6 +95,9 @@ export const deviceCommands = pgTable(
 		stepId: text("step_id").references(() => agentSteps.id, {
 			onDelete: "set null",
 		}),
+		// Set only for a command a human authorised. Its absence is what makes
+		// "who approved this" answerable: nothing else in this row can say.
+		proposalId: text("proposal_id"),
 
 		sequence: integer("sequence").notNull(),
 		tool: text("tool").notNull(),
@@ -92,6 +119,60 @@ export const deviceCommands = pgTable(
 		index("device_commands_status_idx").on(t.deviceId, t.status),
 		index("device_commands_run_idx").on(t.runId),
 		index("device_commands_step_idx").on(t.stepId),
+	],
+);
+
+/**
+ * A command Axel proposes and a human authorises.
+ *
+ * Axel never executes: it writes one of these and the run escalates, because a
+ * run holds a lease measured in seconds and a person decides in hours. Approval
+ * dispatches the command outside any run, from `command` on this row rather than
+ * from anything the model said afterwards, and `digest` is checked again at that
+ * moment so an edited proposal cannot ride an old approval.
+ */
+export const deviceCommandProposals = pgTable(
+	"device_command_proposals",
+	{
+		id: text("id").primaryKey(),
+		deviceId: text("device_id")
+			.notNull()
+			.references(() => devices.id, { onDelete: "cascade" }),
+		ticketId: text("ticket_id").notNull(),
+		runId: text("run_id").references(() => agentRuns.id, {
+			onDelete: "set null",
+		}),
+		stepId: text("step_id").references(() => agentSteps.id, {
+			onDelete: "set null",
+		}),
+
+		// The argument vector, never a command line. No shell is involved.
+		command: jsonb("command").notNull(),
+		digest: text("digest").notNull(),
+		// Whoever started the run that proposed this, copied at proposal time so
+		// the check survives the run being deleted. Null for auto-dispatch.
+		requestedById: text("requested_by_id"),
+		reason: text("reason").notNull(),
+
+		status: text("status", { enum: DEVICE_PROPOSAL_STATUSES })
+			.notNull()
+			.default("proposed"),
+		approvedById: text("approved_by_id").references(() => user.id, {
+			onDelete: "restrict",
+		}),
+		decidedAt: timestamp("decided_at"),
+		decisionNote: text("decision_note"),
+		// An undecided proposal goes stale. Stale authorisation is not
+		// authorisation, so it expires rather than waiting indefinitely.
+		expiresAt: timestamp("expires_at").notNull(),
+		dispatchedCommandId: text("dispatched_command_id"),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(t) => [
+		index("device_command_proposals_status_idx").on(t.status, t.createdAt),
+		index("device_command_proposals_device_idx").on(t.deviceId, t.status),
+		index("device_command_proposals_ticket_idx").on(t.ticketId),
+		index("device_command_proposals_run_idx").on(t.runId),
 	],
 );
 

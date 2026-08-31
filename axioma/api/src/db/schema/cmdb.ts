@@ -9,6 +9,7 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { agentRuns, agentSteps } from "./agent";
+import { environments } from "./environments";
 import { tickets } from "./tickets";
 
 export const cmdbClasses = pgTable(
@@ -96,6 +97,27 @@ export const cmdbObjectProperties = pgTable(
 	(t) => [
 		uniqueIndex("cmdb_object_properties_uidx").on(t.objectId, t.propertyId),
 		index("cmdb_object_properties_property_id_idx").on(t.propertyId),
+	],
+);
+
+/**
+ * CMDB object→environment linkage. Unique object link: one environment per CI, so
+ * the ticket→CMDB→default resolution step is deterministic.
+ */
+export const cmdbObjectEnvironments = pgTable(
+	"cmdb_object_environments",
+	{
+		objectId: text("object_id")
+			.notNull()
+			.references(() => cmdbObjects.id, { onDelete: "cascade" }),
+		environmentId: text("environment_id")
+			.notNull()
+			.references(() => environments.id, { onDelete: "restrict" }),
+		createdAt: timestamp("created_at").defaultNow().notNull(),
+	},
+	(t) => [
+		uniqueIndex("cmdb_object_environments_object_uidx").on(t.objectId),
+		index("cmdb_object_environments_environment_idx").on(t.environmentId),
 	],
 );
 

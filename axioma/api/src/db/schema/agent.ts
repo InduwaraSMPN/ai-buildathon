@@ -9,7 +9,8 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { RUN_STATUSES, STEP_KINDS } from "@/shared";
+import { EVIDENCE_TONES, RUN_STATUSES, STEP_KINDS } from "@/shared";
+import { environments } from "./environments";
 import { tickets } from "./tickets";
 
 /**
@@ -27,12 +28,26 @@ export const agentRuns = pgTable(
 			.references(() => tickets.id, { onDelete: "cascade" }),
 
 		// running -> resolved | escalated | failed | exhausted
+		// The person who started this run, when one did. Auto-dispatch leaves it
+		// null. It exists so a device command proposed by a run cannot be
+		// authorised by whoever set that run going.
+		startedById: text("started_by_id"),
 		status: text("status", { enum: RUN_STATUSES }).notNull().default("running"),
 		model: text("model"),
 		outcome: text("outcome"),
 		workerId: text("worker_id"),
 		acceptedAt: timestamp("accepted_at"),
 		leaseExpiresAt: timestamp("lease_expires_at"),
+
+		// Resolved environment and how it was chosen; `environmentKey` is the
+		// stable key denormalised for the dashboard run list without a join.
+		environmentId: text("environment_id").references(() => environments.id, {
+			onDelete: "set null",
+		}),
+		environmentKey: text("environment_key"),
+		environmentSource: text("environment_source", {
+			enum: ["ticket", "cmdb", "default"],
+		}),
 
 		promptTokens: integer("prompt_tokens"),
 		completionTokens: integer("completion_tokens"),
@@ -70,6 +85,12 @@ export const agentSteps = pgTable(
 		toolOutput: jsonb("tool_output"),
 		error: text("error"),
 		evidence: text("evidence"),
+		// Informational messages that are not failures; empty means absent.
+		notice: text("notice").notNull().default(""),
+		// Presentation tone for the evidence alert; neutral means no signal.
+		evidenceTone: text("evidence_tone", { enum: EVIDENCE_TONES })
+			.notNull()
+			.default("neutral"),
 
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
