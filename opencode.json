@@ -16,10 +16,27 @@
         "Authorization": "Bearer {env:CONTEXT7_API_KEY}"
       },
       "enabled": true
+    },
+    "dbhub": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "-p",
+        "pg",
+        "-p",
+        "@bytebase/dbhub@latest",
+        "dbhub",
+        "--transport",
+        "stdio",
+        "--config",
+        "./dbhub.toml"
+      ]
     }
   },
   "permission": {
     "mcp__chrome-devtools__*": "allow",
-    "mcp__context7__*": "allow"
+    "mcp__context7__*": "allow",
+    "mcp__dbhub__*": "allow"
   }
 }
