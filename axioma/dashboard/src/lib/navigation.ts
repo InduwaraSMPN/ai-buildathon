@@ -5,7 +5,6 @@ import {
 	RiBarChartBoxLine as ChartNoAxesCombined,
 	RiSurveyLine as ClipboardList,
 	RiGitPullRequestLine as GitPullRequest,
-	RiDashboardLine as LayoutDashboard,
 	RiListView as LayoutList,
 	RiLightbulbLine as Lightbulb,
 	RiListCheck3 as ListChecks,
@@ -120,12 +119,6 @@ export const navigation = [
 		label: "Mail templates",
 		icon: Mail,
 		capabilities: ["admin.settings"],
-	},
-	{
-		to: "/overview-widgets",
-		label: "Overview widgets",
-		icon: LayoutDashboard,
-		capabilities: ["stats.read"],
 	},
 	{
 		to: "/ticket-rules",

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { PageState } from "@/components/support-ui";
 import {
-	KnowledgeArticleEditor,
+	KnowledgeArticleEditorDialog,
 	KnowledgePage,
 } from "@/features/knowledge/components/knowledge";
 import { requireNav } from "@/lib/navigation";
@@ -59,7 +59,7 @@ function KnowledgeRoute() {
 				})
 			}
 			action={
-				<KnowledgeArticleEditor
+				<KnowledgeArticleEditorDialog
 					pending={create.isPending}
 					onSubmit={(value) => create.mutate(value)}
 				/>

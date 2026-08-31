@@ -64,6 +64,7 @@ function ArticleRoute() {
 	}
 	return (
 		<KnowledgeArticleEditor
+			className="mx-auto w-full max-w-4xl"
 			initial={state.data}
 			pending={update.isPending}
 			onSubmit={(value) => update.mutate({ id: articleId, ...value })}

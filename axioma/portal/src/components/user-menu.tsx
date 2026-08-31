@@ -39,6 +39,14 @@ export default function UserMenu() {
 					<DropdownMenuLabel>My Account</DropdownMenuLabel>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem>{session.user.email}</DropdownMenuItem>
+					<DropdownMenuSeparator />
+					{/* The terms are accepted at sign-in, so they have to stay
+					 * reachable afterwards — this is the only entry point to them
+					 * from inside the portal. */}
+					<DropdownMenuItem render={<Link to="/acceptable-use" />}>
+						Acceptable use policy
+					</DropdownMenuItem>
+					<DropdownMenuSeparator />
 					<DropdownMenuItem
 						variant="destructive"
 						onClick={() => {

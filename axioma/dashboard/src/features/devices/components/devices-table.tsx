@@ -14,6 +14,7 @@ import { useState } from "react";
 import { PageState, timeAgo } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
 	Table,
@@ -197,8 +198,9 @@ export function DevicesTable({
 					}
 				/>
 			) : (
-				<div className="border bg-card">
-					<Table>
+				<Card>
+					<CardContent className="px-0">
+						<Table>
 						<TableHeader>
 							{table.getHeaderGroups().map((group) => (
 								<TableRow key={group.id}>
@@ -248,8 +250,9 @@ export function DevicesTable({
 								</TableRow>
 							))}
 						</TableBody>
-					</Table>
-				</div>
+						</Table>
+					</CardContent>
+				</Card>
 			)}
 			<div className="flex items-center justify-between text-muted-foreground text-xs">
 				<span className="tabular-nums">

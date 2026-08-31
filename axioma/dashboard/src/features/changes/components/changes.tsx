@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,15 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/dialog";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -95,7 +104,11 @@ export function ChangeEditor({
 		cabMemberIds: string[];
 	}) => void;
 }) {
+	const [open, setOpen] = useState(false);
 	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogTrigger render={<Button size="sm">New change</Button>} />
+			<DialogContent className="sm:max-w-2xl">
 		<form
 			onSubmit={(event) => {
 				event.preventDefault();
@@ -109,9 +122,16 @@ export function ChangeEditor({
 					rollbackPlan: String(data.get("rollbackPlan")),
 					cabMemberIds: [String(data.get("cabMemberIds"))].filter(Boolean),
 				});
+				setOpen(false);
 			}}
 		>
-			<FieldGroup className="grid sm:grid-cols-2">
+			<DialogHeader>
+				<DialogTitle>Raise a change</DialogTitle>
+				<DialogDescription>
+					Describe the change, how it will be tested, and how it rolls back.
+				</DialogDescription>
+			</DialogHeader>
+			<FieldGroup className="grid py-4 sm:grid-cols-2">
 				<Field>
 					<FieldLabel htmlFor="change-title">Title</FieldLabel>
 					<Input id="change-title" name="title" required minLength={3} />
@@ -140,9 +160,16 @@ export function ChangeEditor({
 					<Input id="change-rollback-plan" name="rollbackPlan" required />
 				</Field>
 				<input type="hidden" name="cabMemberIds" value={cabMemberId ?? ""} />
-				<Button disabled={pending}>Create change</Button>
 			</FieldGroup>
+			<DialogFooter>
+				<Button type="button" variant="outline" onClick={() => setOpen(false)}>
+					Cancel
+				</Button>
+				<Button disabled={pending}>Create change</Button>
+			</DialogFooter>
 		</form>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -191,8 +218,9 @@ export function ChangeList({
 			</Empty>
 		);
 	return (
-		<div className="border">
-			<Table>
+		<Card>
+			<CardContent className="px-0">
+				<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Change</TableHead>
@@ -253,8 +281,9 @@ export function ChangeList({
 						</TableRow>
 					))}
 				</TableBody>
-			</Table>
-		</div>
+				</Table>
+			</CardContent>
+		</Card>
 	);
 }
 

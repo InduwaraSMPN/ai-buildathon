@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const source = readFileSync(
-	new URL("./overview-widgets.tsx", import.meta.url),
+	new URL("./edit-overview-dialog.tsx", import.meta.url),
 	"utf8",
 );
 

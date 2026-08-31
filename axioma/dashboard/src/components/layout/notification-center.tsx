@@ -44,17 +44,16 @@ export function NotificationCenter() {
 					<Button
 						variant="ghost"
 						size="icon"
+						className="relative"
 						aria-label={`${unread} unread notifications`}
 					/>
 				}
 			>
 				<Bell />
 				{unread ? (
-					<Badge
-						variant="destructive"
-						className="absolute top-1 right-1 h-4 min-w-4 px-1 text-xs"
-					>
-						{unread}
+					<Badge variant="destructive"
+						className="pointer-events-none absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full border-0 bg-destructive px-1 font-medium text-white text-xs leading-none tabular-nums">
+						{unread > 99 ? "99+" : unread}
 					</Badge>
 				) : null}
 			</PopoverTrigger>

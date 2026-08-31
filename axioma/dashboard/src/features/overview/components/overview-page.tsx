@@ -32,6 +32,7 @@ import {
 	ChartTooltip,
 	ChartTooltipContent,
 } from "@/components/ui/chart";
+import { EditOverviewDialog } from "@/features/overview/components/edit-overview-dialog";
 import { cn } from "@/lib/utils";
 import { orpc } from "@/utils/orpc";
 
@@ -96,6 +97,7 @@ export function OverviewPage() {
 		<PageContainer
 			title="Overview"
 			description="Service desk demand and outcomes from one aggregate view."
+			action={<EditOverviewDialog />}
 		>
 			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
 				{orderedOverviewWidgets(arrangement.data).map(({ key, width }) => (

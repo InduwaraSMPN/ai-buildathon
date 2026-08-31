@@ -114,8 +114,10 @@ export function AssetsPage({
 			description="Inventory and CSV import preview."
 			action={
 				<label
+					// A label, not a Button, because it wraps the file input — but it
+					// carries the same variant as every other page action.
 					className={cn(
-						buttonVariants({ variant: "outline" }),
+						buttonVariants({ size: "sm" }),
 						(!onPreview || busy) && "pointer-events-none opacity-50",
 					)}
 				>

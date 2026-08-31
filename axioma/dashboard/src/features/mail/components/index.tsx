@@ -2,6 +2,13 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
 import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import {
 	Table,
 	TableBody,
 	TableCell,
@@ -50,36 +57,46 @@ export function MailLogPage({
 			description="Inspect successful and failed delivery attempts."
 		>
 			{entries.length ? (
-				<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Attempted</TableHead>
-							<TableHead>Recipient</TableHead>
-							<TableHead>Subject</TableHead>
-							<TableHead>Subsystem</TableHead>
-							<TableHead>Outcome</TableHead>
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{entries.map((entry) => (
-							<TableRow key={entry.id}>
-								<TableCell>{entry.attemptedAt.toLocaleString()}</TableCell>
-								<TableCell>{entry.recipient}</TableCell>
-								<TableCell className="font-medium">{entry.subject}</TableCell>
-								<TableCell>{entry.subsystem}</TableCell>
-								<TableCell>
-									<Badge
-										variant={
-											entry.outcome === "failed" ? "destructive" : "outline"
-										}
-									>
-										{entry.outcome}
-									</Badge>
-								</TableCell>
-							</TableRow>
-						))}
-					</TableBody>
-				</Table>
+				<Card>
+					<CardHeader>
+						<CardTitle>Outbound</CardTitle>
+						<CardDescription>
+							Delivery attempts made by Axiōma subsystems.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="px-0">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Attempted</TableHead>
+									<TableHead>Recipient</TableHead>
+									<TableHead>Subject</TableHead>
+									<TableHead>Subsystem</TableHead>
+									<TableHead>Outcome</TableHead>
+								</TableRow>
+							</TableHeader>
+							<TableBody>
+								{entries.map((entry) => (
+									<TableRow key={entry.id}>
+										<TableCell>{entry.attemptedAt.toLocaleString()}</TableCell>
+										<TableCell>{entry.recipient}</TableCell>
+										<TableCell className="font-medium">{entry.subject}</TableCell>
+										<TableCell>{entry.subsystem}</TableCell>
+										<TableCell>
+											<Badge
+												variant={
+													entry.outcome === "failed" ? "destructive" : "outline"
+												}
+											>
+												{entry.outcome}
+											</Badge>
+										</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</CardContent>
+				</Card>
 			) : (
 				<PageState
 					kind="empty"
@@ -87,37 +104,44 @@ export function MailLogPage({
 					description="No delivery attempts have been recorded."
 				/>
 			)}
-			<section className="mt-6 flex flex-col gap-3">
-				<h2 className="font-semibold">Inbound activity</h2>
-				{activity.length ? (
-					<Table>
-						<TableHeader>
-							<TableRow>
-								<TableHead>Received</TableHead>
-								<TableHead>Mailbox</TableHead>
-								<TableHead>Decision</TableHead>
-								<TableHead>Reason</TableHead>
-							</TableRow>
-						</TableHeader>
-						<TableBody>
-							{activity.map((entry) => (
-								<TableRow key={entry.id}>
-									<TableCell>{entry.createdAt.toLocaleString()}</TableCell>
-									<TableCell>{entry.mailboxId}</TableCell>
-									<TableCell>{decisionLabel(entry.decision)}</TableCell>
-									<TableCell>{entry.reason}</TableCell>
+			{activity.length ? (
+				<Card className="mt-4">
+					<CardHeader>
+						<CardTitle>Inbound activity</CardTitle>
+						<CardDescription>
+							Messages received and how each was routed.
+						</CardDescription>
+					</CardHeader>
+					<CardContent className="px-0">
+						<Table>
+							<TableHeader>
+								<TableRow>
+									<TableHead>Received</TableHead>
+									<TableHead>Mailbox</TableHead>
+									<TableHead>Decision</TableHead>
+									<TableHead>Reason</TableHead>
 								</TableRow>
-							))}
-						</TableBody>
-					</Table>
-				) : (
-					<PageState
-						kind="empty"
-						title="No inbound activity"
-						description="No inbound activity has been recorded."
-					/>
-				)}
-			</section>
+							</TableHeader>
+							<TableBody>
+								{activity.map((entry) => (
+									<TableRow key={entry.id}>
+										<TableCell>{entry.createdAt.toLocaleString()}</TableCell>
+										<TableCell>{entry.mailboxId}</TableCell>
+										<TableCell>{decisionLabel(entry.decision)}</TableCell>
+										<TableCell>{entry.reason}</TableCell>
+									</TableRow>
+								))}
+							</TableBody>
+						</Table>
+					</CardContent>
+				</Card>
+			) : (
+				<PageState
+					kind="empty"
+					title="No inbound activity"
+					description="No inbound activity has been recorded."
+				/>
+			)}
 		</PageContainer>
 	);
 }

@@ -1,9 +1,15 @@
 import { useForm } from "@tanstack/react-form";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
+import { AuthArtwork } from "@/components/auth-artwork";
+import { AuthProviders } from "@/components/auth-providers";
+import { AxiomaWordmark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
 	Field,
+	FieldDescription,
 	FieldError,
 	FieldGroup,
 	FieldLabel,
@@ -45,89 +51,118 @@ export default function SignInForm({
 	if (isPending) return <Loader />;
 
 	return (
-		<main className="mx-auto w-full max-w-md px-6 py-12 sm:py-16">
-			<div className="mb-5">
-				<h1 className="font-heading font-semibold text-2xl tracking-tight">
-					Sign in
-				</h1>
-				<p className="mt-1 text-muted-foreground text-sm">
-					Sign in to the Axiōma console.
-				</p>
-			</div>
-			<form
-				onSubmit={(event) => {
-					event.preventDefault();
-					event.stopPropagation();
-					form.handleSubmit();
-				}}
-			>
-				<FieldGroup>
-					<form.Field name="email">
-						{(field) => {
-							const invalid =
-								field.state.meta.isTouched && !field.state.meta.isValid;
-							return (
-								<Field data-invalid={invalid}>
-									<FieldLabel htmlFor={field.name}>Email</FieldLabel>
-									<Input
-										id={field.name}
-										name={field.name}
-										type="email"
-										value={field.state.value}
-										onBlur={field.handleBlur}
-										onChange={(event) => field.handleChange(event.target.value)}
-										aria-invalid={invalid}
-									/>
-									<FieldError errors={field.state.meta.errors} />
-								</Field>
-							);
+		<div className="flex flex-col gap-6">
+			<Card className="overflow-hidden p-0">
+				<CardContent className="grid p-0 md:grid-cols-2">
+					<form
+						className="p-6 md:p-8"
+						onSubmit={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+							form.handleSubmit();
 						}}
-					</form.Field>
-					<form.Field name="password">
-						{(field) => {
-							const invalid =
-								field.state.meta.isTouched && !field.state.meta.isValid;
-							return (
-								<Field data-invalid={invalid}>
-									<FieldLabel htmlFor={field.name}>Password</FieldLabel>
-									<Input
-										id={field.name}
-										name={field.name}
-										type="password"
-										value={field.state.value}
-										onBlur={field.handleBlur}
-										onChange={(event) => field.handleChange(event.target.value)}
-										aria-invalid={invalid}
-									/>
-									<FieldError errors={field.state.meta.errors} />
-								</Field>
-							);
-						}}
-					</form.Field>
-					<form.Subscribe
-						selector={(state) => ({
-							canSubmit: state.canSubmit,
-							isSubmitting: state.isSubmitting,
-						})}
 					>
-						{({ canSubmit, isSubmitting }) => (
-							<Button
-								type="submit"
-								className="w-full"
-								disabled={!canSubmit || isSubmitting}
-							>
-								{isSubmitting && <Spinner data-icon="inline-start" />}
-								{isSubmitting ? "Submitting..." : "Sign In"}
-							</Button>
-						)}
-					</form.Subscribe>
-				</FieldGroup>
-			</form>
-			<div className="mt-4 text-center">
-				<Button variant="link" onClick={onSwitchToSignUp}>
-					Need an account? Sign Up
-				</Button>
-			</div>
-		</main>
+						<FieldGroup>
+							<div className="flex flex-col items-center gap-2 text-center">
+								<h1 className="font-heading font-semibold text-2xl tracking-tight">
+									Welcome back
+								</h1>
+								{/* `title` carries the accessible name, so the sentence
+								 * still reads "Sign in to the Axiōma console" aloud. */}
+								<p className="flex flex-wrap items-center justify-center gap-1.5 text-muted-foreground text-sm">
+									Sign in to the
+									<AxiomaWordmark
+										title="Axiōma"
+										className="h-4 w-auto text-foreground"
+									/>
+									console
+								</p>
+							</div>
+							<form.Field name="email">
+								{(field) => {
+									const invalid =
+										field.state.meta.isTouched && !field.state.meta.isValid;
+									return (
+										<Field data-invalid={invalid}>
+											<FieldLabel htmlFor={field.name}>Email</FieldLabel>
+											<Input
+												id={field.name}
+												name={field.name}
+												type="email"
+												placeholder="m@example.com"
+												value={field.state.value}
+												onBlur={field.handleBlur}
+												onChange={(event) =>
+													field.handleChange(event.target.value)
+												}
+												aria-invalid={invalid}
+											/>
+											<FieldError errors={field.state.meta.errors} />
+										</Field>
+									);
+								}}
+							</form.Field>
+							<form.Field name="password">
+								{(field) => {
+									const invalid =
+										field.state.meta.isTouched && !field.state.meta.isValid;
+									return (
+										<Field data-invalid={invalid}>
+											<FieldLabel htmlFor={field.name}>Password</FieldLabel>
+											<Input
+												id={field.name}
+												name={field.name}
+												type="password"
+												value={field.state.value}
+												onBlur={field.handleBlur}
+												onChange={(event) =>
+													field.handleChange(event.target.value)
+												}
+												aria-invalid={invalid}
+											/>
+											<FieldError errors={field.state.meta.errors} />
+										</Field>
+									);
+								}}
+							</form.Field>
+							<Field>
+								<form.Subscribe
+									selector={(state) => ({
+										canSubmit: state.canSubmit,
+										isSubmitting: state.isSubmitting,
+									})}
+								>
+									{({ canSubmit, isSubmitting }) => (
+										<Button type="submit" disabled={!canSubmit || isSubmitting}>
+											{isSubmitting && <Spinner data-icon="inline-start" />}
+											{isSubmitting ? "Signing in..." : "Sign in"}
+										</Button>
+									)}
+								</form.Subscribe>
+							</Field>
+							<AuthProviders redirect={redirect} />
+							<FieldDescription className="text-center">
+								Don&apos;t have an account?{" "}
+								<button
+									type="button"
+									className="underline underline-offset-4 hover:text-primary"
+									onClick={onSwitchToSignUp}
+								>
+									Sign up
+								</button>
+							</FieldDescription>
+						</FieldGroup>
+					</form>
+					<div className="relative hidden bg-muted md:block">
+						<AuthArtwork />
+					</div>
+				</CardContent>
+			</Card>
+			<FieldDescription className="px-6 text-center">
+				By continuing you agree to the{" "}
+				<Link to="/acceptable-use">Axiōma acceptable use policy</Link> for this
+				console.
+			</FieldDescription>
+		</div>
 	);
 }

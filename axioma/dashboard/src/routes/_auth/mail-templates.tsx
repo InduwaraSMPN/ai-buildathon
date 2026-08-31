@@ -8,12 +8,20 @@ import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardAction,
-	CardContent,
 	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { requireNav } from "@/lib/navigation";
@@ -35,6 +43,7 @@ function MailTemplates() {
 	const [name, setName] = useState("");
 	const [subject, setSubject] = useState("");
 	const [textBody, setTextBody] = useState("");
+	const [formOpen, setFormOpen] = useState(false);
 	const refresh = () =>
 		Promise.all([
 			queryClient.invalidateQueries({
@@ -50,6 +59,7 @@ function MailTemplates() {
 				setName("");
 				setSubject("");
 				setTextBody("");
+				setFormOpen(false);
 				void refresh();
 			},
 			onError: (error) => toast.error(error.message),
@@ -96,60 +106,71 @@ function MailTemplates() {
 		<PageContainer
 			title="Mail templates"
 			description="Manage message content and choose the default template."
+			action={
+				<Dialog open={formOpen} onOpenChange={setFormOpen}>
+					<DialogTrigger render={<Button size="sm">New template</Button>} />
+					<DialogContent className="sm:max-w-2xl">
+						<DialogHeader>
+							<DialogTitle>New template</DialogTitle>
+							<DialogDescription>
+								Message content Axiōma sends for matching mail rules.
+							</DialogDescription>
+						</DialogHeader>
+						<FieldGroup className="py-4">
+							<Field>
+								<FieldLabel htmlFor="template-name">Template name</FieldLabel>
+								<Input
+									id="template-name"
+									value={name}
+									onChange={(event) => setName(event.target.value)}
+								/>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor="template-subject">Subject</FieldLabel>
+								<Input
+									id="template-subject"
+									value={subject}
+									onChange={(event) => setSubject(event.target.value)}
+								/>
+							</Field>
+							<Field>
+								<FieldLabel htmlFor="template-body">Text body</FieldLabel>
+								<Textarea
+									id="template-body"
+									className="min-h-32"
+									value={textBody}
+									onChange={(event) => setTextBody(event.target.value)}
+								/>
+							</Field>
+						</FieldGroup>
+						<DialogFooter>
+							<Button variant="outline" onClick={() => setFormOpen(false)}>
+								Cancel
+							</Button>
+							<Button
+								disabled={
+									!name.trim() ||
+									!subject.trim() ||
+									!textBody.trim() ||
+									create.isPending
+								}
+								onClick={() =>
+									create.mutate({
+										name,
+										subject,
+										textBody,
+										htmlBody: null,
+										enabled: true,
+									})
+								}
+							>
+								Create template
+							</Button>
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
+			}
 		>
-			<Card className="mb-4">
-				<CardHeader>
-					<CardTitle>New template</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<FieldGroup>
-						<Field>
-							<FieldLabel htmlFor="template-name">Template name</FieldLabel>
-							<Input
-								id="template-name"
-								value={name}
-								onChange={(event) => setName(event.target.value)}
-							/>
-						</Field>
-						<Field>
-							<FieldLabel htmlFor="template-subject">Subject</FieldLabel>
-							<Input
-								id="template-subject"
-								value={subject}
-								onChange={(event) => setSubject(event.target.value)}
-							/>
-						</Field>
-						<Field>
-							<FieldLabel htmlFor="template-body">Text body</FieldLabel>
-							<Textarea
-								id="template-body"
-								className="min-h-32"
-								value={textBody}
-								onChange={(event) => setTextBody(event.target.value)}
-							/>
-						</Field>
-						<Button
-							disabled={
-								!name.trim() ||
-								!subject.trim() ||
-								!textBody.trim() ||
-								create.isPending
-							}
-							onClick={() =>
-								create.mutate({
-									name,
-									subject,
-									textBody,
-									htmlBody: null,
-									enabled: true,
-								})
-							}
-						>
-							Create template
-						</Button>
-					</FieldGroup>
-				</CardContent>
-			</Card>
 			<div className="grid gap-3">
 				{templates.data.map((template) => (
 					<Card key={template.id}>

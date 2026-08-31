@@ -1,6 +1,12 @@
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
+import {
+	Card,
+	CardContent,
+	CardFooter,
+	CardHeader,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export type DeviceProposalSummary = {
@@ -79,8 +85,8 @@ export function DeviceProposalList({
 	return (
 		<div className="flex flex-col gap-4">
 			{proposals.map((proposal) => (
-				<article key={proposal.id} className="border p-4">
-					<header className="flex flex-wrap items-center justify-between gap-2">
+				<Card key={proposal.id}>
+					<CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
 						<div>
 							<span className="font-medium">
 								{proposal.deviceHostname ?? proposal.deviceId}
@@ -91,42 +97,42 @@ export function DeviceProposalList({
 							</span>
 						</div>
 						<Badge variant={TONE[proposal.status]}>{proposal.status}</Badge>
-					</header>
-
-					{/*
-					  The command, in full and never truncated, one argument per line.
-					  Joining them into a single string would hide the boundary the
-					  digest treats as load-bearing — ["a","b"] and ["a b"] are
-					  different commands and must not look identical to the person
-					  who is the entire gate. Inert text: never a link, never runnable
-					  from here.
-					*/}
-					<ol className="mt-3 flex flex-col gap-1 overflow-x-auto border bg-muted p-3 font-mono text-sm">
+					</CardHeader>
+					<CardContent>
 						{/*
-						  argv position is part of the identity: repeated arguments are
-						  legitimate and must stay distinct from one another. The position
-						  is carried on the row itself rather than taken from the render
-						  callback, so the key is derived from data instead of from where
-						  the element happened to land in a list.
+						  The command, in full and never truncated, one argument per line.
+						  Joining them into a single string would hide the boundary the
+						  digest treats as load-bearing — ["a","b"] and ["a b"] are
+						  different commands and must not look identical to the person
+						  who is the entire gate. Inert text: never a link, never runnable
+						  from here.
 						*/}
-						{argvRows(proposal).map((row) => (
-							<li
-								key={row.id}
-								className="flex gap-3 whitespace-pre-wrap break-all"
-							>
-								<span className="shrink-0 text-muted-foreground">
-									{row.position === 0 ? "program" : `arg ${row.position}`}
-								</span>
-								<span>{row.argument}</span>
-							</li>
-						))}
-					</ol>
+						<ol className="flex flex-col gap-1 overflow-x-auto rounded-lg border bg-muted p-3 font-mono text-sm">
+							{/*
+							  argv position is part of the identity: repeated arguments are
+							  legitimate and must stay distinct from one another. The position
+							  is carried on the row itself rather than taken from the render
+							  callback, so the key is derived from data instead of from where
+							  the element happened to land in a list.
+							*/}
+							{argvRows(proposal).map((row) => (
+								<li
+									key={row.id}
+									className="flex gap-3 whitespace-pre-wrap break-all"
+								>
+									<span className="shrink-0 text-muted-foreground">
+										{row.position === 0 ? "program" : `arg ${row.position}`}
+									</span>
+									<span>{row.argument}</span>
+								</li>
+							))}
+						</ol>
 
-					<p className="mt-3 whitespace-pre-wrap text-muted-foreground">
-						{proposal.reason}
-					</p>
-
-					<footer className="mt-4 flex flex-wrap items-center justify-between gap-2">
+						<p className="mt-3 whitespace-pre-wrap text-muted-foreground">
+							{proposal.reason}
+						</p>
+					</CardContent>
+					<CardFooter className="flex flex-wrap items-center justify-between gap-2">
 						<span className="text-muted-foreground text-sm">
 							{proposal.status === "proposed"
 								? `Expires ${new Date(proposal.expiresAt).toLocaleString()}`
@@ -151,8 +157,8 @@ export function DeviceProposalList({
 								</Button>
 							</div>
 						) : null}
-					</footer>
-				</article>
+					</CardFooter>
+				</Card>
 			))}
 		</div>
 	);

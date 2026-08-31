@@ -45,9 +45,11 @@ export function NotificationCenter() {
 				<RiNotificationLine />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-80 p-2">
-				<DropdownMenuLabel>
-					Notifications {query.data && unread ? `(${unread})` : ""}
-				</DropdownMenuLabel>
+				<DropdownMenuGroup>
+					<DropdownMenuLabel>
+						Notifications {query.data && unread ? `(${unread})` : ""}
+					</DropdownMenuLabel>
+				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
 				{query.isPending && query.data == null ? (
 					<div className="flex flex-col gap-2 p-2" role="status">

@@ -28,15 +28,21 @@ function RouteComponent() {
 	const { redirect } = Route.useSearch();
 	const destination = redirect ?? LANDING;
 
-	return showSignIn ? (
-		<SignInForm
-			redirect={destination}
-			onSwitchToSignUp={() => setShowSignIn(false)}
-		/>
-	) : (
-		<SignUpForm
-			redirect={destination}
-			onSwitchToSignIn={() => setShowSignIn(true)}
-		/>
+	return (
+		<main className="flex min-h-svh flex-col items-center justify-center bg-muted p-6 md:p-10">
+			<div className="w-full max-w-sm md:max-w-4xl">
+				{showSignIn ? (
+					<SignInForm
+						redirect={destination}
+						onSwitchToSignUp={() => setShowSignIn(false)}
+					/>
+				) : (
+					<SignUpForm
+						redirect={destination}
+						onSwitchToSignIn={() => setShowSignIn(true)}
+					/>
+				)}
+			</div>
+		</main>
 	);
 }

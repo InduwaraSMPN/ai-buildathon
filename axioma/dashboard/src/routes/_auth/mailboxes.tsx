@@ -8,12 +8,20 @@ import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardAction,
-	CardContent,
 	CardDescription,
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -45,6 +53,7 @@ function Mailboxes() {
 	const [address, setAddress] = useState("");
 	const [ticketOrigin, setTicketOrigin] = useState("");
 	const [enabled, setEnabled] = useState(true);
+	const [formOpen, setFormOpen] = useState(false);
 	const reset = () => {
 		setId(undefined);
 		setName("");
@@ -58,6 +67,7 @@ function Mailboxes() {
 		orpc.upsertMailbox.mutationOptions({
 			onSuccess: () => {
 				reset();
+				setFormOpen(false);
 				void refresh();
 			},
 			onError: (error) => toast.error(error.message),
@@ -92,13 +102,27 @@ function Mailboxes() {
 		<PageContainer
 			title="Mailboxes"
 			description="Manage inbound addresses and their default ticket origin."
+			action={
+				<Button
+					size="sm"
+					onClick={() => {
+						reset();
+						setFormOpen(true);
+					}}
+				>
+					New mailbox
+				</Button>
+			}
 		>
-			<Card className="mb-4">
-				<CardHeader>
-					<CardTitle>{id ? "Edit mailbox" : "New mailbox"}</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<FieldGroup className="grid md:grid-cols-2">
+			<Dialog open={formOpen} onOpenChange={setFormOpen}>
+				<DialogContent className="sm:max-w-2xl">
+					<DialogHeader>
+						<DialogTitle>{id ? "Edit mailbox" : "New mailbox"}</DialogTitle>
+						<DialogDescription>
+							Inbound mail to this address opens tickets with the chosen origin.
+						</DialogDescription>
+					</DialogHeader>
+					<FieldGroup className="grid py-4 md:grid-cols-2">
 						<Field>
 							<FieldLabel htmlFor="mailbox-name">Mailbox name</FieldLabel>
 							<Input
@@ -146,29 +170,24 @@ function Mailboxes() {
 							/>
 							<FieldLabel htmlFor="mailbox-enabled">Enabled</FieldLabel>
 						</Field>
-						<div className="flex gap-2 md:col-span-2">
-							<Button
-								disabled={
-									!name.trim() ||
-									!address.trim() ||
-									!ticketOrigin ||
-									save.isPending
-								}
-								onClick={() =>
-									save.mutate({ id, name, address, ticketOrigin, enabled })
-								}
-							>
-								{id ? "Save mailbox" : "Create mailbox"}
-							</Button>
-							{id && (
-								<Button variant="outline" onClick={reset}>
-									Cancel
-								</Button>
-							)}
-						</div>
 					</FieldGroup>
-				</CardContent>
-			</Card>
+					<DialogFooter>
+						<Button variant="outline" onClick={() => setFormOpen(false)}>
+							Cancel
+						</Button>
+						<Button
+							disabled={
+								!name.trim() || !address.trim() || !ticketOrigin || save.isPending
+							}
+							onClick={() =>
+								save.mutate({ id, name, address, ticketOrigin, enabled })
+							}
+						>
+							{id ? "Save mailbox" : "Create mailbox"}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 			<div className="grid gap-3">
 				{mailboxes.data.map((mailbox) => (
 					<Card key={mailbox.id}>
@@ -190,6 +209,7 @@ function Mailboxes() {
 										setAddress(mailbox.address);
 										setTicketOrigin(mailbox.ticketOrigin);
 										setEnabled(mailbox.enabled);
+										setFormOpen(true);
 									}}
 								>
 									Edit

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,15 @@ import {
 	CardHeader,
 	CardTitle,
 } from "@/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/dialog";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -68,34 +77,56 @@ export function ProblemEditor({
 	pending?: boolean;
 	onSubmit: (value: { title: string; description: string }) => void;
 }) {
+	const [open, setOpen] = useState(false);
 	return (
-		<form
-			onSubmit={(event) => {
-				event.preventDefault();
-				const data = new FormData(event.currentTarget);
-				onSubmit({
-					title: String(data.get("title")),
-					description: String(data.get("description")),
-				});
-			}}
-		>
-			<FieldGroup className="sm:flex-row sm:items-end">
-				<Field>
-					<FieldLabel htmlFor="problem-title">Title</FieldLabel>
-					<Input id="problem-title" name="title" required minLength={3} />
-				</Field>
-				<Field>
-					<FieldLabel htmlFor="problem-description">Description</FieldLabel>
-					<Input
-						id="problem-description"
-						name="description"
-						required
-						minLength={1}
-					/>
-				</Field>
-				<Button disabled={pending}>Create</Button>
-			</FieldGroup>
-		</form>
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogTrigger render={<Button size="sm">New problem</Button>} />
+			<DialogContent className="sm:max-w-lg">
+				<form
+					onSubmit={(event) => {
+						event.preventDefault();
+						const data = new FormData(event.currentTarget);
+						onSubmit({
+							title: String(data.get("title")),
+							description: String(data.get("description")),
+						});
+						setOpen(false);
+					}}
+				>
+					<DialogHeader>
+						<DialogTitle>Raise a problem</DialogTitle>
+						<DialogDescription>
+							Record a root cause so related incidents can be linked to it.
+						</DialogDescription>
+					</DialogHeader>
+					<FieldGroup className="py-4">
+						<Field>
+							<FieldLabel htmlFor="problem-title">Title</FieldLabel>
+							<Input id="problem-title" name="title" required minLength={3} />
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="problem-description">Description</FieldLabel>
+							<Input
+								id="problem-description"
+								name="description"
+								required
+								minLength={1}
+							/>
+						</Field>
+					</FieldGroup>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => setOpen(false)}
+						>
+							Cancel
+						</Button>
+						<Button disabled={pending}>Create</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
 	);
 }
 
@@ -124,8 +155,9 @@ export function ProblemList({
 		);
 
 	return (
-		<div className="border">
-			<Table>
+		<Card>
+			<CardContent className="px-0">
+				<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Problem</TableHead>
@@ -176,8 +208,9 @@ export function ProblemList({
 						</TableRow>
 					))}
 				</TableBody>
-			</Table>
-		</div>
+				</Table>
+			</CardContent>
+		</Card>
 	);
 }
 

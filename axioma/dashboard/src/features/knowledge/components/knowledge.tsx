@@ -1,4 +1,4 @@
-import type { FormEvent, ReactNode } from "react";
+import { type FormEvent, type ReactNode, useState } from "react";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,15 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/dialog";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -150,14 +159,19 @@ export function KnowledgeArticleEditor({
 	initial,
 	pending = false,
 	onSubmit,
+	className,
+	footer,
 }: {
 	initial?: KnowledgeArticle;
 	pending?: boolean;
 	onSubmit: (value: KnowledgeArticleInput) => void;
+	className?: string;
+	/** Replaces the inline submit button so the dialog can own its footer. */
+	footer?: ReactNode;
 }) {
 	return (
 		<form
-			className="mx-auto w-full max-w-4xl"
+			className={className}
 			onSubmit={(event: FormEvent<HTMLFormElement>) => {
 				event.preventDefault();
 				const data = new FormData(event.currentTarget);
@@ -222,10 +236,58 @@ export function KnowledgeArticleEditor({
 					/>
 					<FieldLabel htmlFor="knowledge-restricted">Restricted</FieldLabel>
 				</Field>
-				<Button className="self-end" type="submit" disabled={pending}>
+			</FieldGroup>
+			{footer ?? (
+				<Button className="mt-4 self-end" type="submit" disabled={pending}>
 					{pending ? "Saving…" : "Save article"}
 				</Button>
-			</FieldGroup>
+			)}
 		</form>
+	);
+}
+
+/** Create flow: the editor lives in a dialog so the list page is not split by a form. */
+export function KnowledgeArticleEditorDialog({
+	pending = false,
+	onSubmit,
+}: {
+	pending?: boolean;
+	onSubmit: (value: KnowledgeArticleInput) => void;
+}) {
+	const [open, setOpen] = useState(false);
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<DialogTrigger render={<Button size="sm">New article</Button>} />
+			<DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>New knowledge article</DialogTitle>
+					<DialogDescription>
+						Draft guidance and choose who is allowed to read it.
+					</DialogDescription>
+				</DialogHeader>
+				<KnowledgeArticleEditor
+					className="min-h-0 flex-1 overflow-y-auto py-1 pr-3 pl-1"
+					pending={pending}
+					onSubmit={(value) => {
+						onSubmit(value);
+						setOpen(false);
+					}}
+					footer={
+						<DialogFooter>
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => setOpen(false)}
+							>
+								Cancel
+							</Button>
+							<Button type="submit" disabled={pending}>
+								{pending ? "Saving…" : "Save article"}
+							</Button>
+						</DialogFooter>
+					}
+				/>
+			</DialogContent>
+		</Dialog>
 	);
 }

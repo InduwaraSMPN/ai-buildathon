@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import {
 	Command,
 	CommandDialog,
-	CommandEmpty,
 	CommandGroup,
 	CommandInput,
 	CommandItem,
@@ -72,6 +71,10 @@ export function CommandMenu({
 		results.data ?? [],
 		(result) => result.objectType,
 	);
+	const term = search.trim().toLowerCase();
+	const views = visibleNavigation(capabilities).filter(({ label }) =>
+		label.toLowerCase().includes(term),
+	);
 
 	return (
 		<CommandDialog
@@ -87,55 +90,56 @@ export function CommandMenu({
 					onValueChange={setSearch}
 					placeholder="Search tickets, devices, CMDB, knowledge…"
 				/>
-				<div className="flex gap-3 border-b px-3 py-2 text-muted-foreground text-xs">
-					<span>
-						<Kbd>↑</Kbd>/<Kbd>↓</Kbd> select
+				<div className="flex gap-4 border-b px-3 py-2 text-muted-foreground text-xs">
+					<span className="flex items-center gap-1.5">
+						<Kbd>↑</Kbd>
+						<span aria-hidden="true">/</span>
+						<Kbd>↓</Kbd>
+						select
 					</span>
-					<span>
-						<Kbd>Enter</Kbd> open
+					<span className="flex items-center gap-1.5">
+						<Kbd>Enter</Kbd>
+						open
 					</span>
 				</div>
 				<CommandList>
-					{!search.trim() ? (
-						<>
-							<p className="py-4 text-center text-muted-foreground text-sm">
-								Type to search records.
+					{views.length ? (
+						<CommandGroup heading="Views">
+							{views.map(({ to, label, icon: Icon }) => (
+								<CommandItem key={to} value={to} onSelect={() => goTo(to)}>
+									<Icon />
+									{label}
+								</CommandItem>
+							))}
+						</CommandGroup>
+					) : null}
+					{!term ? null : results.isError && results.data == null ? (
+						<div className="p-4 text-center text-sm" role="alert">
+							<p className="text-destructive">Search failed</p>
+							<p className="mt-1 text-muted-foreground text-xs">
+								{results.error.message}
 							</p>
-							<CommandGroup heading="Views">
-								{visibleNavigation(capabilities).map(
-									({ to, label, icon: Icon }) => (
-										<CommandItem key={to} value={to} onSelect={() => goTo(to)}>
-											<Icon />
-											{label}
-										</CommandItem>
-									),
-								)}
-							</CommandGroup>
-						</>
-					) : results.isError && results.data == null ? (
-						<CommandEmpty>
-							<div role="alert">
-								<p className="text-destructive">Search failed</p>
-								<p className="mt-1 text-muted-foreground text-xs">
-									{results.error.message}
-								</p>
-								<Button
-									variant="outline"
-									size="sm"
-									className="mt-3"
-									onClick={() => results.refetch()}
-								>
-									Try again
-								</Button>
-							</div>
-						</CommandEmpty>
+							<Button
+								variant="outline"
+								size="sm"
+								className="mt-3"
+								onClick={() => results.refetch()}
+							>
+								Try again
+							</Button>
+						</div>
 					) : (
 						<>
-							<CommandEmpty>
-								{results.isPending || results.isFetching
-									? "Searching…"
-									: "No results found."}
-							</CommandEmpty>
+							{results.data?.length ? null : (
+								<p
+									className="p-4 text-center text-muted-foreground text-sm"
+									role="status"
+								>
+									{results.isPending || results.isFetching
+										? "Searching…"
+										: "No results found."}
+								</p>
+							)}
 							{Object.entries(groups).map(([type, items]) => (
 								<CommandGroup
 									key={type}

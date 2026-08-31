@@ -24,6 +24,14 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+	Item,
+	ItemActions,
+	ItemContent,
+	ItemDescription,
+	ItemGroup,
+	ItemTitle,
+} from "@/components/ui/item";
 import { Spinner } from "@/components/ui/spinner";
 import { requireNav } from "@/lib/navigation";
 import { orpc } from "@/utils/orpc";
@@ -194,23 +202,24 @@ function SoftwareLicencesRoute() {
 							Purchased seats and current allocations.
 						</CardDescription>
 					</CardHeader>
-					<CardContent className="flex flex-col gap-2">
-						{entitlements.data.map((item) => (
-							<div
-								key={item.id}
-								className="flex justify-between gap-4 border p-3"
-							>
-								<div>
-									<strong>{item.productName}</strong>
-									<p className="text-muted-foreground text-sm">
-										{item.publisher ?? "Unknown publisher"}
-									</p>
-								</div>
-								<Badge variant="outline">
-									{item.allocatedSeats}/{item.seatCount} seats
-								</Badge>
-							</div>
-						))}
+					<CardContent>
+						<ItemGroup className="gap-2">
+							{entitlements.data.map((item) => (
+								<Item key={item.id} variant="outline">
+									<ItemContent>
+										<ItemTitle>{item.productName}</ItemTitle>
+										<ItemDescription>
+											{item.publisher ?? "Unknown publisher"}
+										</ItemDescription>
+									</ItemContent>
+									<ItemActions>
+										<Badge variant="outline">
+											{item.allocatedSeats}/{item.seatCount} seats
+										</Badge>
+									</ItemActions>
+								</Item>
+							))}
+						</ItemGroup>
 					</CardContent>
 				</Card>
 				<Card>
@@ -220,27 +229,29 @@ function SoftwareLicencesRoute() {
 							Discovered installs checked against available seats.
 						</CardDescription>
 					</CardHeader>
-					<CardContent className="flex flex-col gap-2">
-						{compliance.data.installs.map((item) => (
-							<div
-								key={`${item.assetId}:${item.productId}`}
-								className="flex justify-between gap-4 border p-3"
-							>
-								<div>
-									<strong>{item.productName}</strong>
-									<p className="text-muted-foreground text-sm">
-										{item.assetName}
-									</p>
-								</div>
-								<Badge
-									variant={
-										item.status === "compliant" ? "outline" : "destructive"
-									}
+					<CardContent>
+						<ItemGroup className="gap-2">
+							{compliance.data.installs.map((item) => (
+								<Item
+									key={`${item.assetId}:${item.productId}`}
+									variant="outline"
 								>
-									{item.status}
-								</Badge>
-							</div>
-						))}
+									<ItemContent>
+										<ItemTitle>{item.productName}</ItemTitle>
+										<ItemDescription>{item.assetName}</ItemDescription>
+									</ItemContent>
+									<ItemActions>
+										<Badge
+											variant={
+												item.status === "compliant" ? "outline" : "destructive"
+											}
+										>
+											{item.status}
+										</Badge>
+									</ItemActions>
+								</Item>
+							))}
+						</ItemGroup>
 					</CardContent>
 				</Card>
 			</div>

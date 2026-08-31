@@ -1,6 +1,7 @@
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
 	Table,
@@ -61,8 +62,9 @@ export function ApprovalList({
 			/>
 		);
 	return (
-		<div className="border">
-			<Table>
+		<Card>
+			<CardContent className="px-0">
+				<Table>
 				<TableHeader>
 					<TableRow>
 						<TableHead>Request</TableHead>
@@ -128,7 +130,8 @@ export function ApprovalList({
 						</TableRow>
 					))}
 				</TableBody>
-			</Table>
-		</div>
+				</Table>
+			</CardContent>
+		</Card>
 	);
 }

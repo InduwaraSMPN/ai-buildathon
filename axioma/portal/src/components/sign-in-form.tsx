@@ -1,52 +1,43 @@
 import { useForm } from "@tanstack/react-form";
-import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import z from "zod";
+import { AuthArtwork } from "@/components/auth-artwork";
+import { AuthProviders } from "@/components/auth-providers";
+import { AxiomaWordmark } from "@/components/brand";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
 	Field,
+	FieldDescription,
 	FieldError,
 	FieldGroup,
 	FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
-
-import { ssoCopy } from "@/features/auth/copy";
 import { authClient } from "@/lib/auth-client";
-import { orpc } from "@/utils/orpc";
 
 import Loader from "./loader";
+
+const LANDING = "/my-requests";
 
 export default function SignInForm({
 	onSwitchToSignUp,
 }: {
 	onSwitchToSignUp: () => void;
 }) {
-	const navigate = useNavigate({
-		from: "/login",
-	});
+	const navigate = useNavigate({ from: "/login" });
 	const { isPending } = authClient.useSession();
-	const providers = useQuery(orpc.listAuthProviders.queryOptions());
 
 	const form = useForm({
-		defaultValues: {
-			email: "",
-			password: "",
-		},
+		defaultValues: { email: "", password: "" },
 		onSubmit: async ({ value }) => {
 			await authClient.signIn.email(
-				{
-					email: value.email,
-					password: value.password,
-				},
+				{ email: value.email, password: value.password },
 				{
 					onSuccess: () => {
-						navigate({
-							to: "/my-requests",
-						});
+						navigate({ to: LANDING });
 						toast.success("Sign in successful");
 					},
 					onError: () => {
@@ -70,120 +61,116 @@ export default function SignInForm({
 	}
 
 	return (
-		<main className="mx-auto w-full max-w-md px-6 py-12 sm:py-16">
-			<div className="mb-5">
-				<h1 className="font-heading font-semibold text-2xl tracking-tight">
-					Sign in
-				</h1>
-				<p className="mt-1 text-muted-foreground text-sm">
-					Access your support requests and see what’s happening.
-				</p>
-			</div>
-
-			<form
-				onSubmit={(e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					form.handleSubmit();
-				}}
-				className="flex flex-col gap-4"
-			>
-				<FieldGroup>
-					<form.Field name="email">
-						{(field) => {
-							const invalid =
-								field.state.meta.isTouched && !field.state.meta.isValid;
-							return (
-								<Field data-invalid={invalid}>
-									<FieldLabel htmlFor={field.name}>Email</FieldLabel>
-									<Input
-										id={field.name}
-										name={field.name}
-										type="email"
-										value={field.state.value}
-										onBlur={field.handleBlur}
-										onChange={(e) => field.handleChange(e.target.value)}
-										aria-invalid={invalid}
-									/>
-									<FieldError errors={field.state.meta.errors} />
-								</Field>
-							);
+		<div className="flex flex-col gap-6">
+			<Card className="overflow-hidden p-0">
+				<CardContent className="grid p-0 md:grid-cols-2">
+					<form
+						className="p-6 md:p-8"
+						onSubmit={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							form.handleSubmit();
 						}}
-					</form.Field>
-
-					<form.Field name="password">
-						{(field) => {
-							const invalid =
-								field.state.meta.isTouched && !field.state.meta.isValid;
-							return (
-								<Field data-invalid={invalid}>
-									<FieldLabel htmlFor={field.name}>Password</FieldLabel>
-									<Input
-										id={field.name}
-										name={field.name}
-										type="password"
-										value={field.state.value}
-										onBlur={field.handleBlur}
-										onChange={(e) => field.handleChange(e.target.value)}
-										aria-invalid={invalid}
+					>
+						<FieldGroup>
+							<div className="flex flex-col items-center gap-2 text-center">
+								<h1 className="font-heading font-semibold text-2xl tracking-tight">
+									Sign in
+								</h1>
+								{/* `title` carries the accessible name, so the sentence
+								 * still reads "Access your Axiōma support requests…" aloud. */}
+								<p className="flex flex-wrap items-center justify-center gap-1.5 text-muted-foreground text-sm">
+									Access your
+									<AxiomaWordmark
+										title="Axiōma"
+										className="h-4 w-auto text-foreground"
 									/>
-									<FieldError errors={field.state.meta.errors} />
-								</Field>
-							);
-						}}
-					</form.Field>
-				</FieldGroup>
-
-				<form.Subscribe
-					selector={(state) => ({
-						canSubmit: state.canSubmit,
-						isSubmitting: state.isSubmitting,
-					})}
-				>
-					{({ canSubmit, isSubmitting }) => (
-						<Button
-							type="submit"
-							className="w-full"
-							disabled={!canSubmit || isSubmitting}
-						>
-							{isSubmitting ? <Spinner data-icon="inline-start" /> : null}
-							{isSubmitting ? "Submitting..." : "Sign In"}
-						</Button>
-					)}
-				</form.Subscribe>
-			</form>
-
-			{providers.data?.length ? (
-				<div className="mt-6 space-y-3">
-					<div className="flex items-center gap-3 text-muted-foreground text-sm">
-						<Separator className="flex-1" />
-						{ssoCopy.divider}
-						<Separator className="flex-1" />
+									support requests
+								</p>
+							</div>
+							<form.Field name="email">
+								{(field) => {
+									const invalid =
+										field.state.meta.isTouched && !field.state.meta.isValid;
+									return (
+										<Field data-invalid={invalid}>
+											<FieldLabel htmlFor={field.name}>Email</FieldLabel>
+											<Input
+												id={field.name}
+												name={field.name}
+												type="email"
+												placeholder="m@example.com"
+												value={field.state.value}
+												onBlur={field.handleBlur}
+												onChange={(e) => field.handleChange(e.target.value)}
+												aria-invalid={invalid}
+											/>
+											<FieldError errors={field.state.meta.errors} />
+										</Field>
+									);
+								}}
+							</form.Field>
+							<form.Field name="password">
+								{(field) => {
+									const invalid =
+										field.state.meta.isTouched && !field.state.meta.isValid;
+									return (
+										<Field data-invalid={invalid}>
+											<FieldLabel htmlFor={field.name}>Password</FieldLabel>
+											<Input
+												id={field.name}
+												name={field.name}
+												type="password"
+												value={field.state.value}
+												onBlur={field.handleBlur}
+												onChange={(e) => field.handleChange(e.target.value)}
+												aria-invalid={invalid}
+											/>
+											<FieldError errors={field.state.meta.errors} />
+										</Field>
+									);
+								}}
+							</form.Field>
+							<Field>
+								<form.Subscribe
+									selector={(state) => ({
+										canSubmit: state.canSubmit,
+										isSubmitting: state.isSubmitting,
+									})}
+								>
+									{({ canSubmit, isSubmitting }) => (
+										<Button type="submit" disabled={!canSubmit || isSubmitting}>
+											{isSubmitting ? (
+												<Spinner data-icon="inline-start" />
+											) : null}
+											{isSubmitting ? "Signing in..." : "Sign in"}
+										</Button>
+									)}
+								</form.Subscribe>
+							</Field>
+							<AuthProviders callbackURL={LANDING} />
+							<FieldDescription className="text-center">
+								Need an account?{" "}
+								<button
+									type="button"
+									className="underline underline-offset-4 hover:text-primary"
+									onClick={onSwitchToSignUp}
+								>
+									Sign up
+								</button>
+							</FieldDescription>
+						</FieldGroup>
+					</form>
+					<div className="relative hidden bg-muted md:block">
+						<AuthArtwork />
 					</div>
-					{providers.data.map((provider) => (
-						<Button
-							key={provider.providerId}
-							variant="outline"
-							className="w-full"
-							onClick={async () => {
-								const result = await authClient.signIn.social({
-									provider: provider.providerId,
-									callbackURL: "/my-requests",
-								});
-								if (result.error) toast.error(ssoCopy.failure);
-							}}
-						>
-							{ssoCopy.signIn(provider.name)}
-						</Button>
-					))}
-				</div>
-			) : null}
-
-			<div className="mt-4 text-center">
-				<Button variant="link" onClick={onSwitchToSignUp}>
-					Need an account? Sign Up
-				</Button>
-			</div>
-		</main>
+				</CardContent>
+			</Card>
+			<FieldDescription className="px-6 text-center">
+				By continuing you agree to the{" "}
+				<Link to="/acceptable-use">Axiōma acceptable use policy</Link> for this
+				portal.
+			</FieldDescription>
+		</div>
 	);
 }

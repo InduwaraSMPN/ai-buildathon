@@ -4,6 +4,16 @@ import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+	DialogTrigger,
+} from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -29,6 +39,8 @@ export function RolesPage() {
 	const queryClient = useQueryClient();
 	const [departmentName, setDepartmentName] = useState("");
 	const [teamName, setTeamName] = useState("");
+	const [departmentOpen, setDepartmentOpen] = useState(false);
+	const [teamOpen, setTeamOpen] = useState(false);
 	const roles = useQuery({
 		queryKey: ["roles"],
 		queryFn: () => client.listRoles(),
@@ -149,7 +161,8 @@ export function RolesPage() {
 		>
 			<section className="space-y-3">
 				<h2 className="font-semibold">Role capabilities</h2>
-				<div className="overflow-auto border">
+				<Card>
+<CardContent className="px-0">
 					<Table>
 						<TableHeader>
 							<TableRow>
@@ -186,11 +199,13 @@ export function RolesPage() {
 							))}
 						</TableBody>
 					</Table>
-				</div>
+</CardContent>
+</Card>
 			</section>
 			<section className="space-y-3">
 				<h2 className="font-semibold">People</h2>
-				<div className="overflow-auto border">
+				<Card>
+<CardContent className="px-0">
 					<Table>
 						<TableHeader>
 							<TableRow>
@@ -250,31 +265,57 @@ export function RolesPage() {
 							))}
 						</TableBody>
 					</Table>
-				</div>
+</CardContent>
+</Card>
 			</section>
 			<section className="space-y-3">
 				<h2 className="font-semibold">Departments</h2>
-				<form
-					onSubmit={(event) => {
-						event.preventDefault();
-						createDepartment.mutate();
-					}}
-				>
-					<FieldGroup className="sm:flex-row sm:items-end">
-						<Field>
-							<FieldLabel htmlFor="department-name">Department name</FieldLabel>
-							<Input
-								id="department-name"
-								value={departmentName}
-								onChange={(event) => setDepartmentName(event.target.value)}
-								required
-							/>
-						</Field>
-						<Button type="submit" disabled={createDepartment.isPending}>
-							Create department
-						</Button>
-					</FieldGroup>
-				</form>
+				<Dialog open={departmentOpen} onOpenChange={setDepartmentOpen}>
+					<DialogTrigger
+						render={<Button size="sm">New department</Button>}
+					/>
+					<DialogContent className="sm:max-w-md">
+						<form
+							onSubmit={(event) => {
+								event.preventDefault();
+								createDepartment.mutate();
+								setDepartmentOpen(false);
+							}}
+						>
+							<DialogHeader>
+								<DialogTitle>New department</DialogTitle>
+								<DialogDescription>
+									Departments group the teams that own work.
+								</DialogDescription>
+							</DialogHeader>
+							<FieldGroup className="py-4">
+								<Field>
+									<FieldLabel htmlFor="department-name">
+										Department name
+									</FieldLabel>
+									<Input
+										id="department-name"
+										value={departmentName}
+										onChange={(event) => setDepartmentName(event.target.value)}
+										required
+									/>
+								</Field>
+							</FieldGroup>
+							<DialogFooter>
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => setDepartmentOpen(false)}
+								>
+									Cancel
+								</Button>
+								<Button type="submit" disabled={createDepartment.isPending}>
+									Create department
+								</Button>
+							</DialogFooter>
+						</form>
+					</DialogContent>
+				</Dialog>
 				<div className="text-sm">
 					{departmentRows.map((department) => department.name).join(", ") ||
 						"No departments"}
@@ -282,28 +323,50 @@ export function RolesPage() {
 			</section>
 			<section className="space-y-3">
 				<h2 className="font-semibold">Teams</h2>
-				<form
-					onSubmit={(event) => {
-						event.preventDefault();
-						createTeam.mutate();
-					}}
-				>
-					<FieldGroup className="sm:flex-row sm:items-end">
-						<Field>
-							<FieldLabel htmlFor="team-name">Team name</FieldLabel>
-							<Input
-								id="team-name"
-								value={teamName}
-								onChange={(event) => setTeamName(event.target.value)}
-								required
-							/>
-						</Field>
-						<Button type="submit" disabled={createTeam.isPending}>
-							Create team
-						</Button>
-					</FieldGroup>
-				</form>
-				<div className="overflow-auto border">
+				<Dialog open={teamOpen} onOpenChange={setTeamOpen}>
+					<DialogTrigger render={<Button size="sm">New team</Button>} />
+					<DialogContent className="sm:max-w-md">
+						<form
+							onSubmit={(event) => {
+								event.preventDefault();
+								createTeam.mutate();
+								setTeamOpen(false);
+							}}
+						>
+							<DialogHeader>
+								<DialogTitle>New team</DialogTitle>
+								<DialogDescription>
+									Teams own tickets and appear as assignment targets.
+								</DialogDescription>
+							</DialogHeader>
+							<FieldGroup className="py-4">
+								<Field>
+									<FieldLabel htmlFor="team-name">Team name</FieldLabel>
+									<Input
+										id="team-name"
+										value={teamName}
+										onChange={(event) => setTeamName(event.target.value)}
+										required
+									/>
+								</Field>
+							</FieldGroup>
+							<DialogFooter>
+								<Button
+									type="button"
+									variant="outline"
+									onClick={() => setTeamOpen(false)}
+								>
+									Cancel
+								</Button>
+								<Button type="submit" disabled={createTeam.isPending}>
+									Create team
+								</Button>
+							</DialogFooter>
+						</form>
+					</DialogContent>
+				</Dialog>
+				<Card>
+<CardContent className="px-0">
 					<Table>
 						<TableHeader>
 							<TableRow>
@@ -380,7 +443,8 @@ export function RolesPage() {
 							))}
 						</TableBody>
 					</Table>
-				</div>
+</CardContent>
+</Card>
 			</section>
 		</PageContainer>
 	);
