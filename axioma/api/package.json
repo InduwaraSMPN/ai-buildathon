@@ -15,6 +15,7 @@
 		"test": "tsx --test src/**/*.test.ts",
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
+		"db:backfill-embeddings": "tsx src/server/search/backfill.ts",
 		"db:check": "drizzle-kit check && node scripts/check-migration-drift.mjs",
 		"db:studio": "drizzle-kit studio",
 		"db:start": "docker compose up -d --wait",

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.data/
+k8s/
+.env
+.env.local
+*.tsbuildinfo
+*.log
+docker-compose.yml
+biome.json
