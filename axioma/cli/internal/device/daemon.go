@@ -2,16 +2,21 @@ package device
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"os"
 	"time"
 
 	"github.com/axioma/cli/internal/pb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -52,7 +57,7 @@ type terminalError struct{ error }
 // RunDaemon holds the outbound device stream until ctx is cancelled. Connection
 // failures are retried; local errors that would make execution unsafe are
 // returned. Context cancellation is a clean shutdown and returns nil.
-func RunDaemon(ctx context.Context, host, version string) error {
+func RunDaemon(ctx context.Context, config Config, version string) error {
 	id, err := Load(version)
 	if err != nil {
 		return err
@@ -63,8 +68,8 @@ func RunDaemon(ctx context.Context, host, version string) error {
 			return nil
 		}
 		started := time.Now()
-		err = connect(ctx, host, &id, productionTimings)
-		if stateErr := saveDaemonState(DaemonState{GRPCHost: host, LastSeenSequence: id.LastSeenSequence, LastError: errorString(err)}); stateErr != nil {
+		err = connect(ctx, config, &id, productionTimings)
+		if stateErr := saveDaemonState(DaemonState{GRPCHost: config.GRPCHost, LastSeenSequence: id.LastSeenSequence, LastError: errorString(err)}); stateErr != nil {
 			return fmt.Errorf("save daemon state: %w", stateErr)
 		}
 		if ctx.Err() != nil {
@@ -103,9 +108,13 @@ func nextBackoff(current, connectedFor, stable time.Duration) time.Duration {
 	return current
 }
 
-func connect(ctx context.Context, host string, id *Identity, timings daemonTimings) error {
-	conn, err := grpc.NewClient(host,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+func connect(ctx context.Context, config Config, id *Identity, timings daemonTimings) error {
+	transport, err := transportCredentials(config)
+	if err != nil {
+		return terminalError{err}
+	}
+	conn, err := grpc.NewClient(config.GRPCHost,
+		grpc.WithTransportCredentials(transport),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                timings.heartbeat,
 			Timeout:             timings.liveness,
@@ -120,9 +129,68 @@ func connect(ctx context.Context, host string, id *Identity, timings daemonTimin
 	defer cancel()
 	stream, err := pb.NewDeviceChannelClient(conn).Connect(connCtx)
 	if err != nil {
-		return fmt.Errorf("connect device stream: %w", err)
+		return authError("connect device stream", err)
 	}
-	return serveConnection(connCtx, cancel, stream, host, id, timings, SaveSequence, execute, CollectInventory)
+	return serveConnection(connCtx, cancel, stream, config.GRPCHost, id, timings, SaveSequence, execute, CollectInventory)
+}
+
+// CheckAuth opens the real TLS channel and verifies that the gateway accepts the
+// currently persisted identity. It does not consume a new credential.
+func CheckAuth(ctx context.Context, config Config, id Identity) (string, error) {
+	transport, err := transportCredentials(config)
+	if err != nil {
+		return "", err
+	}
+	conn, err := grpc.NewClient(config.GRPCHost, grpc.WithTransportCredentials(transport))
+	if err != nil {
+		return "", fmt.Errorf("create grpc client: %w", err)
+	}
+	defer conn.Close()
+	stream, err := pb.NewDeviceChannelClient(conn).Connect(ctx)
+	if err != nil {
+		return "", authError("connect device stream", err)
+	}
+	if err := stream.Send(&pb.DeviceMessage{Payload: &pb.DeviceMessage_Hello{Hello: &pb.DeviceHello{
+		DeviceId: id.DeviceID, Hostname: id.Hostname, Username: id.Username, Platform: id.Platform,
+		Release: id.Release, AgentVersion: id.AgentVersion, LastSeenSequence: id.LastSeenSequence,
+		Credential: id.Credential,
+	}}}); err != nil {
+		return "", authError("send device hello", err)
+	}
+	msg, err := stream.Recv()
+	if err != nil {
+		return "", authError("receive gateway authentication", err)
+	}
+	if enrollment := msg.GetEnrollment(); enrollment != nil && !enrollment.AuthValid {
+		return "", fmt.Errorf("gateway rejected device credential")
+	}
+	return "TLS verified; credential accepted", nil
+}
+
+func transportCredentials(config Config) (credentials.TransportCredentials, error) {
+	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: config.TLSServerName}
+	if config.CAFile != "" {
+		pem, err := os.ReadFile(config.CAFile)
+		if err != nil {
+			return nil, fmt.Errorf("read customer CA: %w", err)
+		}
+		roots, err := x509.SystemCertPool()
+		if err != nil || roots == nil {
+			roots = x509.NewCertPool()
+		}
+		if !roots.AppendCertsFromPEM(pem) {
+			return nil, fmt.Errorf("customer CA contains no certificates")
+		}
+		tlsConfig.RootCAs = roots
+	}
+	return credentials.NewTLS(tlsConfig), nil
+}
+
+func authError(operation string, err error) error {
+	if code := status.Code(err); code == codes.Unauthenticated || code == codes.PermissionDenied {
+		return terminalError{fmt.Errorf("%s: authentication refused: %w", operation, err)}
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func serveConnection(ctx context.Context, cancel context.CancelFunc, stream deviceStream, host string, id *Identity, timings daemonTimings, saveSequence func(Identity, uint64) error, executeCommand func(context.Context, *pb.DeviceCommand) *pb.CommandResult, collectors ...func(context.Context) Inventory) error {
@@ -137,9 +205,9 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 	if err := stream.Send(&pb.DeviceMessage{Payload: &pb.DeviceMessage_Hello{Hello: &pb.DeviceHello{
 		DeviceId: id.DeviceID, Hostname: id.Hostname, Username: id.Username,
 		Platform: id.Platform, Release: id.Release, AgentVersion: id.AgentVersion,
-		LastSeenSequence: id.LastSeenSequence, EnrolmentCode: id.EnrolmentCode,
+		LastSeenSequence: id.LastSeenSequence, EnrolmentToken: id.EnrolmentToken, Credential: id.Credential,
 	}}}); err != nil {
-		return fmt.Errorf("send device hello: %w", err)
+		return authError("send device hello", err)
 	}
 	if err := saveDaemonState(DaemonState{Connected: true, GRPCHost: host, LastSeenSequence: id.LastSeenSequence}); err != nil {
 		return terminalError{fmt.Errorf("save daemon state: %w", err)}
@@ -237,7 +305,7 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-recvErr:
-			return fmt.Errorf("receive gateway message: %w", err)
+			return authError("receive gateway message", err)
 		case <-liveness.C:
 			return fmt.Errorf("gateway silent for %s", timings.liveness)
 		case <-heartbeats.C:
@@ -258,20 +326,15 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 		case msg := <-incoming:
 			resetTimer(liveness, timings.liveness)
 			if enrollment := msg.GetEnrollment(); enrollment != nil {
-				if enrollment.Claimed && id.EnrolmentCode != "" {
-					if err := SaveEnrolmentCode(*id, ""); err != nil {
-						return terminalError{fmt.Errorf("clear enrolment code: %w", err)}
+				if enrollment.Credential != "" {
+					if err := SaveCredentials(*id, "", enrollment.Credential); err != nil {
+						return terminalError{fmt.Errorf("persist device credential: %w", err)}
 					}
-					id.EnrolmentCode = ""
-				} else if enrollment.CodeExpired && id.EnrolmentCode != "" {
-					if err := SaveEnrolmentCode(*id, ""); err != nil {
-						return terminalError{fmt.Errorf("rotate expired enrolment code: %w", err)}
-					}
-					id.EnrolmentCode = ""
-					if err := EnsureEnrolmentCode(id); err != nil {
-						return terminalError{err}
-					}
-					return fmt.Errorf("enrolment code expired; generated a replacement")
+					id.EnrolmentToken, id.Credential = "", enrollment.Credential
+				} else if enrollment.CodeExpired {
+					return terminalError{fmt.Errorf("enrolment token was refused or expired; run axel-cli enroll again")}
+				} else if !enrollment.AuthValid && id.Credential != "" {
+					return terminalError{fmt.Errorf("device credential was refused; re-enrolment is required")}
 				}
 				continue
 			}
@@ -306,8 +369,24 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 	}
 }
 
+// duplicateAck answers a replayed sequence without re-running the command. The
+// original result is gone, so the outcome is genuinely indeterminate; the
+// explanation travels in the structured payload as well as the error field so
+// consumers reading either place see why.
+// commandStatusIndeterminate must stay spelled exactly as it is in
+// COMMAND_STATUSES in api/src/shared; the API rejects anything else.
+const commandStatusIndeterminate = "indeterminate"
+
 func duplicateAck(command *pb.DeviceCommand) *pb.DeviceMessage {
-	return rejectedCommand(command, "sequence already accepted; result is unavailable and command was not re-run", `{"duplicate":true,"outcome":"indeterminate"}`)
+	message := "sequence already accepted; result is unavailable and command was not re-run"
+	outbound := rejectedCommand(command, message,
+		fmt.Sprintf(`{"duplicate":true,"outcome":%q,"detail":%q}`,
+			commandStatusIndeterminate, message))
+	// Say it in the field the API reads, not only in the payload: without this
+	// a replay persists as a plain failure, which claims the command did not
+	// run when nobody knows either way.
+	outbound.GetResult().Status = commandStatusIndeterminate
+	return outbound
 }
 
 func rejectedCommand(command *pb.DeviceCommand, message string, output ...string) *pb.DeviceMessage {

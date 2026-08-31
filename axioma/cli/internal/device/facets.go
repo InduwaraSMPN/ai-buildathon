@@ -77,6 +77,71 @@ type ProcessesFacet struct {
 	Processes []Process `json:"processes"`
 }
 
+type Certificate struct {
+	Subject    string `json:"subject"`
+	Issuer     string `json:"issuer,omitempty"`
+	Thumbprint string `json:"thumbprint"`
+	NotAfter   string `json:"not_after"`
+	Expired    bool   `json:"expired"`
+}
+
+type CertificatesFacet struct {
+	Store        string        `json:"store"`
+	Count        int           `json:"count"`
+	Certificates []Certificate `json:"certificates"`
+}
+
+// StorageFacet is live free space and the user temp footprint. The disks
+// inventory is a hardware register and stays out of the diagnostic vocabulary.
+type StorageFacet struct {
+	SystemDrive string `json:"system_drive"`
+	FreeBytes   int64  `json:"free_bytes"`
+	TotalBytes  int64  `json:"total_bytes"`
+	TempPath    string `json:"temp_path"`
+	TempBytes   int64  `json:"temp_bytes"`
+	TempFiles   int    `json:"temp_files"`
+}
+
+type AppCache struct {
+	Name   string `json:"name"`
+	Path   string `json:"path"`
+	Exists bool   `json:"exists"`
+	Bytes  int64  `json:"bytes"`
+	Files  int    `json:"files"`
+}
+
+type AppCacheFacet struct {
+	Caches []AppCache `json:"caches"`
+}
+
+type Printer struct {
+	Name   string `json:"name"`
+	Status string `json:"status,omitempty"`
+	Jobs   int    `json:"jobs"`
+}
+
+type PrintingFacet struct {
+	Printers       []Printer `json:"printers"`
+	DefaultPrinter string    `json:"default_printer,omitempty"`
+	QueuedJobs     int       `json:"queued_jobs"`
+}
+
+type ScreenControl struct {
+	Name    string   `json:"name"`
+	Role    string   `json:"role"`
+	Enabled bool     `json:"enabled"`
+	Actions []string `json:"actions"`
+}
+
+// ScreenFacet is the accessibility tree of one window, reduced to the controls a
+// GUI step can act on. It is what verifies a gui_* action, and it is also what
+// makes one selectable: a step names a control this facet reported.
+type ScreenFacet struct {
+	Window    string          `json:"window"`
+	Controls  []ScreenControl `json:"controls"`
+	Truncated bool            `json:"truncated"`
+}
+
 func parseFacet(name, raw string) (any, error) {
 	var dst any
 	switch name {
@@ -92,6 +157,16 @@ func parseFacet(name, raw string) (any, error) {
 		dst = &IdentityFacet{}
 	case "processes":
 		dst = &ProcessesFacet{}
+	case "certificates":
+		dst = &CertificatesFacet{}
+	case "storage":
+		dst = &StorageFacet{}
+	case "app_cache":
+		dst = &AppCacheFacet{}
+	case "printing":
+		dst = &PrintingFacet{}
+	case "screen":
+		dst = &ScreenFacet{}
 	default:
 		return nil, fmt.Errorf("unknown facet: %s", name)
 	}

@@ -26,31 +26,72 @@ const (
 type DeviceAction int32
 
 const (
-	DeviceAction_DEVICE_ACTION_UNSPECIFIED            DeviceAction = 0
-	DeviceAction_DEVICE_ACTION_FLUSH_DNS              DeviceAction = 1
-	DeviceAction_DEVICE_ACTION_RENEW_DHCP_LEASE       DeviceAction = 2
-	DeviceAction_DEVICE_ACTION_CLEAR_PROXY_OVERRIDE   DeviceAction = 3
-	DeviceAction_DEVICE_ACTION_RESET_CREDENTIAL_CACHE DeviceAction = 4
-	DeviceAction_DEVICE_ACTION_RESTART_USER_PROCESS   DeviceAction = 5
+	DeviceAction_DEVICE_ACTION_UNSPECIFIED               DeviceAction = 0
+	DeviceAction_DEVICE_ACTION_FLUSH_DNS                 DeviceAction = 1
+	DeviceAction_DEVICE_ACTION_RENEW_DHCP_LEASE          DeviceAction = 2
+	DeviceAction_DEVICE_ACTION_CLEAR_PROXY_OVERRIDE      DeviceAction = 3
+	DeviceAction_DEVICE_ACTION_RESET_CREDENTIAL_CACHE    DeviceAction = 4
+	DeviceAction_DEVICE_ACTION_RESTART_USER_PROCESS      DeviceAction = 5
+	DeviceAction_DEVICE_ACTION_DISABLE_PROXY             DeviceAction = 6
+	DeviceAction_DEVICE_ACTION_REFRESH_CERTIFICATE_STORE DeviceAction = 7
+	DeviceAction_DEVICE_ACTION_CLEAR_TEMP_FILES          DeviceAction = 8
+	DeviceAction_DEVICE_ACTION_CLEAR_OUTLOOK_CACHE       DeviceAction = 9
+	DeviceAction_DEVICE_ACTION_CLEAR_TEAMS_CACHE         DeviceAction = 10
+	DeviceAction_DEVICE_ACTION_CLEAR_ICON_CACHE          DeviceAction = 11
+	DeviceAction_DEVICE_ACTION_CLEAR_PRINT_QUEUE         DeviceAction = 12
+	DeviceAction_DEVICE_ACTION_GUI_INVOKE_CONTROL        DeviceAction = 13
+	DeviceAction_DEVICE_ACTION_GUI_SET_CONTROL_VALUE     DeviceAction = 14
+	DeviceAction_DEVICE_ACTION_GUI_TOGGLE_CONTROL        DeviceAction = 15
+	DeviceAction_DEVICE_ACTION_GUI_SELECT_ITEM           DeviceAction = 16
+	DeviceAction_DEVICE_ACTION_GUI_EXPAND_CONTROL        DeviceAction = 17
+	// Dispatched by the API from an approved proposal, never selected by the
+	// model. It is absent from the agent and API action enums on purpose.
+	DeviceAction_DEVICE_ACTION_RUN_COMMAND DeviceAction = 18
 )
 
 // Enum value maps for DeviceAction.
 var (
 	DeviceAction_name = map[int32]string{
-		0: "DEVICE_ACTION_UNSPECIFIED",
-		1: "DEVICE_ACTION_FLUSH_DNS",
-		2: "DEVICE_ACTION_RENEW_DHCP_LEASE",
-		3: "DEVICE_ACTION_CLEAR_PROXY_OVERRIDE",
-		4: "DEVICE_ACTION_RESET_CREDENTIAL_CACHE",
-		5: "DEVICE_ACTION_RESTART_USER_PROCESS",
+		0:  "DEVICE_ACTION_UNSPECIFIED",
+		1:  "DEVICE_ACTION_FLUSH_DNS",
+		2:  "DEVICE_ACTION_RENEW_DHCP_LEASE",
+		3:  "DEVICE_ACTION_CLEAR_PROXY_OVERRIDE",
+		4:  "DEVICE_ACTION_RESET_CREDENTIAL_CACHE",
+		5:  "DEVICE_ACTION_RESTART_USER_PROCESS",
+		6:  "DEVICE_ACTION_DISABLE_PROXY",
+		7:  "DEVICE_ACTION_REFRESH_CERTIFICATE_STORE",
+		8:  "DEVICE_ACTION_CLEAR_TEMP_FILES",
+		9:  "DEVICE_ACTION_CLEAR_OUTLOOK_CACHE",
+		10: "DEVICE_ACTION_CLEAR_TEAMS_CACHE",
+		11: "DEVICE_ACTION_CLEAR_ICON_CACHE",
+		12: "DEVICE_ACTION_CLEAR_PRINT_QUEUE",
+		13: "DEVICE_ACTION_GUI_INVOKE_CONTROL",
+		14: "DEVICE_ACTION_GUI_SET_CONTROL_VALUE",
+		15: "DEVICE_ACTION_GUI_TOGGLE_CONTROL",
+		16: "DEVICE_ACTION_GUI_SELECT_ITEM",
+		17: "DEVICE_ACTION_GUI_EXPAND_CONTROL",
+		18: "DEVICE_ACTION_RUN_COMMAND",
 	}
 	DeviceAction_value = map[string]int32{
-		"DEVICE_ACTION_UNSPECIFIED":            0,
-		"DEVICE_ACTION_FLUSH_DNS":              1,
-		"DEVICE_ACTION_RENEW_DHCP_LEASE":       2,
-		"DEVICE_ACTION_CLEAR_PROXY_OVERRIDE":   3,
-		"DEVICE_ACTION_RESET_CREDENTIAL_CACHE": 4,
-		"DEVICE_ACTION_RESTART_USER_PROCESS":   5,
+		"DEVICE_ACTION_UNSPECIFIED":               0,
+		"DEVICE_ACTION_FLUSH_DNS":                 1,
+		"DEVICE_ACTION_RENEW_DHCP_LEASE":          2,
+		"DEVICE_ACTION_CLEAR_PROXY_OVERRIDE":      3,
+		"DEVICE_ACTION_RESET_CREDENTIAL_CACHE":    4,
+		"DEVICE_ACTION_RESTART_USER_PROCESS":      5,
+		"DEVICE_ACTION_DISABLE_PROXY":             6,
+		"DEVICE_ACTION_REFRESH_CERTIFICATE_STORE": 7,
+		"DEVICE_ACTION_CLEAR_TEMP_FILES":          8,
+		"DEVICE_ACTION_CLEAR_OUTLOOK_CACHE":       9,
+		"DEVICE_ACTION_CLEAR_TEAMS_CACHE":         10,
+		"DEVICE_ACTION_CLEAR_ICON_CACHE":          11,
+		"DEVICE_ACTION_CLEAR_PRINT_QUEUE":         12,
+		"DEVICE_ACTION_GUI_INVOKE_CONTROL":        13,
+		"DEVICE_ACTION_GUI_SET_CONTROL_VALUE":     14,
+		"DEVICE_ACTION_GUI_TOGGLE_CONTROL":        15,
+		"DEVICE_ACTION_GUI_SELECT_ITEM":           16,
+		"DEVICE_ACTION_GUI_EXPAND_CONTROL":        17,
+		"DEVICE_ACTION_RUN_COMMAND":               18,
 	}
 )
 
@@ -79,6 +120,85 @@ func (x DeviceAction) Number() protoreflect.EnumNumber {
 // Deprecated: Use DeviceAction.Descriptor instead.
 func (DeviceAction) EnumDescriptor() ([]byte, []int) {
 	return file_axioma_proto_rawDescGZIP(), []int{0}
+}
+
+// Canonical fixed facet vocabulary — the observable state each action is verified
+// against. DeviceCommand.parameters["facets"] stays a JSON string for wire
+// compatibility; parity tests keep facet implementations aligned with this enum.
+type DeviceFacet int32
+
+const (
+	DeviceFacet_DEVICE_FACET_UNSPECIFIED  DeviceFacet = 0
+	DeviceFacet_DEVICE_FACET_RESOLVER     DeviceFacet = 1
+	DeviceFacet_DEVICE_FACET_ADAPTERS     DeviceFacet = 2
+	DeviceFacet_DEVICE_FACET_REACHABILITY DeviceFacet = 3
+	DeviceFacet_DEVICE_FACET_PROXY        DeviceFacet = 4
+	DeviceFacet_DEVICE_FACET_IDENTITY     DeviceFacet = 5
+	DeviceFacet_DEVICE_FACET_PROCESSES    DeviceFacet = 6
+	DeviceFacet_DEVICE_FACET_CERTIFICATES DeviceFacet = 7
+	DeviceFacet_DEVICE_FACET_STORAGE      DeviceFacet = 8
+	DeviceFacet_DEVICE_FACET_APP_CACHE    DeviceFacet = 9
+	DeviceFacet_DEVICE_FACET_PRINTING     DeviceFacet = 10
+	DeviceFacet_DEVICE_FACET_SCREEN       DeviceFacet = 11
+)
+
+// Enum value maps for DeviceFacet.
+var (
+	DeviceFacet_name = map[int32]string{
+		0:  "DEVICE_FACET_UNSPECIFIED",
+		1:  "DEVICE_FACET_RESOLVER",
+		2:  "DEVICE_FACET_ADAPTERS",
+		3:  "DEVICE_FACET_REACHABILITY",
+		4:  "DEVICE_FACET_PROXY",
+		5:  "DEVICE_FACET_IDENTITY",
+		6:  "DEVICE_FACET_PROCESSES",
+		7:  "DEVICE_FACET_CERTIFICATES",
+		8:  "DEVICE_FACET_STORAGE",
+		9:  "DEVICE_FACET_APP_CACHE",
+		10: "DEVICE_FACET_PRINTING",
+		11: "DEVICE_FACET_SCREEN",
+	}
+	DeviceFacet_value = map[string]int32{
+		"DEVICE_FACET_UNSPECIFIED":  0,
+		"DEVICE_FACET_RESOLVER":     1,
+		"DEVICE_FACET_ADAPTERS":     2,
+		"DEVICE_FACET_REACHABILITY": 3,
+		"DEVICE_FACET_PROXY":        4,
+		"DEVICE_FACET_IDENTITY":     5,
+		"DEVICE_FACET_PROCESSES":    6,
+		"DEVICE_FACET_CERTIFICATES": 7,
+		"DEVICE_FACET_STORAGE":      8,
+		"DEVICE_FACET_APP_CACHE":    9,
+		"DEVICE_FACET_PRINTING":     10,
+		"DEVICE_FACET_SCREEN":       11,
+	}
+)
+
+func (x DeviceFacet) Enum() *DeviceFacet {
+	p := new(DeviceFacet)
+	*p = x
+	return p
+}
+
+func (x DeviceFacet) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (DeviceFacet) Descriptor() protoreflect.EnumDescriptor {
+	return file_axioma_proto_enumTypes[1].Descriptor()
+}
+
+func (DeviceFacet) Type() protoreflect.EnumType {
+	return &file_axioma_proto_enumTypes[1]
+}
+
+func (x DeviceFacet) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use DeviceFacet.Descriptor instead.
+func (DeviceFacet) EnumDescriptor() ([]byte, []int) {
+	return file_axioma_proto_rawDescGZIP(), []int{1}
 }
 
 type RunUpdate_Kind int32
@@ -123,11 +243,11 @@ func (x RunUpdate_Kind) String() string {
 }
 
 func (RunUpdate_Kind) Descriptor() protoreflect.EnumDescriptor {
-	return file_axioma_proto_enumTypes[1].Descriptor()
+	return file_axioma_proto_enumTypes[2].Descriptor()
 }
 
 func (RunUpdate_Kind) Type() protoreflect.EnumType {
-	return &file_axioma_proto_enumTypes[1]
+	return &file_axioma_proto_enumTypes[2]
 }
 
 func (x RunUpdate_Kind) Number() protoreflect.EnumNumber {
@@ -580,9 +700,15 @@ type StartRun struct {
 	Urgency     string `protobuf:"bytes,10,opt,name=urgency,proto3" json:"urgency,omitempty"`
 	Priority    string `protobuf:"bytes,11,opt,name=priority,proto3" json:"priority,omitempty"`
 	// Ticket ingestion provenance (for example portal, employee_email, monitoring).
-	Origin        string `protobuf:"bytes,12,opt,name=origin,proto3" json:"origin,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Origin string `protobuf:"bytes,12,opt,name=origin,proto3" json:"origin,omitempty"`
+	// Server-resolved target environment. The agent may not infer this from ticket prose.
+	Environment        string `protobuf:"bytes,13,opt,name=environment,proto3" json:"environment,omitempty"`
+	ReporterName       string `protobuf:"bytes,14,opt,name=reporter_name,json=reporterName,proto3" json:"reporter_name,omitempty"`
+	ReporterJobTitle   string `protobuf:"bytes,15,opt,name=reporter_job_title,json=reporterJobTitle,proto3" json:"reporter_job_title,omitempty"`
+	ReporterDepartment string `protobuf:"bytes,16,opt,name=reporter_department,json=reporterDepartment,proto3" json:"reporter_department,omitempty"`
+	ReporterManager    string `protobuf:"bytes,17,opt,name=reporter_manager,json=reporterManager,proto3" json:"reporter_manager,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
 }
 
 func (x *StartRun) Reset() {
@@ -699,6 +825,41 @@ func (x *StartRun) GetOrigin() string {
 	return ""
 }
 
+func (x *StartRun) GetEnvironment() string {
+	if x != nil {
+		return x.Environment
+	}
+	return ""
+}
+
+func (x *StartRun) GetReporterName() string {
+	if x != nil {
+		return x.ReporterName
+	}
+	return ""
+}
+
+func (x *StartRun) GetReporterJobTitle() string {
+	if x != nil {
+		return x.ReporterJobTitle
+	}
+	return ""
+}
+
+func (x *StartRun) GetReporterDepartment() string {
+	if x != nil {
+		return x.ReporterDepartment
+	}
+	return ""
+}
+
+func (x *StartRun) GetReporterManager() string {
+	if x != nil {
+		return x.ReporterManager
+	}
+	return ""
+}
+
 type CancelRun struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RunId         string                 `protobuf:"bytes,1,opt,name=run_id,json=runId,proto3" json:"run_id,omitempty"`
@@ -771,8 +932,14 @@ type RunUpdate struct {
 	CompletionTokens uint32 `protobuf:"varint,13,opt,name=completion_tokens,json=completionTokens,proto3" json:"completion_tokens,omitempty"`
 	Model            string `protobuf:"bytes,14,opt,name=model,proto3" json:"model,omitempty"`
 	ResolutionCode   string `protobuf:"bytes,15,opt,name=resolution_code,json=resolutionCode,proto3" json:"resolution_code,omitempty"` // resolved terminals only
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Informational messages that are not failures (e.g. transient provider
+	// retries). Empty means absent.
+	Notice string `protobuf:"bytes,16,opt,name=notice,proto3" json:"notice,omitempty"`
+	// Presentation tone for the evidence alert:
+	// success | warning | destructive | neutral
+	EvidenceTone  string `protobuf:"bytes,17,opt,name=evidence_tone,json=evidenceTone,proto3" json:"evidence_tone,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunUpdate) Reset() {
@@ -906,6 +1073,20 @@ func (x *RunUpdate) GetModel() string {
 func (x *RunUpdate) GetResolutionCode() string {
 	if x != nil {
 		return x.ResolutionCode
+	}
+	return ""
+}
+
+func (x *RunUpdate) GetNotice() string {
+	if x != nil {
+		return x.Notice
+	}
+	return ""
+}
+
+func (x *RunUpdate) GetEvidenceTone() string {
+	if x != nil {
+		return x.EvidenceTone
 	}
 	return ""
 }
@@ -1382,9 +1563,12 @@ func (*GatewayMessage_Heartbeat) isGatewayMessage_Payload() {}
 func (*GatewayMessage_Enrollment) isGatewayMessage_Payload() {}
 
 type DeviceEnrollment struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Claimed       bool                   `protobuf:"varint,1,opt,name=claimed,proto3" json:"claimed,omitempty"`
-	CodeExpired   bool                   `protobuf:"varint,2,opt,name=code_expired,json=codeExpired,proto3" json:"code_expired,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Claimed     bool                   `protobuf:"varint,1,opt,name=claimed,proto3" json:"claimed,omitempty"`
+	CodeExpired bool                   `protobuf:"varint,2,opt,name=code_expired,json=codeExpired,proto3" json:"code_expired,omitempty"`
+	// Returned once after enrolment, or pushed to an online device during rotation.
+	Credential    string `protobuf:"bytes,3,opt,name=credential,proto3" json:"credential,omitempty"`
+	AuthValid     bool   `protobuf:"varint,4,opt,name=auth_valid,json=authValid,proto3" json:"auth_valid,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1433,6 +1617,20 @@ func (x *DeviceEnrollment) GetCodeExpired() bool {
 	return false
 }
 
+func (x *DeviceEnrollment) GetCredential() string {
+	if x != nil {
+		return x.Credential
+	}
+	return ""
+}
+
+func (x *DeviceEnrollment) GetAuthValid() bool {
+	if x != nil {
+		return x.AuthValid
+	}
+	return false
+}
+
 type DeviceHello struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// UUID minted on first run and persisted to the user profile. Survives
@@ -1447,9 +1645,12 @@ type DeviceHello struct {
 	// Last sequence the device processed. The gateway replays past it, because a
 	// laptop that slept never got to acknowledge anything.
 	LastSeenSequence uint64 `protobuf:"varint,7,opt,name=last_seen_sequence,json=lastSeenSequence,proto3" json:"last_seen_sequence,omitempty"`
-	EnrolmentCode    string `protobuf:"bytes,8,opt,name=enrolment_code,json=enrolmentCode,proto3" json:"enrolment_code,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// A short-lived, single-use token is presented only for first enrolment.
+	EnrolmentToken string `protobuf:"bytes,8,opt,name=enrolment_token,json=enrolmentToken,proto3" json:"enrolment_token,omitempty"`
+	// Long-lived bearer credential bound to this device UUID.
+	Credential    string `protobuf:"bytes,9,opt,name=credential,proto3" json:"credential,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DeviceHello) Reset() {
@@ -1531,9 +1732,16 @@ func (x *DeviceHello) GetLastSeenSequence() uint64 {
 	return 0
 }
 
-func (x *DeviceHello) GetEnrolmentCode() string {
+func (x *DeviceHello) GetEnrolmentToken() string {
 	if x != nil {
-		return x.EnrolmentCode
+		return x.EnrolmentToken
+	}
+	return ""
+}
+
+func (x *DeviceHello) GetCredential() string {
+	if x != nil {
+		return x.Credential
 	}
 	return ""
 }
@@ -1546,8 +1754,10 @@ type DeviceCommand struct {
 	// string ever crosses this boundary.
 	Action     string            `protobuf:"bytes,3,opt,name=action,proto3" json:"action,omitempty"`
 	Parameters map[string]string `protobuf:"bytes,4,rep,name=parameters,proto3" json:"parameters,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	// Tier two: computer-use, when no programmatic path exists. Installed only on
-	// machines that need it; absent means the device cannot serve this request.
+	// The pixel fallback, for a surface with no accessibility tree. GUI
+	// remediation itself is tier one shaped: the gui_* actions above drive UI
+	// Automation and need nothing installed. Absent means the device cannot
+	// serve this request, and it is currently absent everywhere.
 	ComputerUse    bool   `protobuf:"varint,5,opt,name=computer_use,json=computerUse,proto3" json:"computer_use,omitempty"`
 	Objective      string `protobuf:"bytes,6,opt,name=objective,proto3" json:"objective,omitempty"`
 	TimeoutSeconds uint32 `protobuf:"varint,7,opt,name=timeout_seconds,json=timeoutSeconds,proto3" json:"timeout_seconds,omitempty"`
@@ -1635,12 +1845,18 @@ func (x *DeviceCommand) GetTimeoutSeconds() uint32 {
 }
 
 type CommandResult struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	CommandId     string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
-	Sequence      uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
-	Ok            bool                   `protobuf:"varint,3,opt,name=ok,proto3" json:"ok,omitempty"`
-	OutputJson    string                 `protobuf:"bytes,4,opt,name=output_json,json=outputJson,proto3" json:"output_json,omitempty"`
-	Error         string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	CommandId  string                 `protobuf:"bytes,1,opt,name=command_id,json=commandId,proto3" json:"command_id,omitempty"`
+	Sequence   uint64                 `protobuf:"varint,2,opt,name=sequence,proto3" json:"sequence,omitempty"`
+	Ok         bool                   `protobuf:"varint,3,opt,name=ok,proto3" json:"ok,omitempty"`
+	OutputJson string                 `protobuf:"bytes,4,opt,name=output_json,json=outputJson,proto3" json:"output_json,omitempty"`
+	Error      string                 `protobuf:"bytes,5,opt,name=error,proto3" json:"error,omitempty"`
+	// Terminal status when the boolean cannot express it. A replayed sequence is
+	// acknowledged without re-running the command, so the device knows only that
+	// it once accepted the sequence — not whether the work succeeded. Left empty
+	// for ordinary results, where the API derives the status from `ok`. Values
+	// come from COMMAND_STATUSES in api/src/shared.
+	Status        string `protobuf:"bytes,6,opt,name=status,proto3" json:"status,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1710,6 +1926,13 @@ func (x *CommandResult) GetError() string {
 	return ""
 }
 
+func (x *CommandResult) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 var File_axioma_proto protoreflect.FileDescriptor
 
 const file_axioma_proto_rawDesc = "" +
@@ -1744,7 +1967,7 @@ const file_axioma_proto_rawDesc = "" +
 	"\vmodel_label\x18\x02 \x01(\tR\n" +
 	"modelLabel\x12\"\n" +
 	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\x12\x1b\n" +
-	"\tworker_id\x18\x04 \x01(\tR\bworkerId\"\xd0\x02\n" +
+	"\tworker_id\x18\x04 \x01(\tR\bworkerId\"\xa1\x04\n" +
 	"\bStartRun\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1b\n" +
 	"\tticket_id\x18\x02 \x01(\tR\bticketId\x12\x14\n" +
@@ -1760,10 +1983,15 @@ const file_axioma_proto_rawDesc = "" +
 	"\aurgency\x18\n" +
 	" \x01(\tR\aurgency\x12\x1a\n" +
 	"\bpriority\x18\v \x01(\tR\bpriority\x12\x16\n" +
-	"\x06origin\x18\f \x01(\tR\x06origin\":\n" +
+	"\x06origin\x18\f \x01(\tR\x06origin\x12 \n" +
+	"\venvironment\x18\r \x01(\tR\venvironment\x12#\n" +
+	"\rreporter_name\x18\x0e \x01(\tR\freporterName\x12,\n" +
+	"\x12reporter_job_title\x18\x0f \x01(\tR\x10reporterJobTitle\x12/\n" +
+	"\x13reporter_department\x18\x10 \x01(\tR\x12reporterDepartment\x12)\n" +
+	"\x10reporter_manager\x18\x11 \x01(\tR\x0freporterManager\":\n" +
 	"\tCancelRun\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x16\n" +
-	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xeb\x04\n" +
+	"\x06reason\x18\x02 \x01(\tR\x06reason\"\xa8\x05\n" +
 	"\tRunUpdate\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x18\n" +
 	"\aordinal\x18\x02 \x01(\rR\aordinal\x12-\n" +
@@ -1780,7 +2008,9 @@ const file_axioma_proto_rawDesc = "" +
 	"\rprompt_tokens\x18\f \x01(\rR\fpromptTokens\x12+\n" +
 	"\x11completion_tokens\x18\r \x01(\rR\x10completionTokens\x12\x14\n" +
 	"\x05model\x18\x0e \x01(\tR\x05model\x12'\n" +
-	"\x0fresolution_code\x18\x0f \x01(\tR\x0eresolutionCode\"|\n" +
+	"\x0fresolution_code\x18\x0f \x01(\tR\x0eresolutionCode\x12\x16\n" +
+	"\x06notice\x18\x10 \x01(\tR\x06notice\x12#\n" +
+	"\revidence_tone\x18\x11 \x01(\tR\fevidenceTone\"|\n" +
 	"\x04Kind\x12\x14\n" +
 	"\x10KIND_UNSPECIFIED\x10\x00\x12\x0e\n" +
 	"\n" +
@@ -1822,10 +2052,15 @@ const file_axioma_proto_rawDesc = "" +
 	"\n" +
 	"enrollment\x18\x03 \x01(\v2\x1b.axioma.v1.DeviceEnrollmentH\x00R\n" +
 	"enrollmentB\t\n" +
-	"\apayload\"O\n" +
+	"\apayload\"\x8e\x01\n" +
 	"\x10DeviceEnrollment\x12\x18\n" +
 	"\aclaimed\x18\x01 \x01(\bR\aclaimed\x12!\n" +
-	"\fcode_expired\x18\x02 \x01(\bR\vcodeExpired\"\x92\x02\n" +
+	"\fcode_expired\x18\x02 \x01(\bR\vcodeExpired\x12\x1e\n" +
+	"\n" +
+	"credential\x18\x03 \x01(\tR\n" +
+	"credential\x12\x1d\n" +
+	"\n" +
+	"auth_valid\x18\x04 \x01(\bR\tauthValid\"\xb4\x02\n" +
 	"\vDeviceHello\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x1a\n" +
@@ -1833,8 +2068,11 @@ const file_axioma_proto_rawDesc = "" +
 	"\bplatform\x18\x04 \x01(\tR\bplatform\x12\x18\n" +
 	"\arelease\x18\x05 \x01(\tR\arelease\x12#\n" +
 	"\ragent_version\x18\x06 \x01(\tR\fagentVersion\x12,\n" +
-	"\x12last_seen_sequence\x18\a \x01(\x04R\x10lastSeenSequence\x12%\n" +
-	"\x0eenrolment_code\x18\b \x01(\tR\renrolmentCode\"\xd5\x02\n" +
+	"\x12last_seen_sequence\x18\a \x01(\x04R\x10lastSeenSequence\x12'\n" +
+	"\x0fenrolment_token\x18\b \x01(\tR\x0eenrolmentToken\x12\x1e\n" +
+	"\n" +
+	"credential\x18\t \x01(\tR\n" +
+	"credential\"\xd5\x02\n" +
 	"\rDeviceCommand\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1a\n" +
@@ -1848,7 +2086,7 @@ const file_axioma_proto_rawDesc = "" +
 	"\x0ftimeout_seconds\x18\a \x01(\rR\x0etimeoutSeconds\x1a=\n" +
 	"\x0fParametersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x91\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xa9\x01\n" +
 	"\rCommandResult\x12\x1d\n" +
 	"\n" +
 	"command_id\x18\x01 \x01(\tR\tcommandId\x12\x1a\n" +
@@ -1856,14 +2094,43 @@ const file_axioma_proto_rawDesc = "" +
 	"\x02ok\x18\x03 \x01(\bR\x02ok\x12\x1f\n" +
 	"\voutput_json\x18\x04 \x01(\tR\n" +
 	"outputJson\x12\x14\n" +
-	"\x05error\x18\x05 \x01(\tR\x05error*\xe8\x01\n" +
+	"\x05error\x18\x05 \x01(\tR\x05error\x12\x16\n" +
+	"\x06status\x18\x06 \x01(\tR\x06status*\xcc\x05\n" +
 	"\fDeviceAction\x12\x1d\n" +
 	"\x19DEVICE_ACTION_UNSPECIFIED\x10\x00\x12\x1b\n" +
 	"\x17DEVICE_ACTION_FLUSH_DNS\x10\x01\x12\"\n" +
 	"\x1eDEVICE_ACTION_RENEW_DHCP_LEASE\x10\x02\x12&\n" +
 	"\"DEVICE_ACTION_CLEAR_PROXY_OVERRIDE\x10\x03\x12(\n" +
 	"$DEVICE_ACTION_RESET_CREDENTIAL_CACHE\x10\x04\x12&\n" +
-	"\"DEVICE_ACTION_RESTART_USER_PROCESS\x10\x052M\n" +
+	"\"DEVICE_ACTION_RESTART_USER_PROCESS\x10\x05\x12\x1f\n" +
+	"\x1bDEVICE_ACTION_DISABLE_PROXY\x10\x06\x12+\n" +
+	"'DEVICE_ACTION_REFRESH_CERTIFICATE_STORE\x10\a\x12\"\n" +
+	"\x1eDEVICE_ACTION_CLEAR_TEMP_FILES\x10\b\x12%\n" +
+	"!DEVICE_ACTION_CLEAR_OUTLOOK_CACHE\x10\t\x12#\n" +
+	"\x1fDEVICE_ACTION_CLEAR_TEAMS_CACHE\x10\n" +
+	"\x12\"\n" +
+	"\x1eDEVICE_ACTION_CLEAR_ICON_CACHE\x10\v\x12#\n" +
+	"\x1fDEVICE_ACTION_CLEAR_PRINT_QUEUE\x10\f\x12$\n" +
+	" DEVICE_ACTION_GUI_INVOKE_CONTROL\x10\r\x12'\n" +
+	"#DEVICE_ACTION_GUI_SET_CONTROL_VALUE\x10\x0e\x12$\n" +
+	" DEVICE_ACTION_GUI_TOGGLE_CONTROL\x10\x0f\x12!\n" +
+	"\x1dDEVICE_ACTION_GUI_SELECT_ITEM\x10\x10\x12$\n" +
+	" DEVICE_ACTION_GUI_EXPAND_CONTROL\x10\x11\x12\x1d\n" +
+	"\x19DEVICE_ACTION_RUN_COMMAND\x10\x12*\xd8\x02\n" +
+	"\vDeviceFacet\x12\x1c\n" +
+	"\x18DEVICE_FACET_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15DEVICE_FACET_RESOLVER\x10\x01\x12\x19\n" +
+	"\x15DEVICE_FACET_ADAPTERS\x10\x02\x12\x1d\n" +
+	"\x19DEVICE_FACET_REACHABILITY\x10\x03\x12\x16\n" +
+	"\x12DEVICE_FACET_PROXY\x10\x04\x12\x19\n" +
+	"\x15DEVICE_FACET_IDENTITY\x10\x05\x12\x1a\n" +
+	"\x16DEVICE_FACET_PROCESSES\x10\x06\x12\x1d\n" +
+	"\x19DEVICE_FACET_CERTIFICATES\x10\a\x12\x18\n" +
+	"\x14DEVICE_FACET_STORAGE\x10\b\x12\x1a\n" +
+	"\x16DEVICE_FACET_APP_CACHE\x10\t\x12\x19\n" +
+	"\x15DEVICE_FACET_PRINTING\x10\n" +
+	"\x12\x17\n" +
+	"\x13DEVICE_FACET_SCREEN\x10\v2M\n" +
 	"\fAgentChannel\x12=\n" +
 	"\aConnect\x12\x17.axioma.v1.AgentMessage\x1a\x15.axioma.v1.ApiMessage(\x010\x012S\n" +
 	"\rDeviceChannel\x12B\n" +
@@ -1881,55 +2148,56 @@ func file_axioma_proto_rawDescGZIP() []byte {
 	return file_axioma_proto_rawDescData
 }
 
-var file_axioma_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_axioma_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_axioma_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
 var file_axioma_proto_goTypes = []any{
 	(DeviceAction)(0),        // 0: axioma.v1.DeviceAction
-	(RunUpdate_Kind)(0),      // 1: axioma.v1.RunUpdate.Kind
-	(*AgentMessage)(nil),     // 2: axioma.v1.AgentMessage
-	(*RunAccepted)(nil),      // 3: axioma.v1.RunAccepted
-	(*ApiMessage)(nil),       // 4: axioma.v1.ApiMessage
-	(*TerminalAck)(nil),      // 5: axioma.v1.TerminalAck
-	(*AgentHello)(nil),       // 6: axioma.v1.AgentHello
-	(*StartRun)(nil),         // 7: axioma.v1.StartRun
-	(*CancelRun)(nil),        // 8: axioma.v1.CancelRun
-	(*RunUpdate)(nil),        // 9: axioma.v1.RunUpdate
-	(*ToolRequest)(nil),      // 10: axioma.v1.ToolRequest
-	(*ToolResult)(nil),       // 11: axioma.v1.ToolResult
-	(*Heartbeat)(nil),        // 12: axioma.v1.Heartbeat
-	(*DeviceMessage)(nil),    // 13: axioma.v1.DeviceMessage
-	(*InventoryReport)(nil),  // 14: axioma.v1.InventoryReport
-	(*GatewayMessage)(nil),   // 15: axioma.v1.GatewayMessage
-	(*DeviceEnrollment)(nil), // 16: axioma.v1.DeviceEnrollment
-	(*DeviceHello)(nil),      // 17: axioma.v1.DeviceHello
-	(*DeviceCommand)(nil),    // 18: axioma.v1.DeviceCommand
-	(*CommandResult)(nil),    // 19: axioma.v1.CommandResult
-	nil,                      // 20: axioma.v1.DeviceCommand.ParametersEntry
+	(DeviceFacet)(0),         // 1: axioma.v1.DeviceFacet
+	(RunUpdate_Kind)(0),      // 2: axioma.v1.RunUpdate.Kind
+	(*AgentMessage)(nil),     // 3: axioma.v1.AgentMessage
+	(*RunAccepted)(nil),      // 4: axioma.v1.RunAccepted
+	(*ApiMessage)(nil),       // 5: axioma.v1.ApiMessage
+	(*TerminalAck)(nil),      // 6: axioma.v1.TerminalAck
+	(*AgentHello)(nil),       // 7: axioma.v1.AgentHello
+	(*StartRun)(nil),         // 8: axioma.v1.StartRun
+	(*CancelRun)(nil),        // 9: axioma.v1.CancelRun
+	(*RunUpdate)(nil),        // 10: axioma.v1.RunUpdate
+	(*ToolRequest)(nil),      // 11: axioma.v1.ToolRequest
+	(*ToolResult)(nil),       // 12: axioma.v1.ToolResult
+	(*Heartbeat)(nil),        // 13: axioma.v1.Heartbeat
+	(*DeviceMessage)(nil),    // 14: axioma.v1.DeviceMessage
+	(*InventoryReport)(nil),  // 15: axioma.v1.InventoryReport
+	(*GatewayMessage)(nil),   // 16: axioma.v1.GatewayMessage
+	(*DeviceEnrollment)(nil), // 17: axioma.v1.DeviceEnrollment
+	(*DeviceHello)(nil),      // 18: axioma.v1.DeviceHello
+	(*DeviceCommand)(nil),    // 19: axioma.v1.DeviceCommand
+	(*CommandResult)(nil),    // 20: axioma.v1.CommandResult
+	nil,                      // 21: axioma.v1.DeviceCommand.ParametersEntry
 }
 var file_axioma_proto_depIdxs = []int32{
-	6,  // 0: axioma.v1.AgentMessage.hello:type_name -> axioma.v1.AgentHello
-	9,  // 1: axioma.v1.AgentMessage.run_update:type_name -> axioma.v1.RunUpdate
-	10, // 2: axioma.v1.AgentMessage.tool_request:type_name -> axioma.v1.ToolRequest
-	12, // 3: axioma.v1.AgentMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	3,  // 4: axioma.v1.AgentMessage.run_accepted:type_name -> axioma.v1.RunAccepted
-	7,  // 5: axioma.v1.ApiMessage.start_run:type_name -> axioma.v1.StartRun
-	11, // 6: axioma.v1.ApiMessage.tool_result:type_name -> axioma.v1.ToolResult
-	8,  // 7: axioma.v1.ApiMessage.cancel_run:type_name -> axioma.v1.CancelRun
-	12, // 8: axioma.v1.ApiMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	5,  // 9: axioma.v1.ApiMessage.terminal_ack:type_name -> axioma.v1.TerminalAck
-	1,  // 10: axioma.v1.RunUpdate.kind:type_name -> axioma.v1.RunUpdate.Kind
-	17, // 11: axioma.v1.DeviceMessage.hello:type_name -> axioma.v1.DeviceHello
-	19, // 12: axioma.v1.DeviceMessage.result:type_name -> axioma.v1.CommandResult
-	12, // 13: axioma.v1.DeviceMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	14, // 14: axioma.v1.DeviceMessage.inventory:type_name -> axioma.v1.InventoryReport
-	18, // 15: axioma.v1.GatewayMessage.command:type_name -> axioma.v1.DeviceCommand
-	12, // 16: axioma.v1.GatewayMessage.heartbeat:type_name -> axioma.v1.Heartbeat
-	16, // 17: axioma.v1.GatewayMessage.enrollment:type_name -> axioma.v1.DeviceEnrollment
-	20, // 18: axioma.v1.DeviceCommand.parameters:type_name -> axioma.v1.DeviceCommand.ParametersEntry
-	2,  // 19: axioma.v1.AgentChannel.Connect:input_type -> axioma.v1.AgentMessage
-	13, // 20: axioma.v1.DeviceChannel.Connect:input_type -> axioma.v1.DeviceMessage
-	4,  // 21: axioma.v1.AgentChannel.Connect:output_type -> axioma.v1.ApiMessage
-	15, // 22: axioma.v1.DeviceChannel.Connect:output_type -> axioma.v1.GatewayMessage
+	7,  // 0: axioma.v1.AgentMessage.hello:type_name -> axioma.v1.AgentHello
+	10, // 1: axioma.v1.AgentMessage.run_update:type_name -> axioma.v1.RunUpdate
+	11, // 2: axioma.v1.AgentMessage.tool_request:type_name -> axioma.v1.ToolRequest
+	13, // 3: axioma.v1.AgentMessage.heartbeat:type_name -> axioma.v1.Heartbeat
+	4,  // 4: axioma.v1.AgentMessage.run_accepted:type_name -> axioma.v1.RunAccepted
+	8,  // 5: axioma.v1.ApiMessage.start_run:type_name -> axioma.v1.StartRun
+	12, // 6: axioma.v1.ApiMessage.tool_result:type_name -> axioma.v1.ToolResult
+	9,  // 7: axioma.v1.ApiMessage.cancel_run:type_name -> axioma.v1.CancelRun
+	13, // 8: axioma.v1.ApiMessage.heartbeat:type_name -> axioma.v1.Heartbeat
+	6,  // 9: axioma.v1.ApiMessage.terminal_ack:type_name -> axioma.v1.TerminalAck
+	2,  // 10: axioma.v1.RunUpdate.kind:type_name -> axioma.v1.RunUpdate.Kind
+	18, // 11: axioma.v1.DeviceMessage.hello:type_name -> axioma.v1.DeviceHello
+	20, // 12: axioma.v1.DeviceMessage.result:type_name -> axioma.v1.CommandResult
+	13, // 13: axioma.v1.DeviceMessage.heartbeat:type_name -> axioma.v1.Heartbeat
+	15, // 14: axioma.v1.DeviceMessage.inventory:type_name -> axioma.v1.InventoryReport
+	19, // 15: axioma.v1.GatewayMessage.command:type_name -> axioma.v1.DeviceCommand
+	13, // 16: axioma.v1.GatewayMessage.heartbeat:type_name -> axioma.v1.Heartbeat
+	17, // 17: axioma.v1.GatewayMessage.enrollment:type_name -> axioma.v1.DeviceEnrollment
+	21, // 18: axioma.v1.DeviceCommand.parameters:type_name -> axioma.v1.DeviceCommand.ParametersEntry
+	3,  // 19: axioma.v1.AgentChannel.Connect:input_type -> axioma.v1.AgentMessage
+	14, // 20: axioma.v1.DeviceChannel.Connect:input_type -> axioma.v1.DeviceMessage
+	5,  // 21: axioma.v1.AgentChannel.Connect:output_type -> axioma.v1.ApiMessage
+	16, // 22: axioma.v1.DeviceChannel.Connect:output_type -> axioma.v1.GatewayMessage
 	21, // [21:23] is the sub-list for method output_type
 	19, // [19:21] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
@@ -1972,7 +2240,7 @@ func file_axioma_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_axioma_proto_rawDesc), len(file_axioma_proto_rawDesc)),
-			NumEnums:      2,
+			NumEnums:      3,
 			NumMessages:   19,
 			NumExtensions: 0,
 			NumServices:   2,

@@ -10,7 +10,9 @@ import (
 )
 
 type Config struct {
-	GRPCHost string `json:"grpcHost"`
+	GRPCHost      string `json:"grpcHost"`
+	CAFile        string `json:"caFile,omitempty"`
+	TLSServerName string `json:"tlsServerName,omitempty"`
 }
 
 func LoadConfig() (Config, error) {
@@ -34,6 +36,8 @@ func LoadConfig() (Config, error) {
 
 func SaveConfig(config Config) error {
 	config.GRPCHost = strings.TrimSpace(config.GRPCHost)
+	config.CAFile = strings.TrimSpace(config.CAFile)
+	config.TLSServerName = strings.TrimSpace(config.TLSServerName)
 	if config.GRPCHost == "" {
 		return fmt.Errorf("gateway address is required")
 	}

@@ -11,7 +11,6 @@ import (
 	"os/user"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"time"
 )
 
@@ -19,7 +18,8 @@ import (
 type Identity struct {
 	DeviceID         string `json:"deviceId"`
 	LastSeenSequence uint64 `json:"lastSeenSequence,omitempty"`
-	EnrolmentCode    string `json:"enrolmentCode,omitempty"`
+	EnrolmentToken   string `json:"enrolmentToken,omitempty"`
+	Credential       string `json:"credential,omitempty"`
 	Hostname         string `json:"-"`
 	Username         string `json:"-"`
 	Platform         string `json:"-"`
@@ -84,7 +84,8 @@ func Load(agentVersion string) (Identity, error) {
 		if err := json.Unmarshal(raw, &stored); err == nil && stored.DeviceID != "" {
 			id.DeviceID = stored.DeviceID
 			id.LastSeenSequence = stored.LastSeenSequence
-			id.EnrolmentCode = stored.EnrolmentCode
+			id.EnrolmentToken = stored.EnrolmentToken
+			id.Credential = stored.Credential
 			return id, nil
 		}
 		backup := fmt.Sprintf("%s.corrupt-%s", path, time.Now().UTC().Format("20060102T150405.000000000Z"))
@@ -125,7 +126,8 @@ func SaveSequence(id Identity, sequence uint64) error {
 	if raw, err := os.ReadFile(path); err == nil {
 		var current Identity
 		if json.Unmarshal(raw, &current) == nil && current.DeviceID == id.DeviceID {
-			id.EnrolmentCode = current.EnrolmentCode
+			id.EnrolmentToken = current.EnrolmentToken
+			id.Credential = current.Credential
 			if sequence < current.LastSeenSequence {
 				return fmt.Errorf("sequence cannot move backwards: %d < %d", sequence, current.LastSeenSequence)
 			}
@@ -135,8 +137,9 @@ func SaveSequence(id Identity, sequence uint64) error {
 	return writeJSON(path, persistedIdentity(id))
 }
 
-// SaveEnrolmentCode persists the short-lived code presented by the enroll flow.
-func SaveEnrolmentCode(id Identity, code string) error {
+// SaveCredentials atomically updates authentication material without regressing
+// a sequence written concurrently by the daemon.
+func SaveCredentials(id Identity, enrolmentToken, credential string) error {
 	dir, err := StateDir()
 	if err != nil {
 		return err
@@ -148,32 +151,13 @@ func SaveEnrolmentCode(id Identity, code string) error {
 			id.LastSeenSequence = current.LastSeenSequence
 		}
 	}
-	id.EnrolmentCode = code
+	id.EnrolmentToken = enrolmentToken
+	id.Credential = credential
 	return writeJSON(path, persistedIdentity(id))
 }
 
 func persistedIdentity(id Identity) Identity {
-	return Identity{DeviceID: id.DeviceID, LastSeenSequence: id.LastSeenSequence, EnrolmentCode: id.EnrolmentCode}
-}
-
-// EnsureEnrolmentCode creates a cryptographically random, human-readable code once.
-func EnsureEnrolmentCode(id *Identity) error {
-	if id.DeviceID == "" {
-		return fmt.Errorf("device identity is required")
-	}
-	if id.EnrolmentCode != "" {
-		return nil
-	}
-	buf := make([]byte, 5)
-	if _, err := rand.Read(buf); err != nil {
-		return fmt.Errorf("generate enrolment code: %w", err)
-	}
-	code := strings.ToUpper(hex.EncodeToString(buf[:3]) + "-" + hex.EncodeToString(buf[3:]))
-	if err := SaveEnrolmentCode(*id, code); err != nil {
-		return err
-	}
-	id.EnrolmentCode = code
-	return nil
+	return Identity{DeviceID: id.DeviceID, LastSeenSequence: id.LastSeenSequence, EnrolmentToken: id.EnrolmentToken, Credential: id.Credential}
 }
 
 func SaveDaemonState(state DaemonState) error {

@@ -3,7 +3,10 @@ package device
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -11,6 +14,8 @@ import (
 	"time"
 
 	"github.com/axioma/cli/internal/pb"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type fakeDeviceStream struct {
@@ -100,6 +105,29 @@ func TestCommandTimeoutSelection(t *testing.T) {
 	}
 }
 
+func TestAuthErrorIsTerminal(t *testing.T) {
+	for _, code := range []codes.Code{codes.Unauthenticated, codes.PermissionDenied} {
+		var terminal terminalError
+		if err := authError("connect", status.Error(code, "refused")); !errors.As(err, &terminal) {
+			t.Fatalf("%s was retriable: %v", code, err)
+		}
+	}
+	var terminal terminalError
+	if err := authError("connect", status.Error(codes.Unavailable, "down")); errors.As(err, &terminal) {
+		t.Fatalf("network error was terminal: %v", err)
+	}
+}
+
+func TestTransportCredentialsRejectsInvalidCA(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(path, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transportCredentials(Config{CAFile: path}); err == nil {
+		t.Fatal("invalid customer CA was accepted")
+	}
+}
+
 func TestBackoffResetsOnlyAfterStablePeriod(t *testing.T) {
 	if got := nextBackoff(8*time.Second, 29*time.Second, 30*time.Second); got != 16*time.Second {
 		t.Fatalf("unstable connection reset backoff: %s", got)
@@ -128,13 +156,13 @@ func TestServeConnectionSurfacesDaemonStateFailure(t *testing.T) {
 	}
 }
 
-func TestServeConnectionClearsEnrollmentCodeWhenClaimed(t *testing.T) {
+func TestServeConnectionStoresIssuedCredential(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	stream := newFakeDeviceStream()
 	defer stream.close()
 	ctx, cancel := context.WithCancel(context.Background())
-	id := Identity{DeviceID: "device", EnrolmentCode: "ABCDEF-1234"}
-	if err := SaveEnrolmentCode(id, id.EnrolmentCode); err != nil {
+	id := Identity{DeviceID: "device", EnrolmentToken: "short-lived"}
+	if err := SaveCredentials(id, id.EnrolmentToken, ""); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
@@ -143,46 +171,45 @@ func TestServeConnectionClearsEnrollmentCodeWhenClaimed(t *testing.T) {
 			daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
 			func(Identity, uint64) error { return nil }, execute)
 	}()
-	<-stream.sent // hello
-	stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{Enrollment: &pb.DeviceEnrollment{Claimed: true}}}
+	hello := (<-stream.sent).GetHello()
+	if hello.EnrolmentToken != "short-lived" || hello.Credential != "" {
+		t.Fatalf("unexpected hello: %+v", hello)
+	}
+	stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{Enrollment: &pb.DeviceEnrollment{Claimed: true, Credential: "long-lived", AuthValid: true}}}
 	deadline := time.Now().Add(time.Second)
-	for id.EnrolmentCode != "" && time.Now().Before(deadline) {
+	for id.Credential == "" && time.Now().Before(deadline) {
 		time.Sleep(time.Millisecond)
 	}
-	if id.EnrolmentCode != "" {
-		t.Fatal("claimed enrollment code was not cleared")
-	}
 	loaded, err := Load("test")
-	if err != nil || loaded.EnrolmentCode != "" {
-		t.Fatalf("persisted enrollment code was not cleared: %#v, %v", loaded, err)
+	if err != nil || loaded.EnrolmentToken != "" || loaded.Credential != "long-lived" {
+		t.Fatalf("issued credential was not persisted: %#v, %v", loaded, err)
 	}
 	cancel()
 	stream.close()
 	<-done
 }
 
-func TestServeConnectionRotatesExpiredEnrollmentCode(t *testing.T) {
-	t.Setenv("LOCALAPPDATA", t.TempDir())
-	stream := newFakeDeviceStream()
-	defer stream.close()
-	ctx, cancel := context.WithCancel(context.Background())
-	id := Identity{DeviceID: "device", EnrolmentCode: "ABCDEF-1234"}
-	if err := SaveEnrolmentCode(id, id.EnrolmentCode); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() {
-		done <- serveConnection(ctx, cancel, stream, "test", &id,
-			daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
-			func(Identity, uint64) error { return nil }, execute)
-	}()
-	<-stream.sent // hello
-	stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{Enrollment: &pb.DeviceEnrollment{CodeExpired: true}}}
-	if err := <-done; err == nil || !strings.Contains(err.Error(), "generated a replacement") {
-		t.Fatalf("serveConnection returned %v", err)
-	}
-	if id.EnrolmentCode == "" || id.EnrolmentCode == "ABCDEF-1234" {
-		t.Fatalf("expired code was not rotated: %q", id.EnrolmentCode)
+func TestServeConnectionTreatsAuthRefusalAsTerminal(t *testing.T) {
+	for _, enrollment := range []*pb.DeviceEnrollment{{CodeExpired: true}, {AuthValid: false}} {
+		t.Run(fmt.Sprint(enrollment.CodeExpired), func(t *testing.T) {
+			t.Setenv("LOCALAPPDATA", t.TempDir())
+			stream := newFakeDeviceStream()
+			defer stream.close()
+			ctx, cancel := context.WithCancel(context.Background())
+			id := Identity{DeviceID: "device", Credential: "credential"}
+			done := make(chan error, 1)
+			go func() {
+				done <- serveConnection(ctx, cancel, stream, "test", &id,
+					daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+					func(Identity, uint64) error { return nil }, execute)
+			}()
+			<-stream.sent
+			stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{Enrollment: enrollment}}
+			var terminal terminalError
+			if err := <-done; !errors.As(err, &terminal) {
+				t.Fatalf("auth refusal was retriable: %v", err)
+			}
+		})
 	}
 }
 
@@ -221,6 +248,12 @@ func TestServeConnectionPersistsBeforeExecuteAndAcknowledgesDuplicate(t *testing
 	duplicate := waitForResult(t, stream.sent)
 	if duplicate.Ok || !strings.Contains(duplicate.OutputJson, "indeterminate") {
 		t.Fatalf("duplicate was not acknowledged as indeterminate: %+v", duplicate)
+	}
+	// The payload alone is not enough: the API persists CommandResult.Status,
+	// so a replay that only says "indeterminate" inside OutputJson still lands
+	// as a plain failure.
+	if duplicate.GetStatus() != commandStatusIndeterminate {
+		t.Fatalf("duplicate status = %q, want %q", duplicate.GetStatus(), commandStatusIndeterminate)
 	}
 	if executions.Load() != 1 {
 		t.Fatalf("duplicate reran command: %d executions", executions.Load())

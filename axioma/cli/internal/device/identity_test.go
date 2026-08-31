@@ -3,6 +3,7 @@ package device
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -55,16 +56,16 @@ func TestSaveSequenceRefusesStaleWriter(t *testing.T) {
 	}
 }
 
-func TestSaveSequencePreservesEnrolmentCode(t *testing.T) {
+func TestSaveSequencePreservesCredentials(t *testing.T) {
 	t.Setenv("LOCALAPPDATA", t.TempDir())
 	id, err := Load("test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	id.EnrolmentCode = "ABCDEF-1234"
-	if err := SaveEnrolmentCode(id, id.EnrolmentCode); err != nil {
+	if err := SaveCredentials(id, "short-lived", "long-lived"); err != nil {
 		t.Fatal(err)
 	}
+	id.EnrolmentToken, id.Credential = "short-lived", "long-lived"
 	if err := SaveSequence(id, 9); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +73,33 @@ func TestSaveSequencePreservesEnrolmentCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.LastSeenSequence != 9 || loaded.EnrolmentCode != id.EnrolmentCode {
+	if loaded.LastSeenSequence != 9 || loaded.EnrolmentToken != "short-lived" || loaded.Credential != "long-lived" {
 		t.Fatalf("state not preserved: %+v", loaded)
+	}
+	info, err := os.Stat(filepath.Join(os.Getenv("LOCALAPPDATA"), "axioma", "device.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Windows ACLs, rather than Unix mode bits, protect the profile-scoped file.
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
+		t.Fatalf("credential file mode = %v", info.Mode().Perm())
+	}
+}
+
+func TestSaveCredentialsPreservesConcurrentSequence(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	id, err := Load("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveSequence(id, 9); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveCredentials(id, "", "rotated"); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := Load("test")
+	if err != nil || loaded.LastSeenSequence != 9 || loaded.Credential != "rotated" {
+		t.Fatalf("concurrent state lost: %+v, %v", loaded, err)
 	}
 }

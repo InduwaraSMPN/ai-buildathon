@@ -15,14 +15,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-var (
-	titleStyle   = lipgloss.NewStyle().Bold(true)
-	passStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
-	failStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	pendingStyle = lipgloss.NewStyle().Faint(true)
-	detailStyle  = lipgloss.NewStyle().Faint(true)
-)
-
 // Check is one thing doctor verifies about this machine.
 type Check struct {
 	Name string
@@ -43,6 +35,7 @@ type checkResult struct {
 }
 
 type doctorModel struct {
+	theme  theme
 	ctx    context.Context
 	checks []Check
 	states []checkState
@@ -55,11 +48,11 @@ func NewDoctor(ctx context.Context, checks []Check) tea.Model {
 	for i, c := range checks {
 		states[i] = checkState{name: c.Name}
 	}
-	return doctorModel{ctx: ctx, checks: checks, states: states}
+	return doctorModel{theme: newTheme(), ctx: ctx, checks: checks, states: states}
 }
 
 func (m doctorModel) Init() tea.Cmd {
-	return m.runNext()
+	return tea.Batch(tea.RequestBackgroundColor, m.runNext())
 }
 
 // Checks run one at a time rather than concurrently. Doctor is diagnostic, and
@@ -83,6 +76,7 @@ func (m doctorModel) runNext() tea.Cmd {
 }
 
 func (m doctorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m.theme = m.theme.withBackground(msg)
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if s := msg.String(); s == "q" || s == "ctrl+c" || s == "esc" {
@@ -101,27 +95,42 @@ func (m doctorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m doctorModel) View() tea.View {
-	out := titleStyle.Render("axel-cli doctor") + "\n\n"
-
-	for _, s := range m.states {
-		switch {
-		case !s.done:
-			out += pendingStyle.Render(fmt.Sprintf("  ...  %s", s.name)) + "\n"
-		case s.ok:
-			out += passStyle.Render("   ok  ") + s.name
-			if s.detail != "" {
-				out += "  " + detailStyle.Render(s.detail)
-			}
-			out += "\n"
-		default:
-			out += failStyle.Render(" fail  ") + s.name + "\n"
-			if s.detail != "" {
-				out += "        " + detailStyle.Render(s.detail) + "\n"
+	// One row per check: status, name, detail. The table keeps the status
+	// labels the same width and alignment however long the names get.
+	rows := make([][]string, len(m.states))
+	for i, s := range m.states {
+		status := "..."
+		if s.done {
+			status = "fail"
+			if s.ok {
+				status = "ok"
 			}
 		}
+		rows[i] = []string{status, s.name, s.detail}
 	}
+	t := newTable().StyleFunc(func(row, col int) lipgloss.Style {
+		style := lipgloss.NewStyle()
+		switch col {
+		case 0:
+			switch {
+			case !m.states[row].done:
+				style = m.theme.pending()
+			case m.states[row].ok:
+				style = m.theme.pass()
+			default:
+				style = m.theme.fail()
+			}
+		case 2:
+			style = m.theme.pending()
+		}
+		if col < 2 {
+			style = style.PaddingRight(2)
+		}
+		return style.PaddingLeft(2)
+	}).
+		Rows(rows...)
 
-	return tea.NewView(out)
+	return tea.NewView(m.theme.title().Render("axel-cli doctor") + "\n\n" + t.Render() + "\n")
 }
 
 // BinaryPresent checks that a command a device action depends on exists. An

@@ -12,7 +12,9 @@ func TestDoctorCheckUsesParentContext(t *testing.T) {
 		<-ctx.Done()
 		return "", ctx.Err()
 	}}}).(doctorModel)
-	result := model.Init()().(checkResult)
+	// Init batches the background-colour request with the first check; the
+	// check-running command is what this test is about.
+	result := model.runNext()().(checkResult)
 	if result.detail != context.Canceled.Error() {
 		t.Fatalf("check result = %+v", result)
 	}

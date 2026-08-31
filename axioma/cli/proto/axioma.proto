@@ -82,6 +82,12 @@ message StartRun {
   string priority = 11;
   // Ticket ingestion provenance (for example portal, employee_email, monitoring).
   string origin = 12;
+  // Server-resolved target environment. The agent may not infer this from ticket prose.
+  string environment = 13;
+  string reporter_name = 14;
+  string reporter_job_title = 15;
+  string reporter_department = 16;
+  string reporter_manager = 17;
 }
 
 message CancelRun {
@@ -119,6 +125,13 @@ message RunUpdate {
   uint32 completion_tokens = 13;
   string model = 14;
   string resolution_code = 15; // resolved terminals only
+
+  // Informational messages that are not failures (e.g. transient provider
+  // retries). Empty means absent.
+  string notice = 16;
+  // Presentation tone for the evidence alert:
+  // success | warning | destructive | neutral
+  string evidence_tone = 17;
 }
 
 // The agent asks the API to execute a tool. The agent never touches the
@@ -180,6 +193,9 @@ message GatewayMessage {
 message DeviceEnrollment {
   bool claimed = 1;
   bool code_expired = 2;
+  // Returned once after enrolment, or pushed to an online device during rotation.
+  string credential = 3;
+  bool auth_valid = 4;
 }
 
 message DeviceHello {
@@ -195,7 +211,10 @@ message DeviceHello {
   // Last sequence the device processed. The gateway replays past it, because a
   // laptop that slept never got to acknowledge anything.
   uint64 last_seen_sequence = 7;
-  string enrolment_code = 8;
+  // A short-lived, single-use token is presented only for first enrolment.
+  string enrolment_token = 8;
+  // Long-lived bearer credential bound to this device UUID.
+  string credential = 9;
 }
 
 // Canonical fixed action vocabulary. DeviceCommand.action stays a string for wire
@@ -207,6 +226,39 @@ enum DeviceAction {
   DEVICE_ACTION_CLEAR_PROXY_OVERRIDE = 3;
   DEVICE_ACTION_RESET_CREDENTIAL_CACHE = 4;
   DEVICE_ACTION_RESTART_USER_PROCESS = 5;
+  DEVICE_ACTION_DISABLE_PROXY = 6;
+  DEVICE_ACTION_REFRESH_CERTIFICATE_STORE = 7;
+  DEVICE_ACTION_CLEAR_TEMP_FILES = 8;
+  DEVICE_ACTION_CLEAR_OUTLOOK_CACHE = 9;
+  DEVICE_ACTION_CLEAR_TEAMS_CACHE = 10;
+  DEVICE_ACTION_CLEAR_ICON_CACHE = 11;
+  DEVICE_ACTION_CLEAR_PRINT_QUEUE = 12;
+  DEVICE_ACTION_GUI_INVOKE_CONTROL = 13;
+  DEVICE_ACTION_GUI_SET_CONTROL_VALUE = 14;
+  DEVICE_ACTION_GUI_TOGGLE_CONTROL = 15;
+  DEVICE_ACTION_GUI_SELECT_ITEM = 16;
+  DEVICE_ACTION_GUI_EXPAND_CONTROL = 17;
+  // Dispatched by the API from an approved proposal, never selected by the
+  // model. It is absent from the agent and API action enums on purpose.
+  DEVICE_ACTION_RUN_COMMAND = 18;
+}
+
+// Canonical fixed facet vocabulary — the observable state each action is verified
+// against. DeviceCommand.parameters["facets"] stays a JSON string for wire
+// compatibility; parity tests keep facet implementations aligned with this enum.
+enum DeviceFacet {
+  DEVICE_FACET_UNSPECIFIED = 0;
+  DEVICE_FACET_RESOLVER = 1;
+  DEVICE_FACET_ADAPTERS = 2;
+  DEVICE_FACET_REACHABILITY = 3;
+  DEVICE_FACET_PROXY = 4;
+  DEVICE_FACET_IDENTITY = 5;
+  DEVICE_FACET_PROCESSES = 6;
+  DEVICE_FACET_CERTIFICATES = 7;
+  DEVICE_FACET_STORAGE = 8;
+  DEVICE_FACET_APP_CACHE = 9;
+  DEVICE_FACET_PRINTING = 10;
+  DEVICE_FACET_SCREEN = 11;
 }
 
 message DeviceCommand {
@@ -218,8 +270,10 @@ message DeviceCommand {
   string action = 3;
   map<string, string> parameters = 4;
 
-  // Tier two: computer-use, when no programmatic path exists. Installed only on
-  // machines that need it; absent means the device cannot serve this request.
+  // The pixel fallback, for a surface with no accessibility tree. GUI
+  // remediation itself is tier one shaped: the gui_* actions above drive UI
+  // Automation and need nothing installed. Absent means the device cannot
+  // serve this request, and it is currently absent everywhere.
   bool computer_use = 5;
   string objective = 6;
 
@@ -232,4 +286,11 @@ message CommandResult {
   bool ok = 3;
   string output_json = 4;
   string error = 5;
+
+  // Terminal status when the boolean cannot express it. A replayed sequence is
+  // acknowledged without re-running the command, so the device knows only that
+  // it once accepted the sequence — not whether the work succeeded. Left empty
+  // for ordinary results, where the API derives the status from `ok`. Values
+  // come from COMMAND_STATUSES in api/src/shared.
+  string status = 6;
 }

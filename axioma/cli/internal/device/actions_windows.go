@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync/atomic"
@@ -19,7 +20,18 @@ import (
 const commandWaitDelay = 5 * time.Second
 
 func runCommand(ctx context.Context, name string, args ...string) (Result, error) {
-	cmd := exec.CommandContext(ctx, name, args...)
+	return runSpec(ctx, commandSpec{name: name, args: args})
+}
+
+// runSpec is the real executor. Caller-supplied values reach a script through
+// spec.env rather than the command line: an environment value is data to the
+// shell no matter what it contains, and argv binding through
+// powershell.exe -Command silently re-splits anything containing a space.
+func runSpec(ctx context.Context, spec commandSpec) (Result, error) {
+	cmd := exec.CommandContext(ctx, spec.name, spec.args...)
+	if len(spec.env) > 0 {
+		cmd.Env = append(os.Environ(), spec.env...)
+	}
 	cmd.WaitDelay = commandWaitDelay
 	cmd.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.CREATE_SUSPENDED}
 	var job atomic.Uintptr
@@ -119,6 +131,9 @@ func runAction(ctx context.Context, action string, commands []commandSpec) (Resu
 	for i, command := range commands {
 		if action == "restart_user_process" && i == len(commands)-1 {
 			cmd := exec.Command(command.name, command.args...)
+			if len(command.env) > 0 {
+				cmd.Env = append(os.Environ(), command.env...)
+			}
 			if err := cmd.Start(); err != nil {
 				return Result{Detail: err.Error()}, nil
 			}
@@ -127,7 +142,7 @@ func runAction(ctx context.Context, action string, commands []commandSpec) (Resu
 			}
 			continue
 		}
-		result, err := runCommand(ctx, command.name, command.args...)
+		result, err := runSpec(ctx, command)
 		if err != nil {
 			return result, err
 		}

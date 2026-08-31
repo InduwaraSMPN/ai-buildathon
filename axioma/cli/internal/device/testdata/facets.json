@@ -4,5 +4,10 @@
   "reachability": {"target":"intranet.example","resolved_address":"10.0.0.8","packet_loss_percent":0,"mean_latency_ms":4.5},
   "proxy": {"enabled":true,"server":"proxy.example:8080","override":"*.corp.example"},
   "identity": {"name":"DOMINIO\\josé","sid":"S-1-5-21-1","kerberos_tickets":3},
-  "processes": {"processes":[{"name":"OneDrive","pid":1234,"running":true},{"name":"notepad","pid":0,"running":false}]}
+  "processes": {"processes":[{"name":"onedrive","pid":1234,"running":true},{"name":"notepad","pid":0,"running":false}]},
+  "certificates": {"store":"CurrentUser\\My","count":2,"certificates":[{"subject":"CN=josé.garcía@corp.example","issuer":"CN=Corp Issuing CA","thumbprint":"A1B2C3","not_after":"2026-09-01T00:00:00.0000000Z","expired":false}]},
+  "storage": {"system_drive":"C:","free_bytes":18253611008,"total_bytes":511000000000,"temp_path":"C:\\Users\\josé\\AppData\\Local\\Temp","temp_bytes":9421312,"temp_files":812},
+  "app_cache": {"caches":[{"name":"outlook_roamcache","path":"C:\\Users\\josé\\AppData\\Local\\Microsoft\\Outlook\\RoamCache","exists":true,"bytes":4194304,"files":37},{"name":"teams_cache","path":"C:\\Users\\josé\\AppData\\Local\\Packages\\MSTeams_8wekyb3d8bbwe\\LocalCache","exists":false,"bytes":0,"files":0},{"name":"icon_cache","path":"C:\\Users\\josé\\AppData\\Local\\Microsoft\\Windows\\Explorer","exists":true,"bytes":2097152,"files":33}]},
+  "screen": {"window":"Configuración de red","controls":[{"name":"Aceptar","role":"Button","enabled":true,"actions":["InvokePattern"]},{"name":"Servidor proxy","role":"Edit","enabled":true,"actions":["ValuePattern"]}],"truncated":false},
+  "printing": {"printers":[{"name":"Impresora de planta 3","status":"idle","jobs":4}],"default_printer":"Impresora de planta 3","queued_jobs":4}
 }

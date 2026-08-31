@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [ValidatePattern('^[^\s/:]+:\d{1,5}$')]
@@ -7,7 +7,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$taskName = 'Axioma Axel Agent'
+$taskName = 'Axiōma Axel Agent'
 
 if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is not set.' }
 $installDir = Join-Path $env:LOCALAPPDATA 'axioma'
