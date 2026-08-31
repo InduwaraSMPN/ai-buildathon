@@ -1,0 +1,107 @@
+{{- if .Values.ingress.enabled }}
+{{- $fullname := include "axioma.fullname" . -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- if .Values.ingress.hosts.api }}
+    - host: {{ .Values.ingress.hosts.api | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "axioma.api.fullname" . }}
+                port:
+                  number: {{ .Values.api.service.port }}
+    {{- end }}
+    {{- if and .Values.portal.enabled .Values.ingress.hosts.portal }}
+    - host: {{ .Values.ingress.hosts.portal | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "axioma.portal.fullname" . }}
+                port:
+                  number: {{ .Values.portal.service.port }}
+    {{- end }}
+    {{- if and .Values.dashboard.enabled .Values.ingress.hosts.dashboard }}
+    - host: {{ .Values.ingress.hosts.dashboard | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "axioma.dashboard.fullname" . }}
+                port:
+                  number: {{ .Values.dashboard.service.port }}
+    {{- end }}
+{{- end }}
+{{- if .Values.grpcIngress.enabled }}
+---
+{{/*
+The device gateway.
+
+Two things to know before enabling this, both true of the tree today:
+
+  - The stream is plaintext HTTP/2 and the device identity in the hello is
+    client-asserted, so anything that can reach this endpoint can impersonate
+    any device. Device channel authentication is Phase 3; until it lands this
+    must not be reachable from the internet.
+  - gRPC ingress is not HTTP ingress. nginx-ingress needs the backend-protocol
+    annotation below and TLS on the listener to negotiate HTTP/2; other
+    controllers want their own annotation, and some need a separate listener
+    entirely. If devices cannot connect, this is where to look first.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ printf "%s-grpc" (include "axioma.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.labels" . | nindent 4 }}
+    axioma.io/channel: device-gateway
+  {{- with .Values.grpcIngress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.grpcIngress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.grpcIngress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ required "grpcIngress.host is required when grpcIngress.enabled is true" .Values.grpcIngress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "axioma.api.grpcServiceName" . }}
+                port:
+                  number: {{ .Values.api.grpcService.port }}
+{{- end }}

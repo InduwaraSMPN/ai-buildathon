@@ -1,0 +1,143 @@
+{{- if .Values.postgresql.enabled }}
+{{/*
+Evaluation Postgres. One replica, one volume, no backup and no failover. The
+image is pgvector/pgvector:pg18 rather than stock postgres because the vector
+extension has to be available for later phases; nothing uses it yet.
+*/}}
+{{- if not .Values.postgresql.auth.existingSecret }}
+{{- if not .Values.postgresql.auth.password }}
+{{- fail "postgresql.auth.password is required when the bundled database is enabled. Set it, or set postgresql.enabled=false and supply secrets.databaseUrl." }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "axioma.postgresql.secretName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+type: Opaque
+stringData:
+  {{ .Values.postgresql.auth.existingSecretPasswordKey }}: {{ .Values.postgresql.auth.password | quote }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "axioma.postgresql.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgresql
+      port: {{ .Values.postgresql.service.port }}
+      targetPort: postgresql
+      protocol: TCP
+  selector:
+    {{- include "axioma.selectorLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "axioma.postgresql.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "postgresql") | nindent 4 }}
+spec:
+  replicas: 1
+  serviceName: {{ include "axioma.postgresql.fullname" . }}
+  selector:
+    matchLabels:
+      {{- include "axioma.selectorLabels" (dict "root" . "component" "postgresql") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "axioma.selectorLabels" (dict "root" . "component" "postgresql") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "axioma.imagePullSecrets" . | nindent 6 }}
+      {{- with .Values.postgresql.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: postgresql
+          image: {{ include "axioma.image" .Values.postgresql.image }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          {{- with .Values.postgresql.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.auth.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.auth.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "axioma.postgresql.secretName" . }}
+                  key: {{ .Values.postgresql.auth.existingSecretPasswordKey }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+              protocol: TCP
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgresql.auth.username | quote }}, "-d", {{ .Values.postgresql.auth.database | quote }}]
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            # The pg18 image initialises into /var/lib/postgresql/18/docker and
+            # declares /var/lib/postgresql as its volume, which is also what
+            # api/docker-compose.yml mounts.
+            - name: data
+              mountPath: /var/lib/postgresql
+      {{- with .Values.postgresql.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.postgresql.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.postgresql.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if not .Values.postgresql.persistence.enabled }}
+      volumes:
+        - name: data
+          emptyDir: {}
+      {{- end }}
+  {{- if .Values.postgresql.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          {{- toYaml .Values.postgresql.persistence.accessModes | nindent 10 }}
+        {{- if .Values.postgresql.persistence.storageClass }}
+        storageClassName: {{ .Values.postgresql.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.persistence.size | quote }}
+  {{- end }}
+{{- end }}

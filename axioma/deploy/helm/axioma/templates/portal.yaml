@@ -1,0 +1,3 @@
+{{- if .Values.portal.enabled }}
+{{- include "axioma.frontend" (dict "root" . "component" "portal" "config" .Values.portal "image" .Values.images.portal "name" (include "axioma.portal.fullname" .)) }}
+{{- end }}

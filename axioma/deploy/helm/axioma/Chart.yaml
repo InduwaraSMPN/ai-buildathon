@@ -1,0 +1,15 @@
+apiVersion: v2
+name: axioma
+description: Axiōma — the platform a company installs inside its own infrastructure. Deploys the API, Axel the agent, the employee portal, and the IT dashboard, with an optional bundled Postgres.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - itsm
+  - agent
+  - kubernetes
+home: https://github.com/marketrix/axioma
+sources:
+  - https://github.com/marketrix/axioma
+annotations:
+  axioma.io/phase: "2"

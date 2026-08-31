@@ -1,0 +1,3 @@
+{{- if .Values.dashboard.enabled }}
+{{- include "axioma.frontend" (dict "root" . "component" "dashboard" "config" .Values.dashboard "image" .Values.images.dashboard "name" (include "axioma.dashboard.fullname" .)) }}
+{{- end }}

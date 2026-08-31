@@ -1,0 +1,72 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ printf "%s-migrate-scripts" (include "axioma.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "migrations") | nindent 4 }}
+data:
+  # Mounted at /app/deploy-scripts inside the API image, so a bare `pg` import
+  # resolves up into /app/node_modules. Two jobs, chosen by WAIT_MODE:
+  #
+  #   database   — block until Postgres accepts a connection. Used by the
+  #                migration Job so it does not burn its backoff budget on a
+  #                database that is merely still starting.
+  #   migrations — block until the database has at least as many applied
+  #                migrations as this image's journal declares. Used by every
+  #                API pod, which is what keeps a replica from serving traffic
+  #                against a schema older than its own code.
+  wait-for.mjs: |
+    import { readFileSync } from "node:fs";
+    import pg from "pg";
+
+    const mode = process.env.WAIT_MODE ?? "database";
+    const timeoutSeconds = Number(process.env.WAIT_TIMEOUT_SECONDS ?? 600);
+    const journalPath =
+      process.env.MIGRATION_JOURNAL ?? "/app/src/db/migrations/meta/_journal.json";
+    const deadline = Date.now() + timeoutSeconds * 1000;
+
+    let expected = 0;
+    if (mode === "migrations") {
+      const journal = JSON.parse(readFileSync(journalPath, "utf8"));
+      expected = journal.entries.length;
+      console.log("wait-for: image expects " + expected + " migrations");
+    }
+
+    async function attempt() {
+      const client = new pg.Client({
+        connectionString: process.env.DATABASE_URL,
+        connectionTimeoutMillis: 5000,
+      });
+      try {
+        await client.connect();
+        if (mode === "database") return true;
+        const result = await client.query(
+          "select count(*)::int as applied from drizzle.__drizzle_migrations",
+        );
+        const applied = result.rows[0]?.applied ?? 0;
+        if (applied >= expected) {
+          console.log("wait-for: " + applied + "/" + expected + " migrations applied");
+          return true;
+        }
+        console.log("wait-for: " + applied + "/" + expected + " migrations applied, waiting");
+        return false;
+      } finally {
+        await client.end().catch(() => {});
+      }
+    }
+
+    while (true) {
+      try {
+        if (await attempt()) process.exit(0);
+      } catch (error) {
+        console.log("wait-for: " + error.message);
+      }
+      if (Date.now() >= deadline) {
+        console.error("wait-for: timed out after " + timeoutSeconds + "s in mode " + mode);
+        process.exit(1);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    }
+{{- end }}

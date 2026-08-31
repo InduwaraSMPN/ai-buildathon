@@ -1,0 +1,62 @@
+# The smallest values file that installs a working stack.
+#
+# Everything else takes its chart default: bundled Postgres, in-cluster
+# ServiceAccount for Kubernetes access, a generated gRPC certificate, no
+# ingress, one replica each.
+#
+# The URLs below assume you reach the stack through `kubectl port-forward` on
+# the ports the development stack uses, which is what ../README.md does for the
+# smoke test. Behind an ingress, set them to the real hostnames instead — and
+# keep api.config.corsOrigin listing the exact portal and dashboard origins, or
+# sign-in fails with nothing in the browser console to explain it.
+
+secrets:
+  # Generate your own: `openssl rand -base64 48`
+  betterAuthSecret: "replace-me-with-at-least-thirty-two-characters"
+  # Generate your own: `openssl rand -base64 32`
+  providerEncryptionKey: ""
+  # Credential for the chat provider named under agent.model below.
+  llmKey: "replace-me-with-a-provider-api-key"
+  # Set only when embeddings come from a different provider than chat.
+  embeddingKey: ""
+
+postgresql:
+  auth:
+    password: "replace-me"
+
+# Provider slot one: the agent's chat calls. Sends ticket text, message bodies
+# and observed system state outside the cluster.
+agent:
+  model:
+    # A LiteLLM model string. The agent always sends api_base, so use the
+    # openai/ prefix and point apiBase at whichever OpenAI-compatible provider
+    # you use.
+    name: "openai/replace-me"
+    apiBase: "https://api.openai.com/v1"
+  extraEnv:
+    # reasoning_effort goes out on every call and a provider that does not take
+    # it fails the run outright. This lets LiteLLM strip what the provider will
+    # not accept. Any non-empty value switches it on.
+    - name: LITELLM_DROP_PARAMS
+      value: "1"
+
+api:
+  config:
+    betterAuthUrl: "http://localhost:3000"
+    corsOrigin: "http://localhost:3001,http://localhost:3002"
+    # The first account created with this address becomes an administrator.
+    # Clear it after the first sign-up.
+    bootstrapAdminEmail: "you@example.com"
+    # Provider slot two: the API's embedding calls, configured separately.
+    # Must return exactly 1536 dimensions or the API discards the result and
+    # knowledge retrieval stays lexical.
+    llm:
+      apiBase: "https://api.openai.com/v1"
+      embeddingModel: "text-embedding-3-small"
+
+portal:
+  apiUrl: "http://localhost:3000"
+
+dashboard:
+  apiUrl: "http://localhost:3000"
+  portalUrl: "http://localhost:3001"

@@ -1,0 +1,218 @@
+{{- $grpcPort := .Values.api.config.grpcAddress | splitList ":" | last | int }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "axioma.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+  {{- with .Values.api.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.api.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.api.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "axioma.selectorLabels" (dict "root" . "component" "api") | nindent 4 }}
+---
+{{/*
+The TLS gRPC gateway gets its own Service so it can be exposed independently of
+the HTTP surface. Axel reaches it in-cluster; axel-cli reaches it from outside
+with an enrolled per-device credential. Read ../../README.md before changing
+`type` away from ClusterIP.
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "axioma.api.grpcServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+    axioma.io/channel: device-gateway
+  {{- with .Values.api.grpcService.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.api.grpcService.type }}
+  {{- if and (eq .Values.api.grpcService.type "LoadBalancer") .Values.api.grpcService.loadBalancerIP }}
+  loadBalancerIP: {{ .Values.api.grpcService.loadBalancerIP }}
+  {{- end }}
+  ports:
+    - name: grpc
+      port: {{ .Values.api.grpcService.port }}
+      targetPort: grpc
+      protocol: TCP
+      appProtocol: kubernetes.io/h2
+      {{- if and (eq .Values.api.grpcService.type "NodePort") .Values.api.grpcService.nodePort }}
+      nodePort: {{ .Values.api.grpcService.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "axioma.selectorLabels" (dict "root" . "component" "api") | nindent 4 }}
+---
+{{- if .Values.api.documents.persistence.enabled }}
+{{- if and (gt (int .Values.api.replicaCount) 1) (not (has "ReadWriteMany" .Values.api.documents.persistence.accessModes)) }}
+{{- fail "api.replicaCount is above 1 but api.documents.persistence.accessModes does not include ReadWriteMany. Uploaded documents are written to local disk, so replicas would each see a different set." }}
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "%s-documents" (include "axioma.api.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.api.documents.persistence.accessModes | nindent 4 }}
+  {{- if .Values.api.documents.persistence.storageClass }}
+  storageClassName: {{ .Values.api.documents.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.api.documents.persistence.size | quote }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "axioma.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  replicas: {{ .Values.api.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "axioma.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "axioma.selectorLabels" (dict "root" . "component" "api") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # A changed secret is not otherwise a reason for the Deployment to roll.
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "axioma.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "axioma.serviceAccountName" . }}
+      # The Kubernetes client falls back to this token when KUBECONFIG is unset,
+      # so in-cluster access is exactly "mount the token"; the other modes have
+      # no use for it.
+      automountServiceAccountToken: {{ eq .Values.api.cluster.mode "in-cluster" }}
+      {{- with .Values.api.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.migrations.enabled }}
+      initContainers:
+        # No replica serves traffic against a schema older than its own code.
+        - name: wait-for-migrations
+          image: {{ include "axioma.image" .Values.images.api }}
+          imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+          {{- with .Values.api.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command: ["node", "/app/deploy-scripts/wait-for.mjs"]
+          env:
+            - name: WAIT_MODE
+              value: migrations
+            - name: WAIT_TIMEOUT_SECONDS
+              value: {{ .Values.migrations.waitTimeoutSeconds | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "axioma.secretName" . }}
+                  key: DATABASE_URL
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            - name: deploy-scripts
+              mountPath: /app/deploy-scripts
+              readOnly: true
+      {{- end }}
+      containers:
+        - name: api
+          image: {{ include "axioma.image" .Values.images.api }}
+          imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+          {{- with .Values.api.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- include "axioma.api.env" . | nindent 12 }}
+          ports:
+            # 3000 is hard-coded in api/src/index.ts; there is no PORT variable.
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+            - name: grpc
+              containerPort: {{ $grpcPort }}
+              protocol: TCP
+          {{- with .Values.api.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.api.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - name: documents
+              mountPath: {{ .Values.api.config.documentDir }}
+            # The gRPC gateway reads these paths at listen(); without them the
+            # process exits on start.
+            - name: grpc-tls
+              mountPath: /etc/axioma/grpc-tls
+              readOnly: true
+            {{- if eq .Values.api.cluster.mode "kubeconfig" }}
+            - name: kubeconfig
+              mountPath: /etc/axioma/kubeconfig
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- if .Values.migrations.enabled }}
+        - name: deploy-scripts
+          configMap:
+            name: {{ printf "%s-migrate-scripts" (include "axioma.fullname" .) }}
+        {{- end }}
+        - name: documents
+          {{- if .Values.api.documents.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ printf "%s-documents" (include "axioma.api.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: grpc-tls
+          secret:
+            secretName: {{ include "axioma.api.grpcTlsSecretName" . }}
+            defaultMode: 0400
+        {{- if eq .Values.api.cluster.mode "kubeconfig" }}
+        - name: kubeconfig
+          secret:
+            secretName: {{ required "api.cluster.kubeconfig.existingSecret is required when api.cluster.mode is kubeconfig" .Values.api.cluster.kubeconfig.existingSecret }}
+        {{- end }}
+      {{- with (default .Values.nodeSelector .Values.api.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default .Values.tolerations .Values.api.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default .Values.affinity .Values.api.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

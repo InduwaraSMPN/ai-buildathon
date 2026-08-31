@@ -1,0 +1,84 @@
+{{- if .Values.rbac.create }}
+{{- $root := . }}
+{{- if .Values.rbac.clusterWide }}
+{{/*
+Cluster-wide variant. Opt-in, because it grants the same verbs in every
+namespace including ones nobody intended Axiōma to touch.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "axioma.fullname" . }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+rules:
+  # cluster_read_pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # cluster_read_deployment, and cluster_patch_image — which is a JSON Patch
+  # replacing one container image, dry-run first. Nothing here permits create,
+  # delete, scale, or reading a Secret.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "axioma.fullname" . }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "axioma.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "axioma.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- else }}
+{{/*
+Namespace-scoped default. One Role and one RoleBinding per managed namespace,
+so the grant is visible in each namespace it applies to rather than implied.
+Those namespaces must already exist; the chart does not create them.
+*/}}
+{{- range $namespace := (include "axioma.managedNamespaces" $root | fromYamlArray) }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "axioma.fullname" $root }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" $root "component" "api") | nindent 4 }}
+rules:
+  # cluster_read_pods
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # cluster_read_deployment, and cluster_patch_image — which is a JSON Patch
+  # replacing one container image, dry-run first. Nothing here permits create,
+  # delete, scale, or reading a Secret.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "axioma.fullname" $root }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" $root "component" "api") | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "axioma.fullname" $root }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "axioma.serviceAccountName" $root }}
+    namespace: {{ $root.Release.Namespace }}
+{{- end }}
+{{- end }}
+{{- end }}

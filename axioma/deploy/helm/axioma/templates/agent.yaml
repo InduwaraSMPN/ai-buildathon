@@ -1,0 +1,179 @@
+{{- if .Values.agent.enabled }}
+{{/*
+Axel. No Service: it is a gRPC *client* and nothing dials in. The only listener
+is the health endpoint, which the kubelet reaches directly on the pod IP.
+*/}}
+{{- if not .Values.agent.model.apiBase }}
+{{- fail "agent.model.apiBase is empty. Name the chat provider's OpenAI-compatible endpoint, or set agent.enabled=false to install without Axel." }}
+{{- end }}
+{{- if not .Values.agent.model.name }}
+{{- fail "agent.model.name is empty. Name the model to send, as a LiteLLM model string — for a provider reached through agent.model.apiBase that is openai/<model>." }}
+{{- end }}
+{{- if not (or .Values.secrets.llmKey .Values.secrets.existingSecret) }}
+{{- fail "secrets.llmKey is empty. Axel needs a credential for the chat provider; without one every run fails at its first model call. Set it, or set agent.enabled=false." }}
+{{- end }}
+{{- if .Values.agent.persistence.enabled }}
+{{- if gt (int .Values.agent.replicaCount) 1 }}
+{{- fail "agent.persistence.enabled with agent.replicaCount above 1 would share one worker ID across every replica. Run one replica, or leave persistence off and accept a new worker ID per restart." }}
+{{- end }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ printf "%s-state" (include "axioma.agent.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "agent") | nindent 4 }}
+spec:
+  accessModes:
+    {{- toYaml .Values.agent.persistence.accessModes | nindent 4 }}
+  {{- if .Values.agent.persistence.storageClass }}
+  storageClassName: {{ .Values.agent.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.agent.persistence.size | quote }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "axioma.agent.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "agent") | nindent 4 }}
+spec:
+  replicas: {{ .Values.agent.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "axioma.selectorLabels" (dict "root" . "component" "agent") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "axioma.selectorLabels" (dict "root" . "component" "agent") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- include "axioma.imagePullSecrets" . | nindent 6 }}
+      # Axel holds no credentials of its own beyond the model key, and has no
+      # reason to talk to the Kubernetes API.
+      automountServiceAccountToken: false
+      {{- with .Values.agent.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: agent
+          image: {{ include "axioma.image" .Values.images.agent }}
+          imagePullPolicy: {{ .Values.images.agent.pullPolicy }}
+          {{- with .Values.agent.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            - name: AXIOMA_API_GRPC_HOST
+              value: {{ printf "%s:%v" (include "axioma.api.grpcServiceName" .) .Values.api.grpcService.port | quote }}
+            - name: AXIOMA_API_GRPC_CA_FILE
+              value: /etc/axioma/grpc-tls/tls.crt
+            - name: AXIOMA_API_GRPC_SERVER_NAME
+              value: {{ include "axioma.api.grpcServiceName" . | quote }}
+            - name: AXIOMA_HEALTH_HOST
+              value: "0.0.0.0"
+            - name: AXIOMA_HEALTH_PORT
+              value: "8090"
+            - name: AXIOMA_MODEL
+              value: {{ .Values.agent.model.name | quote }}
+            - name: AXIOMA_API_BASE
+              value: {{ .Values.agent.model.apiBase | quote }}
+            {{- with .Values.agent.model.reasoningEffort }}
+            - name: AXIOMA_REASONING_EFFORT
+              value: {{ . | quote }}
+            {{- end }}
+            - name: AXIOMA_STRICT_FUNCTION_CALLING
+              value: {{ .Values.agent.model.strictFunctionCalling | toString | quote }}
+            {{- if ne (toString .Values.agent.model.temperature) "" }}
+            - name: AXIOMA_TEMPERATURE
+              value: {{ .Values.agent.model.temperature | toString | quote }}
+            {{- end }}
+            - name: AXIOMA_MAX_TOOL_CALLS
+              value: {{ .Values.agent.limits.maxToolCalls | toString | quote }}
+            - name: AXIOMA_MAX_MODEL_TURNS
+              value: {{ .Values.agent.limits.maxModelTurns | toString | quote }}
+            - name: AXIOMA_RUN_DEADLINE_SECONDS
+              value: {{ .Values.agent.limits.runDeadlineSeconds | toString | quote }}
+            - name: AXIOMA_MODEL_OUTPUT_MAX_CHARS
+              value: {{ .Values.agent.limits.modelOutputMaxChars | toString | quote }}
+            - name: AXIOMA_MAX_CONSECUTIVE_FAILURES
+              value: {{ .Values.agent.limits.maxConsecutiveFailures | toString | quote }}
+            - name: AXIOMA_MAX_CONCURRENT_RUNS
+              value: {{ .Values.agent.limits.maxConcurrentRuns | toString | quote }}
+            {{- if or .Values.secrets.existingSecret .Values.secrets.llmKey }}
+            - name: AXIOMA_LLM_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "axioma.secretName" . }}
+                  key: AXIOMA_LLM_KEY
+                  optional: true
+            {{- end }}
+            {{- with .Values.agent.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          ports:
+            - name: health
+              containerPort: 8090
+              protocol: TCP
+          {{- with .Values.agent.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.agent.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.agent.resources | nindent 12 }}
+          volumeMounts:
+            # The gateway presents a certificate the agent has to trust, and
+            # AXIOMA_API_GRPC_CA_FILE points into here.
+            - name: grpc-tls
+              mountPath: /etc/axioma/grpc-tls
+              readOnly: true
+            {{- if .Values.agent.persistence.enabled }}
+            # The worker ID lives here; without it every restart is a new worker.
+            - name: state
+              mountPath: /home/axel/.config/axioma
+            {{- end }}
+      volumes:
+        # tls.crt only. The Secret also carries the gateway's private key, and
+        # the agent has no use for it: a self-signed certificate is its own
+        # trust anchor, so the public half is the whole of what it needs.
+        - name: grpc-tls
+          secret:
+            secretName: {{ include "axioma.api.grpcTlsSecretName" . }}
+            defaultMode: 0444
+            items:
+              - key: tls.crt
+                path: tls.crt
+        {{- if .Values.agent.persistence.enabled }}
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ printf "%s-state" (include "axioma.agent.fullname" .) }}
+        {{- end }}
+      {{- with (default .Values.nodeSelector .Values.agent.nodeSelector) }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default .Values.tolerations .Values.agent.tolerations) }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with (default .Values.affinity .Values.agent.affinity) }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

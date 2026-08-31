@@ -1,0 +1,613 @@
+# Axiōma — deployment values.
+#
+# The minimum to install is documented in ../../README.md. Everything below has
+# a working default except the secrets, which have none on purpose: a generated
+# default would be a shared secret across every install.
+
+nameOverride: ""
+fullnameOverride: ""
+
+# Applied to every workload in the release.
+imagePullSecrets: []
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ---------------------------------------------------------------------------
+# Images
+#
+# This phase does not publish images. Build them locally and load them into the
+# cluster — see ../../README.md. `pullPolicy: IfNotPresent` is what makes a
+# side-loaded image work; `Always` would send the kubelet to a registry that
+# does not have it.
+# ---------------------------------------------------------------------------
+images:
+  api:
+    repository: axioma/api
+    tag: dev
+    pullPolicy: IfNotPresent
+  agent:
+    repository: axioma/agent
+    tag: dev
+    pullPolicy: IfNotPresent
+  portal:
+    repository: axioma/portal
+    tag: dev
+    pullPolicy: IfNotPresent
+  dashboard:
+    repository: axioma/dashboard
+    tag: dev
+    pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------
+# Secrets
+#
+# Either set the values here and let the chart create a Secret, or set
+# `existingSecret` to the name of one you manage and leave the values empty.
+# The key names in the comments are what the chart reads from an existing
+# Secret.
+# ---------------------------------------------------------------------------
+secrets:
+  # Name of a pre-existing Secret. When set, every value in this block is
+  # ignored and the keys are read from that Secret instead.
+  existingSecret: ""
+
+  # Better Auth session signing key. Minimum 32 characters; the API refuses to
+  # start below that. Key: BETTER_AUTH_SECRET
+  betterAuthSecret: ""
+
+  # AES-256-GCM key for credentials at rest, base64, exactly 32 bytes decoded.
+  # Optional today; required once stored provider credentials are in use.
+  # Key: AXIOMA_PROVIDER_ENCRYPTION_KEY
+  providerEncryptionKey: ""
+
+  # Credential for the chat provider Axel calls. Read the egress note under
+  # `agent.model` before setting this. Key: AXIOMA_LLM_KEY
+  llmKey: ""
+
+  # Credential for the embeddings provider the API calls. Leave empty to reuse
+  # llmKey, which is right when one provider serves both. Set it when they are
+  # different vendors. Key: AXIOMA_EMBEDDING_KEY
+  #
+  # With no credential at all the API skips embedding entirely and knowledge
+  # retrieval stays lexical — a degraded mode, not a failure.
+  embeddingKey: ""
+
+  # Postgres DSN. Leave empty when `postgresql.enabled` is true — the chart
+  # composes it from the bundled database. Key: DATABASE_URL
+  databaseUrl: ""
+
+  # Optional integration credentials. Keys: AXIOMA_MAIL_OUTBOUND_TOKEN,
+  # AXIOMA_MAIL_INBOUND_TOKEN, AXIOMA_DIRECTORY_SOURCE_TOKEN.
+  mailOutboundToken: ""
+  mailInboundToken: ""
+  directorySourceToken: ""
+
+# ---------------------------------------------------------------------------
+# API — the oRPC surface, the gRPC gateways, and the only component that writes
+# ---------------------------------------------------------------------------
+api:
+  replicaCount: 1
+
+  # Every variable in api/src/env.ts has a home here. Secrets live above.
+  config:
+    # The externally reachable origin of the API. Better Auth signs and
+    # validates callbacks against this, so a value that does not match what the
+    # browser used will fail authentication silently.
+    betterAuthUrl: "http://localhost:3000"
+
+    # Comma-separated list of exact browser origins allowed to send credentialed
+    # requests. Both SPAs send `credentials: include`, so an origin missing here
+    # makes sign-in fail with no visible error.
+    corsOrigin: "http://localhost:3001,http://localhost:3002"
+
+    # Set on first install to promote this address to administrator when the
+    # account signs up. Leave empty afterwards.
+    bootstrapAdminEmail: ""
+
+    # Start an agent run automatically when a ticket is created in the portal.
+    autoDispatch: true
+
+    nodeEnv: production
+
+    # Address the gRPC server binds. Both agent channels share this one port.
+    grpcAddress: "0.0.0.0:50051"
+
+    # Where uploaded documents are written. Local disk, not object storage —
+    # see `api.documents` below.
+    documentDir: /app/.data/documents
+
+    # ---------------------------------------------------------------------
+    # Embeddings provider — the API's own egress path, separate from Axel's.
+    #
+    # PLACEHOLDER: fill these in before installing. The API POSTs to
+    # {apiBase}/embeddings with a Bearer token and OpenAI's request shape, so
+    # the endpoint must be OpenAI-compatible.
+    #
+    # It also requires exactly 1536 floats back — the column is vector(1536)
+    # and api/src/server/search/embeddings.ts drops anything else. Pick a model
+    # that emits 1536, or one whose provider honours a `dimensions` parameter.
+    # With no credential set the API skips embedding entirely and knowledge
+    # retrieval stays lexical, which is a safe default to install with.
+    #
+    #   OpenAI        apiBase https://api.openai.com/v1
+    #                 model   text-embedding-3-small       (1536 native)
+    #   Azure OpenAI  apiBase https://<resource>.openai.azure.com/openai/deployments/<deployment>
+    #                 model   <deployment name>
+    #   Voyage/Cohere are not OpenAI-shaped and will not work without a proxy.
+    # ---------------------------------------------------------------------
+    llm:
+      apiBase: ""
+      embeddingModel: ""
+
+    mail:
+      # AXIOMA_MAIL_OUTBOUND_URL
+      outboundUrl: ""
+      # Set true to accept inbound mail; requires secrets.mailInboundToken.
+      inboundEnabled: false
+    directory:
+      # AXIOMA_DIRECTORY_SOURCE_URL
+      sourceUrl: ""
+      # Which directory attribute marks a person as IT staff.
+      staffAttribute: department # department | jobTitle
+      staffValue: IT
+
+  # Cluster access. Two modes, mirroring the connection modes the platform
+  # supports. See ../../README.md for what the granted scope does and does not
+  # constrain.
+  cluster:
+    # in-cluster: use the mounted ServiceAccount token for the cluster the API
+    #             runs in. Nothing else to configure.
+    # kubeconfig: mount a kubeconfig from a Secret and point KUBECONFIG at it.
+    # none:       no cluster access; the cluster tools fail at call time.
+    mode: in-cluster
+
+    kubeconfig:
+      # Name of a Secret holding a kubeconfig file.
+      existingSecret: ""
+      key: config
+      # Context to select inside that kubeconfig. Empty uses its current-context.
+      context: ""
+
+  # Uploaded documents are written to local disk by a FileBlobStore. With more
+  # than one replica and no shared volume, an upload handled by one pod is
+  # invisible to the others and is lost when that pod restarts.
+  documents:
+    persistence:
+      enabled: false
+      # ReadWriteMany is required for more than one replica. ReadWriteOnce is
+      # correct for a single replica and is what most clusters can provide.
+      accessModes:
+        - ReadWriteOnce
+      size: 5Gi
+      storageClass: ""
+
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations: {}
+
+  grpc:
+    # The gRPC listener requires TLS: the API refuses to start without a
+    # certificate and key, so this is not optional, only a choice of where the
+    # certificate comes from.
+    tls:
+      # A kubernetes.io/tls Secret you manage. Takes precedence over `generate`.
+      existingSecret: ""
+      # Generate a self-signed certificate on first install and reuse it on
+      # every upgrade. Self-signed means it is its own trust anchor: devices and
+      # the agent must be given it. See ../../README.md.
+      generate: true
+      # Extra names devices will dial. The Service DNS names, the gRPC ingress
+      # host, and localhost are included already; anything else fails the
+      # handshake on the name.
+      extraSans: []
+      validityDays: 3650
+
+  # The gRPC gateway. Both agents dial *in* to this: Axel from inside the
+  # cluster, axel-cli from employee laptops outside it.
+  grpcService:
+    # ClusterIP is enough for Axel. Devices need NodePort, LoadBalancer, or the
+    # gRPC ingress below — read the warning in ../../README.md first.
+    type: ClusterIP
+    port: 50051
+    nodePort: null
+    annotations: {}
+    loadBalancerIP: ""
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+  # /health is registered before the auth and oRPC middleware and does no
+  # database work, so it answers as soon as the HTTP server is listening.
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+
+  # Raw env entries appended verbatim, for anything the chart does not model.
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Database migrations
+#
+# A Job, one per release revision, that runs `drizzle-kit migrate` from the API
+# image. It is a normal resource rather than a Helm hook so the bundled Postgres
+# can start first on a clean install; a pre-install hook would deadlock against
+# a database the same release has not created yet.
+#
+# The API does not migrate on boot. Each API pod instead waits, in an init
+# container, until the row count in drizzle.__drizzle_migrations matches the
+# number of journal entries baked into its own image. That is what makes
+# "exactly once" hold with more than one replica: the Job is the only writer,
+# and no API pod serves traffic against a database behind its own code.
+# ---------------------------------------------------------------------------
+migrations:
+  enabled: true
+  # Seconds an API pod waits for migrations before failing its init container.
+  # The kubelet restarts it, so this is a reporting interval, not a ceiling.
+  waitTimeoutSeconds: 600
+  backoffLimit: 3
+  activeDeadlineSeconds: 900
+  ttlSecondsAfterFinished: 3600
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+# ---------------------------------------------------------------------------
+# Axel — the agent
+#
+# A gRPC client with no inbound port but its health endpoint. It holds no
+# database connection, no cluster credentials, and no path to a device.
+# ---------------------------------------------------------------------------
+agent:
+  enabled: true
+  replicaCount: 1
+
+  model:
+    # -----------------------------------------------------------------------
+    # Chat provider — PLACEHOLDER. Fill these in before installing.
+    #
+    # DATA EGRESS. Whatever you put here receives ticket text, message bodies,
+    # and the system state Axel observes. That is inherent to using a hosted
+    # provider; the chart states it rather than working around it, and no
+    # data-residency claim survives it.
+    #
+    # `name` is a LiteLLM model string. The agent always sends `api_base`
+    # (agent/axel/model.py), so each component talks to exactly one
+    # OpenAI-compatible endpoint — use the `openai/` prefix and point `apiBase`
+    # at the provider. Native `anthropic/` or `gemini/` routing would need an
+    # agent code change, not a values change.
+    #
+    #   OpenAI       apiBase https://api.openai.com/v1
+    #   Azure OpenAI apiBase https://<resource>.openai.azure.com/openai/deployments/<deployment>
+    #                and set AZURE_API_VERSION through agent.extraEnv
+    #   Together     apiBase https://api.together.xyz/v1
+    #   Fireworks    apiBase https://api.fireworks.ai/inference/v1
+    #   Groq         apiBase https://api.groq.com/openai/v1
+    #   OpenRouter   apiBase https://openrouter.ai/api/v1
+    #
+    # Whatever you choose must support tool calling: the loop sends
+    # tool_choice="required" with typed schemas on every turn and cannot work
+    # without it.
+    name: ""
+    apiBase: ""
+    # An OpenAI-family parameter, sent on every call. A provider that does not
+    # understand it rejects the request rather than ignoring it, and the run
+    # ends `failed` on its first model turn:
+    #
+    #   litellm.UnsupportedParamsError: openai does not support parameters:
+    #   ['reasoning_effort'], for model=<model>
+    #
+    # Clearing this value does NOT stop it being sent: agent/axel/config.py
+    # defaults it to "max" and model.py sends it whenever it is not None, so an
+    # empty value arrives as an empty string. To use a model that rejects it,
+    # let LiteLLM strip unsupported parameters instead — see the
+    # LITELLM_DROP_PARAMS note under `agent.extraEnv` below.
+    reasoningEffort: "max"
+    strictFunctionCalling: false
+    # Empty means the provider default; set a number to override.
+    temperature: ""
+
+  # Loop ceilings. Hitting any of them ends the run as exhausted and escalates.
+  limits:
+    maxToolCalls: 20
+    maxModelTurns: 10
+    runDeadlineSeconds: 300
+    modelOutputMaxChars: 4000
+    maxConsecutiveFailures: 3
+    maxConcurrentRuns: 4
+
+  # The worker ID is minted on first start and persisted. Without persistence
+  # every restart registers a new worker.
+  persistence:
+    enabled: false
+    accessModes:
+      - ReadWriteOnce
+    size: 128Mi
+    storageClass: ""
+
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+  # Readiness uses the health endpoint, which reports 503 while the gRPC stream
+  # is down. Liveness deliberately does not: a long reconnect is not a reason to
+  # kill the process, so it checks only that the health server is listening.
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  livenessProbe:
+    tcpSocket:
+      port: health
+    initialDelaySeconds: 20
+    periodSeconds: 30
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+
+  # Any other AXIOMA_* setting from agent/axel/config.py, verbatim, plus
+  # anything LiteLLM itself reads from the environment — the settings class
+  # ignores names it does not know, so they pass straight through.
+  #
+  # The one most installs need is LITELLM_DROP_PARAMS. LiteLLM evaluates it at
+  # import (`drop_params = bool(os.getenv("LITELLM_DROP_PARAMS", False))`) and
+  # then silently strips parameters the chosen provider does not support,
+  # instead of failing the call. That is what makes `reasoningEffort` above
+  # harmless on a provider that rejects it.
+  #
+  # Note it is a Python truthiness check on the string, so any non-empty value
+  # enables it — "false" and "0" both switch it ON. Omit the entry to disable.
+  #
+  #   extraEnv:
+  #     - name: LITELLM_DROP_PARAMS
+  #       value: "1"
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Frontends
+#
+# Both are static bundles served by unprivileged nginx on 8080. The API URL is
+# written into /config.js at container start, so changing `apiUrl` here and
+# redeploying reconfigures them without rebuilding an image.
+# ---------------------------------------------------------------------------
+portal:
+  enabled: true
+  replicaCount: 1
+  # Origin of the API as the browser reaches it. Must appear in
+  # `api.config.corsOrigin` or credentialed requests are rejected.
+  apiUrl: "http://localhost:3000"
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+dashboard:
+  enabled: true
+  replicaCount: 1
+  apiUrl: "http://localhost:3000"
+  # Where the dashboard sends a non-staff account. Must be the portal's origin.
+  portalUrl: "http://localhost:3001"
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# ServiceAccount and RBAC
+#
+# The API reads pods and patches deployment images. Namespace-scoped by
+# default: it can only see the namespaces named below. The ClusterRole variant
+# is opt-in and grants the same verbs across every namespace.
+#
+# Within the granted scope nothing constrains blast radius: any deployment the
+# ServiceAccount can reach can have its image patched.
+# ---------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+  # The API's Kubernetes client falls back to the mounted token when KUBECONFIG
+  # is unset, so this must stay true for `api.cluster.mode: in-cluster`.
+  automountServiceAccountToken: true
+
+rbac:
+  create: true
+  # Namespaces the API may read pods in and patch deployments in. Empty means
+  # the release namespace alone.
+  managedNamespaces: []
+  # Grant the same verbs cluster-wide instead of per namespace. Off by default.
+  clusterWide: false
+
+# ---------------------------------------------------------------------------
+# Bundled Postgres — evaluation only
+#
+# pgvector/pgvector:pg18, because knowledge work in a later phase needs the
+# vector extension. One replica, one PVC, no backup, no failover. For anything
+# beyond evaluation set `enabled: false` and supply `secrets.databaseUrl`
+# pointing at a database you operate — it must have pgvector available.
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg18
+    pullPolicy: IfNotPresent
+  auth:
+    database: axioma
+    username: axioma
+    # No default. Set one, or point existingSecret at a Secret that has it.
+    password: ""
+    existingSecret: ""
+    existingSecretPasswordKey: password
+  service:
+    port: 5432
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+  podSecurityContext:
+    fsGroup: 999
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      # The postgres entrypoint starts as root, fixes ownership on the data
+      # directory and the socket directory, then drops to the postgres user
+      # with gosu. Dropping ALL makes those steps fail and the container
+      # crash-loops on "chown: Operation not permitted", so the four it
+      # actually needs are added back rather than the drop being abandoned.
+      drop: ["ALL"]
+      add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# ---------------------------------------------------------------------------
+# Ingress
+#
+# HTTP only. The device gateway is a separate object below, because gRPC is not
+# HTTP ingress and most controllers must be told so explicitly.
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: false
+  className: nginx
+  annotations: {}
+  tls: []
+  hosts:
+    api: ""
+    portal: ""
+    dashboard: ""
+
+# The device gateway. gRPC is not HTTP ingress and most controllers have to be
+# told so explicitly. See ../../README.md before enabling this.
+grpcIngress:
+  enabled: false
+  className: nginx
+  host: ""
+  # GRPCS, not GRPC. The two differ in what the controller speaks to the
+  # backend: GRPC sends cleartext h2c, and this gateway binds with
+  # ServerCredentials.createSsl and speaks TLS only, so cleartext never
+  # completes a handshake. GRPCS keeps TLS all the way to the pod.
+  #
+  # These annotation names are ingress-nginx's. Note that ingress-nginx is
+  # retired — best-effort maintenance ended March 2026, with no further
+  # releases and no security fixes — so `className` and these annotations are
+  # values rather than assumptions. Another controller, or Gateway API, needs
+  # its own equivalents here.
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: GRPCS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  # ingress-nginx will not serve gRPC without TLS on the listener: plaintext
+  # h2c on port 80 needs a custom template it does not ship. Name a tls secret
+  # here or the handshake never gets far enough to reach the backend.
+  tls: []

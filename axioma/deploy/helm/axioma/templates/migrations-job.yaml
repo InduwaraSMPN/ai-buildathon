@@ -1,0 +1,103 @@
+{{- if .Values.migrations.enabled }}
+{{/*
+One Job per release revision. Named with the revision so an upgrade creates a
+new one rather than colliding with the immutable spec of the last; drizzle-kit
+skips anything already recorded in drizzle.__drizzle_migrations, so a re-run
+with no new migrations is a no-op.
+
+Deliberately not a Helm hook. A pre-install hook runs before the release's own
+resources exist, which would deadlock against the bundled Postgres on a clean
+install, and a post-install hook runs after `--wait` has already given up on
+API pods that are still waiting for the schema.
+*/}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-migrate-%d" (include "axioma.fullname" .) (.Release.Revision | int) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "migrations") | nindent 4 }}
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  ttlSecondsAfterFinished: {{ .Values.migrations.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "axioma.selectorLabels" (dict "root" . "component" "migrations") | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      restartPolicy: Never
+      {{- include "axioma.imagePullSecrets" . | nindent 6 }}
+      serviceAccountName: {{ include "axioma.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.api.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: wait-for-database
+          image: {{ include "axioma.image" .Values.images.api }}
+          imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+          {{- with .Values.api.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command: ["node", "/app/deploy-scripts/wait-for.mjs"]
+          env:
+            - name: WAIT_MODE
+              value: database
+            - name: WAIT_TIMEOUT_SECONDS
+              value: {{ .Values.migrations.waitTimeoutSeconds | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "axioma.secretName" . }}
+                  key: DATABASE_URL
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+          volumeMounts:
+            - name: deploy-scripts
+              mountPath: /app/deploy-scripts
+              readOnly: true
+      containers:
+        - name: migrate
+          image: {{ include "axioma.image" .Values.images.api }}
+          imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+          {{- with .Values.api.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          # drizzle-kit reads drizzle.config.ts, which points at
+          # ./src/db/migrations and ./src/db/schema — both shipped in the image
+          # for exactly this reason.
+          command: ["pnpm", "exec", "drizzle-kit", "migrate"]
+          env:
+            - name: NODE_ENV
+              value: {{ .Values.api.config.nodeEnv | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "axioma.secretName" . }}
+                  key: DATABASE_URL
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+      volumes:
+        - name: deploy-scripts
+          configMap:
+            name: {{ printf "%s-migrate-scripts" (include "axioma.fullname" .) }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

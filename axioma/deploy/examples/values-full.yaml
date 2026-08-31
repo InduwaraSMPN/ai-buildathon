@@ -1,0 +1,386 @@
+# Every knob the chart exposes, set to something other than its default.
+#
+# Not a recommended configuration — it exists so `helm template -f` exercises
+# every branch in the templates. Read values.yaml for what each one means.
+
+nameOverride: ""
+fullnameOverride: "axioma"
+
+imagePullSecrets:
+  - name: registry-credentials
+podAnnotations:
+  example.com/owner: platform-team
+podLabels:
+  example.com/tier: platform
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations:
+  - key: platform
+    operator: Exists
+    effect: NoSchedule
+affinity: {}
+
+images:
+  api:
+    repository: registry.example.com/axioma/api
+    tag: "0.1.0"
+    pullPolicy: Always
+  agent:
+    repository: registry.example.com/axioma/agent
+    tag: "0.1.0"
+    pullPolicy: Always
+  portal:
+    repository: registry.example.com/axioma/portal
+    tag: "0.1.0"
+    pullPolicy: Always
+  dashboard:
+    repository: registry.example.com/axioma/dashboard
+    tag: "0.1.0"
+    pullPolicy: Always
+
+secrets:
+  existingSecret: ""
+  betterAuthSecret: "an-example-better-auth-secret-of-sufficient-length"
+  providerEncryptionKey: "7Zol32nEN+UKmQBOI/iNPKDC5NlxJv5k2wRVOQCw13g="
+  llmKey: "example-chat-provider-key"
+  embeddingKey: "example-embeddings-provider-key"
+  # External database: the bundled Postgres is switched off below.
+  databaseUrl: "postgresql://axioma:example@postgres.databases.svc.cluster.local:5432/axioma?sslmode=require"
+  mailOutboundToken: "example-outbound-token"
+  mailInboundToken: "example-inbound-token-16"
+  directorySourceToken: "example-directory-token"
+
+api:
+  replicaCount: 2
+  config:
+    betterAuthUrl: "https://api.axioma.example.com"
+    corsOrigin: "https://portal.axioma.example.com,https://dashboard.axioma.example.com"
+    bootstrapAdminEmail: "it-admin@example.com"
+    autoDispatch: false
+    nodeEnv: production
+    grpcAddress: "0.0.0.0:50051"
+    documentDir: /var/lib/axioma/documents
+    llm:
+      apiBase: "https://api.openai.com/v1"
+      embeddingModel: "text-embedding-3-small"
+    mail:
+      outboundUrl: "https://mail-relay.example.com/send"
+      inboundEnabled: true
+    directory:
+      sourceUrl: "https://directory.example.com/people"
+      staffAttribute: jobTitle
+      staffValue: "IT Support"
+  # External cluster, credentials from a mounted kubeconfig rather than the
+  # in-cluster ServiceAccount token.
+  cluster:
+    mode: kubeconfig
+    kubeconfig:
+      existingSecret: axioma-kubeconfig
+      key: config
+      context: prod
+  documents:
+    persistence:
+      enabled: true
+      accessModes:
+        - ReadWriteMany
+      size: 20Gi
+      storageClass: nfs
+  service:
+    type: ClusterIP
+    port: 3000
+    annotations:
+      example.com/scrape: "true"
+  grpc:
+    tls:
+      existingSecret: ""
+      generate: true
+      extraSans:
+        - devices.axioma.internal
+        - 10.0.0.50
+      validityDays: 825
+  grpcService:
+    type: LoadBalancer
+    port: 50051
+    nodePort: null
+    annotations:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+    loadBalancerIP: "10.0.0.50"
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 30
+    timeoutSeconds: 5
+    failureThreshold: 5
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 5
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+  extraEnv:
+    - name: AXIOMA_EXAMPLE_PASSTHROUGH
+      value: "anything api/src/env.ts does not model"
+  nodeSelector:
+    workload: platform
+  tolerations:
+    - key: platform
+      operator: Exists
+      effect: NoSchedule
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: api
+
+migrations:
+  enabled: true
+  waitTimeoutSeconds: 900
+  backoffLimit: 5
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 7200
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 1Gi
+
+agent:
+  enabled: true
+  replicaCount: 1
+  model:
+    # Chat and embeddings from different providers, to exercise the split:
+    # this one goes to Together, the API's embeddings go to OpenAI above.
+    name: "openai/gpt-5.6-terra"
+    apiBase: "https://api.together.xyz/v1"
+    reasoningEffort: "high"
+    strictFunctionCalling: true
+    temperature: 0.2
+  limits:
+    maxToolCalls: 30
+    maxModelTurns: 15
+    runDeadlineSeconds: 600
+    modelOutputMaxChars: 8000
+    maxConsecutiveFailures: 5
+    maxConcurrentRuns: 8
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 256Mi
+    storageClass: standard
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: health
+    initialDelaySeconds: 15
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 4
+  livenessProbe:
+    tcpSocket:
+      port: health
+    initialDelaySeconds: 30
+    periodSeconds: 60
+    timeoutSeconds: 5
+    failureThreshold: 4
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+  extraEnv:
+    - name: AXIOMA_RETRY_ATTEMPTS
+      value: "5"
+    - name: AXIOMA_RECONNECT_CAP_SECONDS
+      value: "60"
+  nodeSelector:
+    workload: platform
+  tolerations: []
+  affinity: {}
+
+portal:
+  enabled: true
+  replicaCount: 2
+  apiUrl: "https://api.axioma.example.com"
+  service:
+    type: ClusterIP
+    port: 80
+    annotations:
+      example.com/scrape: "false"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+dashboard:
+  enabled: true
+  replicaCount: 2
+  apiUrl: "https://api.axioma.example.com"
+  portalUrl: "https://portal.axioma.example.com"
+  service:
+    type: ClusterIP
+    port: 80
+    annotations: {}
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop: ["ALL"]
+  extraEnv: []
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+serviceAccount:
+  create: true
+  name: "axioma-platform"
+  annotations:
+    example.com/purpose: "cluster reads and image patches"
+  automountServiceAccountToken: true
+
+rbac:
+  create: true
+  managedNamespaces:
+    - demo
+    - payments
+  clusterWide: false
+
+postgresql:
+  enabled: false
+  image:
+    repository: pgvector/pgvector
+    tag: pg18
+    pullPolicy: IfNotPresent
+  auth:
+    database: axioma
+    username: axioma
+    password: ""
+    existingSecret: ""
+    existingSecretPasswordKey: password
+  service:
+    port: 5432
+  persistence:
+    enabled: true
+    accessModes:
+      - ReadWriteOnce
+    size: 50Gi
+    storageClass: fast
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      memory: 4Gi
+  podSecurityContext:
+    fsGroup: 999
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+      add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID"]
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt
+    nginx.ingress.kubernetes.io/proxy-body-size: 25m
+  tls:
+    - secretName: axioma-tls
+      hosts:
+        - api.axioma.example.com
+        - portal.axioma.example.com
+        - dashboard.axioma.example.com
+  hosts:
+    api: api.axioma.example.com
+    portal: portal.axioma.example.com
+    dashboard: dashboard.axioma.example.com
+
+# Enabled here only so `helm template` exercises the branch. Read the warning in
+# values.yaml before doing this for real: the device channel is plaintext and
+# its device identity is client-asserted.
+grpcIngress:
+  enabled: true
+  className: nginx
+  host: devices.axioma.internal
+  annotations:
+    nginx.ingress.kubernetes.io/backend-protocol: GRPCS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  tls:
+    - secretName: axioma-devices-tls
+      hosts:
+        - devices.axioma.internal
