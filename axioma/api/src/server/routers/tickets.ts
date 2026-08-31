@@ -1450,7 +1450,9 @@ export const ticketsRouter = {
 					),
 				db
 					.select({
-						duration: sql<number>`extract(epoch from (${tickets.resolvedAt} - ${tickets.createdAt})) * 1000`,
+						duration: sql<number>`extract(epoch from (${tickets.resolvedAt} - ${tickets.createdAt})) * 1000`.mapWith(
+							Number,
+						),
 					})
 					.from(tickets)
 					.where(sql`${tickets.resolvedAt} is not null`)
