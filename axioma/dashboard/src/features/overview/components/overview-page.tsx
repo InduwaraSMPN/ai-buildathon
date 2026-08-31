@@ -103,9 +103,6 @@ export function OverviewPage() {
 			description="Service desk demand and outcomes from one aggregate view."
 			action={<EditOverviewDialog />}
 		>
-			{/* Four columns, and the two double-width widgets sit first in each row:
-			  priority + confirmation + escalations fills row one, resolution rate +
-			  median TTR + CSAT fills row two, with no ragged trailing gap. */}
 			<div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
 				{orderedOverviewWidgets(arrangement.data).map(({ key, width }) => (
 					<div key={key} className={width === 2 ? "xl:col-span-2" : undefined}>
@@ -155,7 +152,6 @@ export function OverviewPage() {
 								search={{ resolvedAt: true }}
 							/>
 						) : null}
-						{/* StatTile rather than Stat: CSAT has no ticket filter to link to. */}
 						{key === "csat" ? (
 							<StatTile
 								label="CSAT"
@@ -168,9 +164,6 @@ export function OverviewPage() {
 				))}
 			</div>
 
-			{/* Every card here is a list or an h-72 chart, so equal-height rows read
-			  cleanly. Keep single-value stats out of this grid — they belong in the
-			  stat row above, where they are not paired against a chart. */}
 			<div className="mt-4 grid gap-4 lg:grid-cols-2">
 				<ChartCard
 					title="Service-level attainment"
@@ -325,9 +318,6 @@ export function orderedOverviewWidgets(
 		widgetKey: key,
 		width,
 	}));
-	// A stored key with no renderer would otherwise map to an empty grid cell,
-	// which reads as a stray container above the widgets. Fall back to the
-	// defaults when an arrangement leaves nothing renderable at all.
 	const renderable = saved.filter(({ widgetKey }) =>
 		isRenderableWidget(widgetKey),
 	);

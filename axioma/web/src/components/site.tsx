@@ -185,7 +185,6 @@ export function PageIntro({
 	title,
 	children,
 }: {
-	/** Omit on pages where the title alone carries the section. */
 	eyebrow?: string;
 	title: string;
 	children: ReactNode;

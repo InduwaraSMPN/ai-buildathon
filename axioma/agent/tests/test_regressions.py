@@ -173,9 +173,6 @@ async def test_worst_case_infrastructure_fix_fits_the_tool_ceiling() -> None:
         "cluster_read_deployment",
         "cmdb_record_observation",
     ]
-    # Six mandatory calls against a ceiling of eight. The remaining two are the
-    # only budget a run has for a wrong turn, and the CMDB gate can spend one of
-    # them on a rejected resolution before the second escalates.
     assert len(bus.calls) == 6
     assert config.max_tool_calls - len(bus.calls) == 2
 

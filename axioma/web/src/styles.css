@@ -159,9 +159,6 @@
 }
 html {
 	scroll-behavior: smooth;
-	/* Always reserve the scrollbar track so short pages and long pages get the
-	 * same content width; without it, the centred shells shift by half a
-	 * scrollbar when a page grows past the viewport. */
 	overflow-y: scroll;
 }
 body {
@@ -1688,9 +1685,6 @@ h3 {
 }
 
 /* ── Staggered reveal — single high-impact moment ── */
-/* Service status — public availability page.
-   Availability tones are local to this page: the shared palette carries brand
-   and neutrals, but no success/warning/danger trio. */
 .status-list {
 	display: flex;
 	flex-direction: column;
@@ -1739,8 +1733,6 @@ h3 {
 	color: var(--status-down);
 }
 
-/* The 90 bars share the row equally and shrink rather than overflow, so the
-   strip stays one line at every width. */
 .status-strip {
 	display: flex;
 	gap: 2px;

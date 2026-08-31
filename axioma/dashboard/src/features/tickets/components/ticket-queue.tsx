@@ -242,8 +242,6 @@ export function TicketQueue({
 							value={query}
 							onChange={(event) => setQuery(event.target.value)}
 							placeholder="Search ID, title, or reporter…"
-							// h-7 matches the size="sm" buttons sharing this row; the
-							// input's own h-8 default stands 4px taller than all of them.
 							className="h-7 pl-8"
 						/>
 					</label>

@@ -275,8 +275,6 @@ portal:
 web:
   enabled: true
   replicaCount: 2
-  # Server-to-server, so it stays out of api.config.corsOrigin. Empty would use
-  # the API's in-cluster Service; named here to show the knob exists.
   apiUrl: "http://axioma-api:3000"
 
 dashboard:

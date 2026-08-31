@@ -58,8 +58,6 @@ export function EditOverviewDialog() {
 			},
 		}),
 	);
-	// Only offer widgets the overview can render: a stored key with no renderer
-	// would list a row here that changes nothing on the page.
 	const stored = (query.data ?? []).filter((entry) =>
 		isRenderableWidget(entry.widgetKey),
 	);
@@ -111,10 +109,6 @@ export function EditOverviewDialog() {
 							widgets={widgets}
 							onChange={(next) =>
 								save.mutate({
-									// WidgetArrangement is generic over plain string keys, but
-									// the contract only accepts the widget vocabulary. Every
-									// key here came from OVERVIEW_WIDGETS or survived the
-									// isRenderableWidget filter above, so the narrowing holds.
 									widgets: next
 										.filter((widget) => isRenderableWidget(widget.key))
 										.map(({ key, width }) => ({

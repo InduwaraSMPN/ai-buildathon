@@ -1,11 +1,4 @@
 {{- if .Values.web.enabled }}
-{{/*
-The public website. It does not share the frontend template with the portal and
-the dashboard: those are static bundles behind nginx that read their API URL
-from /config.js in the browser, and this one is a Nitro server that reads it
-from its own environment and calls the API server-side. That is deliberate — it
-keeps the marketing origin out of api.config.corsOrigin.
-*/}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -66,9 +59,6 @@ spec:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           env:
-            # Reached from inside the cluster, not from a browser: the in-cluster
-            # Service name is the right value here, and it does not belong in
-            # api.config.corsOrigin.
             - name: AXIOMA_API_URL
               value: {{ .Values.web.apiUrl | default (printf "http://%s:%v" (include "axioma.api.fullname" .) .Values.api.service.port) | quote }}
             {{- with .Values.web.extraEnv }}
@@ -78,9 +68,6 @@ spec:
             - name: http
               containerPort: 3000
               protocol: TCP
-          # The site has no health endpoint of its own; "/" is a rendered route,
-          # so a 200 there means the Nitro server and the router both work. It
-          # reads nothing from the API, unlike /status.
           livenessProbe:
             httpGet:
               path: /
@@ -98,9 +85,6 @@ spec:
           resources:
             {{- toYaml .Values.web.resources | nindent 12 }}
           volumeMounts:
-            # The root filesystem is read-only, and Node writes to /tmp for
-            # things the site never asks for directly — leaving it unwritable
-            # turns an ordinary request into a crash.
             - name: tmp
               mountPath: /tmp
       volumes:

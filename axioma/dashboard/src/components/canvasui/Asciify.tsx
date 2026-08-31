@@ -1,28 +1,5 @@
 "use client";
 
-/**
- * Vendored from the Canvas UI registry:
- *   npx shadcn@latest add https://canvasui.dev/r/asciify-react.json
- *
- * Behaviour is unchanged from upstream. The edits below exist only so the file
- * passes this repository's lint gate instead of being excluded from it, and
- * each is mechanical — re-apply them after re-vendoring:
- *
- *  1. The WebGL context is aliased to a non-null `gl` after its guard, rather
- *     than asserted with `gl!` at all 69 use sites.
- *  2. The html-in-canvas capture is held as one nullable record (`htmlPaint`)
- *     rather than a boolean, so its call sites narrow instead of asserting.
- *     Its two members are bound, because each is called on its own owner.
- *  3. `createShader`, `createProgram`, `createTexture` and the uniform lookups
- *     are checked rather than asserted. The three factories throw, which
- *     `createAsciify` already catches and reports the same way it does a
- *     shader compile failure; the uniform loop skips a null entry.
- *  4. The text-mask TreeWalker is a `for` loop rather than a `while` with an
- *     assignment in its condition.
- *  5. One `biome-ignore` on `gl.useProgram`, which the hook rule misreads.
- *
- * Formatting is this repository's (tabs), applied by `biome check --write`.
- */
 
 import {
 	type ReactNode,
@@ -720,16 +697,10 @@ function initializeAsciify(
 		premultipliedAlpha: true,
 	});
 	if (!context || context.isContextLost()) return null;
-	// Local deviation from the registry file: aliased after the guard so the
-	// closures below see a non-null context by inference. Upstream keeps `gl`
-	// nullable and writes `gl!` at each of its 69 use sites.
 	const gl = context;
 
 	const sourceCtx = source.getContext("2d") as ElementImageContext | null;
 	const paintable = source as PaintableCanvas;
-	// Local deviation: captured as one nullable record rather than a boolean,
-	// so the three call sites below narrow instead of asserting. Both members
-	// are bound because each is called as a method on its own owner.
 	const htmlPaint =
 		sourceCtx &&
 		typeof sourceCtx.drawElementImage === "function" &&
@@ -1081,8 +1052,6 @@ function initializeAsciify(
 	function render() {
 		uploadContent();
 		uploadMask();
-		// `gl.useProgram` binds a compiled shader program. Biome's rule matches
-		// on the `use` prefix alone and reads it as a React hook.
 		// biome-ignore lint/correctness/useHookAtTopLevel: WebGL call, not a hook
 		gl.useProgram(program);
 		gl.activeTexture(gl.TEXTURE0);

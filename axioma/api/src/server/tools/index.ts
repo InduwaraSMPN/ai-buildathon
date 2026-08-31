@@ -87,7 +87,6 @@ export function assertEnvironmentAllowed(params: {
 		);
 }
 
-/** A verification read completes a change only in its persisted run environment. */
 export function sameChangeEnvironment(
 	changeEnvironment: string | null | undefined,
 	readEnvironment: string,

@@ -23,14 +23,6 @@ import {
 	TableRow,
 } from "@/components/ui/table";
 
-/**
- * The list-page table: a filter box, sortable headers, and paging over a Card.
- *
- * Extracted from the devices table so every list reads and behaves the same;
- * pages supply columns and data, not table wiring. Sub-tables inside detail
- * sheets and editors deliberately keep plain <Table>: they are short, already
- * scoped by their parent, and a filter box there is noise.
- */
 export function DataTable<TRow>({
 	data,
 	columns,
@@ -46,13 +38,11 @@ export function DataTable<TRow>({
 	// biome-ignore lint/suspicious/noExplicitAny: column defs are heterogeneous by design; TRow still pins the row type.
 	columns: ColumnDef<TRow, any>[];
 	filterPlaceholder: string;
-	/** Accessible name for the filter box, which has no visible label. */
 	filterLabel: string;
 	emptyTitle: string;
 	emptyDescription: string;
 	pageSize?: number;
 	onRowClick?: (row: TRow) => void;
-	/** Accessible name for a clickable row; required when onRowClick is set. */
 	rowLabel?: (row: TRow) => string;
 }) {
 	const filterId = useId();
@@ -94,18 +84,6 @@ export function DataTable<TRow>({
 			) : (
 				<Card>
 					<CardContent className="px-0">
-						{/*
-						  table-fixed: with auto layout the browser sizes columns from the
-						  rows currently rendered, so sorting or paging to different content
-						  silently resized every column. Fixed layout takes widths from the
-						  header row instead, which does not change.
-
-						  The cell overrides are the other half of that: the Table
-						  primitive sets whitespace-nowrap, which under a fixed layout
-						  spills long text across the next column instead of widening its
-						  own. Cells wrap and break instead, and align to the top so a
-						  wrapped cell stays level with its shorter neighbours.
-						*/}
 						<Table className="table-fixed [&_td]:whitespace-normal [&_td]:break-words [&_td]:align-top [&_th]:whitespace-normal">
 							<TableHeader>
 								{table.getHeaderGroups().map((group) => (
@@ -113,10 +91,6 @@ export function DataTable<TRow>({
 										{group.headers.map((header) => (
 											<TableHead
 												key={header.id}
-												// A column's `size` is read as a percentage when the
-												// caller sets one; unsized columns share what is left.
-												// getSize() is avoided: it reports TanStack's default
-												// of 150 for unsized columns, which is not a width.
 												style={{
 													width: header.column.columnDef.size
 														? `${header.column.columnDef.size}%`
@@ -127,11 +101,6 @@ export function DataTable<TRow>({
 													<Button
 														variant="ghost"
 														size="xs"
-														// Header labels wrap instead of forcing a
-														// minimum width: under table-fixed a nowrap
-														// header on an unsized column steals the space
-														// the sized columns asked for, which crushed the
-														// wide matrices down to a character per line.
 														className="h-auto min-w-0 whitespace-normal py-1 text-left"
 														onClick={header.column.getToggleSortingHandler()}
 													>

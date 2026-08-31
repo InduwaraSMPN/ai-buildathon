@@ -6,10 +6,6 @@ import { oc } from "@orpc/contract";
 import { z } from "zod";
 import { capability, jsonRecord } from "./shared";
 
-/**
- * The widgets the overview can render. The dashboard derives its own list from
- * this one, so a widget renamed here cannot silently outlive its renderer.
- */
 export const OVERVIEW_WIDGET_KEYS = [
 	"priority",
 	"confirmation",
@@ -25,9 +21,6 @@ const widget = z.object({
 	settings: z.unknown().nullable().optional(),
 });
 
-// Reads stay permissive and writes do not: an arrangement stored before a
-// widget was retired must still load — the dashboard drops what it cannot
-// render — but nothing may store a key that no longer has a renderer.
 const writableWidget = widget.extend({
 	widgetKey: z.enum(OVERVIEW_WIDGET_KEYS),
 });

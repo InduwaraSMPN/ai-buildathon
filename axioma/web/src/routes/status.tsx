@@ -18,7 +18,6 @@ export const Route = createFileRoute("/status")({
 	errorComponent: StatusUnavailable,
 });
 
-// Full availability is healthy; 99% and above is degraded; below that, disrupted.
 function tone(availability: number) {
 	if (availability === 1) return "is-up";
 	return availability >= 0.99 ? "is-degraded" : "is-down";
@@ -45,11 +44,6 @@ function ServiceCard({ service }: { service: ServiceStatus }) {
 				</span>
 			</header>
 
-			{/*
-			  The strip is decorative: it repeats what the visually-hidden list below
-			  states in full, so a screen reader gets the 90 days as text rather than
-			  90 unlabelled elements.
-			*/}
 			<div className="status-strip" aria-hidden="true">
 				{days.map((day) => (
 					<span

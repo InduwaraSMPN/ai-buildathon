@@ -232,8 +232,6 @@ const changeColumns = [
 		(change) => change.riskLevel ?? `${change.impact} impact`,
 		{ id: "risk", header: "Risk" },
 	),
-	// Sorts on the timestamp so the window orders chronologically; unscheduled
-	// changes sort last rather than under "N".
 	changeColumn.accessor(
 		(change) =>
 			change.workStartAt

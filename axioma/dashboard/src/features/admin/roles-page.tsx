@@ -126,18 +126,12 @@ export function RolesPage() {
 		onSuccess: refresh,
 		onError: (error) => toast.error(error.message),
 	});
-	// Rows are read before the pending and error guards so the column
-	// definitions below can be memoized: hooks cannot sit after an early return.
 	const roleRows = roles.data ?? [];
 	const peopleRows = people.data ?? [];
 	const teamRows = teams.data ?? [];
 	const departmentRows = departments.data ?? [];
 	const capabilityRows = capabilities.data ?? [];
 
-	// One column per role in both matrices, so the defs are built rather than
-	// written out; each depends on the role list and the mutation it fires.
-	// Under table-fixed a column with no width competes with the sized ones, so
-	// the role columns share what the fixed columns leave and the total is 100%.
 	const roleColumnWidth = useCallback(
 		(fixed: number) =>
 			roleRows.length ? (100 - fixed) / roleRows.length : undefined,
@@ -266,8 +260,6 @@ export function RolesPage() {
 				id: "department",
 				header: "Department",
 				size: 20,
-				// Sorted and filtered by the department name, not the id, so the
-				// column behaves the way it reads.
 				accessorFn: (team: Team) =>
 					departmentRows.find(
 						(department) => department.id === team.departmentId,
@@ -381,9 +373,6 @@ export function RolesPage() {
 			title="Identity administration"
 			description="Manage access, people and organization structure."
 		>
-			{/* Four overview tiles instead of four stacked tables. The role and
-			  people matrices grow a column per role, so inline they pushed the page
-			  sideways; each now opens in a wide panel that scrolls on its own. */}
 			<div className="grid gap-4 sm:grid-cols-2">
 				<SectionTile
 					title="Role capabilities"
@@ -451,8 +440,6 @@ export function RolesPage() {
 				title="Departments"
 				description="Departments group the teams that own work."
 			>
-				{/* Creation is an inline row rather than a second dialog, so opening a
-				  panel never stacks two modals on top of each other. */}
 				<form
 					className="flex flex-wrap items-end gap-2"
 					onSubmit={(event) => {
@@ -571,8 +558,6 @@ function SectionPanel({
 					<DialogTitle>{title}</DialogTitle>
 					<DialogDescription>{description}</DialogDescription>
 				</DialogHeader>
-				{/* The capability and people matrices are one column per role, so the
-				  body scrolls in both directions rather than stretching the dialog. */}
 				<div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-1 py-2">
 					{children}
 				</div>
@@ -586,11 +571,6 @@ function SectionPanel({
 	);
 }
 
-/**
- * Names as text, truncated past a few. The matrix this replaced gave one column
- * per person, so the table grew a column every time somebody joined and had to
- * be scrolled sideways to read at all.
- */
 function MemberSummary({
 	names,
 	empty,
@@ -626,8 +606,6 @@ function TeamMembershipDialog({
 	onChange: (next: { memberIds: string[]; roleIds: string[] }) => void;
 }) {
 	const [open, setOpen] = useState(false);
-	// Seeded from the team when opened, so a half-finished edit is discarded on
-	// cancel rather than firing a mutation per checkbox as the matrix did.
 	const [memberIds, setMemberIds] = useState<string[]>([]);
 	const [roleIds, setRoleIds] = useState<string[]>([]);
 

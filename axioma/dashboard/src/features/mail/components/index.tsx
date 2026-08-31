@@ -19,12 +19,6 @@ export type MailboxActivityRow = {
 	createdAt: Date;
 };
 
-/**
- * Mirrors MAILBOX_ACTIVITY_DECISIONS in axioma/api/src/db/schema/mail.ts. The
- * contract types this field as a plain string, so the vocabulary cannot be
- * imported — keep this map in step when a decision is added there. "rejected"
- * was missing and rendered as its raw lowercase key beside labelled siblings.
- */
 function decisionLabel(decision: string) {
 	const labels: Record<string, string> = {
 		threaded: "Threaded",
@@ -39,7 +33,6 @@ function decisionLabel(decision: string) {
 
 const sendColumn = createColumnHelper<MailLogRow>();
 const sendColumns = [
-	// Sorts on the timestamp, displays the formatted date.
 	sendColumn.accessor((entry) => entry.attemptedAt.getTime(), {
 		id: "attempted",
 		header: "Attempted",

@@ -160,8 +160,6 @@ const problemColumns = [
 		id: "owner",
 		header: "Owner",
 	}),
-	// Sorts on the timestamp, displays the formatted date: sorting a formatted
-	// date string would order it alphabetically.
 	problemColumn.accessor((problem) => new Date(problem.updatedAt).getTime(), {
 		id: "updated",
 		header: "Updated",

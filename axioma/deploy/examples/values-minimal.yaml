@@ -59,7 +59,6 @@ portal:
   siteUrl: "http://localhost:3003"
 
 web:
-  # Empty means the API's in-cluster Service, which is what this install wants.
   apiUrl: ""
 
 dashboard:

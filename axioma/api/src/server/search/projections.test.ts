@@ -7,10 +7,6 @@ import {
 	resolvedTicketDocument,
 } from "./projections";
 
-// A person's name reaches this text because the reporter's name, job title,
-// department and manager are deliberately in the model's context, so the model
-// writes them into a resolution or an outcome. Every grammatical position that
-// puts a name into IT prose has to be covered, not only the possessive one.
 test("removes a person's name in every position it occurs in", () => {
 	for (const [position, sentence] of [
 		["possessive", "Restored Avery Chen's mailbox profile."],
@@ -29,8 +25,6 @@ test("removes a person's name in every position it occurs in", () => {
 	}
 });
 
-// Redaction that eats the diagnosis is a different failure with the same cause.
-// These are the capitalised pairs that actually occur in this domain's prose.
 test("keeps technical terms that look like names", () => {
 	for (const phrase of [
 		"Reinstalled Active Directory certificate services.",

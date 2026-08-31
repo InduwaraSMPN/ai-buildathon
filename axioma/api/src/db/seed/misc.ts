@@ -345,9 +345,6 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 			"resolution-rate": 2,
 		};
 
-		// Deliberately varied so the arrangement feature demonstrates something:
-		// identical-to-default arrangements are indistinguishable from the
-		// fallback that renders when nothing is saved at all.
 		const ARRANGEMENTS: WidgetKey[][] = [
 			[
 				"priority",
@@ -370,9 +367,6 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 			["priority", "resolution-rate"],
 		];
 
-		// Admin leads the list so it draws ARRANGEMENTS[0], the full six — it is
-		// the account the demo signs in as, and a trimmed overview there reads as
-		// a half-built page rather than a deliberate arrangement.
 		const staffIds = [
 			adminId,
 			...DEMO_USERS.filter((u) => u.kind === "staff").map((u) => u.id),
@@ -384,10 +378,6 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 			const keys = ARRANGEMENTS[s % ARRANGEMENTS.length]!;
 			const sanitized = staffId.replace(/[^a-zA-Z0-9]/g, "-");
 
-			// setDashboardArrangement replaces a user's whole arrangement rather
-			// than merging, so the seed does the same. It also repairs rows an
-			// earlier run wrote under a stale vocabulary, which an upsert keyed on
-			// id could not do once the key list changed length.
 			await tx
 				.delete(dashboardWidgets)
 				.where(eq(dashboardWidgets.userId, staffId));

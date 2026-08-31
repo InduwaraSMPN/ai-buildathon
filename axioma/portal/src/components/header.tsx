@@ -73,7 +73,6 @@ export default function Header() {
 								Help articles
 							</Link>
 						) : null}
-						{/* Published on the public website, so this leaves the portal. */}
 						<a
 							href={siteUrl("status")}
 							className="flex items-center gap-1 text-muted-foreground text-sm transition-colors hover:text-foreground"

@@ -23,8 +23,6 @@ const apiBase = () =>
 
 export const apiUrl = (path: string) => new URL(path, apiBase()).toString();
 
-// The public website, not this app: the service status page is published there
-// because it is readable without an account.
 const siteBase = () => resolveBase("siteUrl", env.VITE_SITE_URL, "VITE_SITE_URL");
 
 export const siteUrl = (path: string) => new URL(path, siteBase()).toString();

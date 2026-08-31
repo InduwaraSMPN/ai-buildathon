@@ -1,14 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
 
-/**
- * Shape of one service on the public status page.
- *
- * Restated here rather than imported from the API's oRPC contract: the contract
- * mirror ships 20-odd files to its consumers, and this site consumes exactly one
- * public procedure. `readStatus` is a published public endpoint, so its response
- * is a stable boundary — but it is a boundary, so `fetchStatus` validates rather
- * than trusting the payload.
- */
 export type StatusDay = { date: string; availability: number };
 
 export type ServiceStatus = {
@@ -47,10 +38,6 @@ function isService(value: unknown): value is ServiceStatus {
 	);
 }
 
-/**
- * Runs on the server only, so the browser never calls the API directly: the
- * marketing origin is not in the API's CORS allowlist, and does not need to be.
- */
 export const fetchStatus = createServerFn({ method: "GET" }).handler(
 	async (): Promise<ServiceStatus[]> => {
 		const response = await fetch(`${API_URL()}/api-reference/readStatus`, {

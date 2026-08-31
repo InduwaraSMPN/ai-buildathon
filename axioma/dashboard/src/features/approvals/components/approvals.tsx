@@ -76,7 +76,6 @@ function approvalColumns(
 				),
 			},
 		),
-		// Sorts on the timestamp, displays the formatted date.
 		approvalColumn.accessor(
 			(approval) => new Date(approval.requestedAt).getTime(),
 			{
@@ -134,8 +133,6 @@ export function ApprovalList({
 		decision: "approved" | "rejected",
 	) => void;
 }) {
-	// Rebuilt per render because the cells close over the current pendingId and
-	// handler; memoising would freeze the disabled state on the buttons.
 	const columns = approvalColumns(pendingId, onDecide);
 	return (
 		<DataTable
