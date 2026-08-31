@@ -4,6 +4,8 @@ __pycache__/
 .ruff_cache/
 .pytest_cache/
 .pytest-tmp/
+.pytest-*/
+pytest-of-*/
 *.egg-info/
 axel/pb/
 .env
