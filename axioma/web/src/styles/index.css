@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/instrument-sans";
+@import "@fontsource-variable/fraunces";
 @import "@fontsource-variable/geist-mono";
 
 /* Entry point — partials in original cascade order. */
