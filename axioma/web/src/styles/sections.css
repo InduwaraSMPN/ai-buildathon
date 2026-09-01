@@ -1,0 +1,1197 @@
+/* Axiōma web — sections. Split verbatim from src/styles.css. */
+/* ── Hero ── */
+.hero {
+	display: grid;
+	grid-template-columns: minmax(0, 1.02fr) minmax(340px, 0.9fr);
+	gap: clamp(28px, 4vw, 64px);
+	align-items: center;
+	padding-block: clamp(28px, 4vw, 56px) clamp(48px, 7vw, 96px);
+}
+
+.hero-copy {
+	padding-top: 4px;
+}
+
+.hero-lede {
+	margin-bottom: 32px;
+}
+
+.hero-actions {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+
+/* ── Ticket card ── */
+.ticket-visual {
+	position: relative;
+	display: block;
+	overflow: hidden;
+	border-radius: var(--edge-panel);
+	background: var(--surface-raised);
+	box-shadow: 0 32px 64px -48px rgb(0 0 0 / 55%);
+}
+
+/* Retained for markup compatibility; the dossier perforations are gone. */
+.ticket-visual::after,
+.ticket-holes {
+	display: none;
+}
+
+.ticket-sheet {
+	position: relative;
+	padding: clamp(20px, 2.4vw, 28px);
+}
+
+.ticket-topline {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding-bottom: 16px;
+	border-bottom: 1px solid var(--rule);
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+}
+
+.ticket-topline span:first-child {
+	color: var(--text-strong);
+	font-size: 11px;
+	letter-spacing: 0.06em;
+}
+
+.work-order-label {
+	margin-right: auto;
+	margin-left: 10px;
+	color: var(--text-muted);
+}
+
+.ticket-visual h2 {
+	margin: 22px 0 6px;
+	font-family: var(--font-display);
+	font-size: 23px;
+	font-weight: 700;
+	letter-spacing: -0.03em;
+	line-height: 1.1;
+	color: var(--text-strong);
+}
+
+.ticket-sheet > p {
+	margin: 0;
+	color: var(--text-muted);
+	font-family: var(--font-sans);
+	font-size: 13px;
+	line-height: 1.5;
+}
+
+.ticket-route {
+	display: grid;
+	gap: 0;
+	margin: 22px 0 20px;
+}
+
+.ticket-route > div {
+	position: relative;
+	display: grid;
+	grid-template-columns: 34px 1fr;
+	padding-bottom: 20px;
+}
+
+.ticket-route > div:not(:last-child)::after {
+	position: absolute;
+	top: 28px;
+	bottom: 4px;
+	left: 11px;
+	width: 2px;
+	border-radius: var(--edge-pill);
+	background: var(--rule);
+	content: "";
+}
+
+.ticket-route > div.rail-done::after {
+	background: var(--brand);
+}
+
+.node {
+	position: relative;
+	z-index: 1;
+	display: grid;
+	grid-row: span 2;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border: 2px solid var(--rule);
+	border-radius: 50%;
+	background: var(--surface-raised);
+	color: var(--text-muted);
+}
+
+.node.is-done {
+	border-color: var(--brand);
+	background: var(--brand);
+	color: var(--brand-contrast);
+}
+
+.node svg {
+	width: 12px;
+	height: 12px;
+}
+
+.ticket-route strong {
+	font-family: var(--font-sans);
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: -0.02em;
+	color: var(--text-strong);
+	line-height: 1.25;
+}
+
+.ticket-route small {
+	margin-top: 3px;
+	color: var(--text-muted);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	letter-spacing: 0.02em;
+}
+
+.ticket-note {
+	margin: 0;
+	padding: 16px 18px;
+	border-radius: var(--edge-card);
+	background: var(--brand-tint);
+}
+
+.ticket-note span {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	font-family: var(--font-mono);
+	font-size: 10px;
+	font-weight: 400;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--brand);
+}
+
+.ticket-note-mark {
+	display: grid;
+	place-items: center;
+	width: 20px;
+	height: 20px;
+	padding: 4px;
+	border-radius: 50%;
+	background: var(--brand);
+	color: var(--brand-contrast);
+}
+
+.ticket-note p {
+	margin: 8px 0 0;
+	font-family: var(--font-sans);
+	font-size: 13px;
+	line-height: 1.55;
+	color: var(--text-body);
+}
+
+/* ── Ink panels ──
+   The section is only a gutter; the rounded panel is the inner .shell.
+   On light, the panel is inverted (ink on veil page). On dark, the page
+   itself is ink, so the panel becomes a raised contrast band — lifted
+   surface with a subtle border, not dark-on-dark. */
+.dark-section {
+	padding-block: clamp(8px, 1.2vw, 20px);
+	background: transparent;
+}
+
+.dark-section > .shell {
+	padding: var(--panel-pad);
+	border-radius: var(--edge-panel);
+	background: var(--surface-inverse);
+	color: var(--text-inverse);
+	border: 1px solid var(--rule-inverse);
+}
+
+.dark-section .eyebrow {
+	background: var(--rule-inverse);
+	color: var(--brand-soft);
+}
+
+.dark-section p {
+	color: var(--text-inverse-muted);
+}
+
+.dark-section .ledger-index {
+	background: var(--rule-inverse);
+	color: var(--text-inverse-muted);
+}
+
+.dark-section .ledger-index span:last-child {
+	color: var(--text-inverse);
+}
+
+.dark-section .text-link {
+	border-color: var(--rule-inverse);
+	color: var(--text-inverse);
+}
+
+.dark-section .text-link:hover {
+	border-color: var(--brand-soft);
+	color: var(--brand-soft);
+}
+
+.statement-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+	gap: clamp(28px, 5vw, 72px);
+	align-items: center;
+}
+
+.statement-grid h2 {
+	max-width: 620px;
+	margin-bottom: 22px;
+	color: var(--text-inverse);
+}
+
+.statement-copy > p:last-child {
+	max-width: 560px;
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 17px;
+	line-height: 1.6;
+}
+
+/* ── Context map — one report, four places its evidence sits ── */
+.context-map {
+	display: block;
+	width: 100%;
+	height: auto;
+	max-width: 460px;
+	margin-inline: auto;
+}
+
+.map-link {
+	fill: none;
+	stroke: var(--rule-inverse);
+	stroke-width: 1.5;
+}
+
+.map-link.is-found {
+	stroke: var(--brand-soft);
+	stroke-width: 2.5;
+}
+
+.map-node {
+	fill: var(--surface-inverse-raised);
+	stroke: var(--rule-inverse);
+	stroke-width: 1;
+}
+
+.map-node.is-found {
+	stroke: var(--brand-soft);
+}
+
+.map-source {
+	fill: var(--text-inverse);
+}
+
+.map-label {
+	fill: var(--text-inverse);
+	font-family: var(--font-sans);
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.map-note {
+	fill: var(--text-inverse-muted);
+	font-family: var(--font-mono);
+	font-size: 9.5px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.map-label.is-source {
+	fill: var(--color-ink);
+	font-family: var(--font-mono);
+	font-size: 14px;
+	letter-spacing: 0.04em;
+}
+
+.map-note.is-source {
+	fill: var(--color-lead);
+}
+
+/* ── Card grids ── */
+.process,
+.roles,
+.principles,
+.flow-section {
+	padding-block: clamp(56px, 7.5vw, 104px);
+}
+
+.step-grid,
+.principle-grid,
+.decision-grid,
+.roles-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: clamp(12px, 1.4vw, 20px);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.step-grid li,
+.principle-grid article,
+.decision-grid article,
+.roles-grid article {
+	display: flex;
+	flex-direction: column;
+	min-height: 256px;
+	padding: clamp(24px, 2.6vw, 32px);
+	border-radius: var(--edge-card);
+	background: var(--surface-raised);
+}
+
+.decision-grid article {
+	background: var(--surface-inverse-raised);
+}
+
+.step-grid span,
+.principle-grid span,
+.decision-grid span {
+	display: grid;
+	place-items: center;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	background: var(--brand-tint);
+	color: var(--brand);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: 0;
+}
+
+.decision-grid span {
+	background: var(--rule-inverse);
+	color: var(--brand-soft);
+}
+
+.step-grid h3,
+.principle-grid h3,
+.decision-grid h3,
+.roles-grid h3 {
+	margin: 26px 0 12px;
+	font-family: var(--font-display);
+	font-size: 21px;
+	font-weight: 700;
+	letter-spacing: -0.03em;
+	line-height: 1.15;
+}
+
+.roles-grid h3 {
+	margin-top: 0;
+}
+
+.step-grid p,
+.principle-grid p,
+.decision-grid p,
+.roles-grid p {
+	margin: 0;
+	color: var(--text-body);
+	font-family: var(--font-sans);
+	font-size: 15px;
+	line-height: 1.6;
+}
+
+.decision-grid p {
+	color: var(--text-inverse-muted);
+}
+
+/* ── Device section ── */
+.device-section {
+	display: grid;
+	grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+	gap: clamp(28px, 5vw, 72px);
+	align-items: center;
+	padding-block: 0 clamp(56px, 8vw, 112px);
+}
+
+.device-copy h2 {
+	margin: 0 0 20px;
+	font-family: var(--font-display);
+	font-size: clamp(28px, 3.4vw, 44px);
+	font-weight: 700;
+	letter-spacing: -0.038em;
+	line-height: 1.04;
+}
+
+.device-copy > p:not(.eyebrow) {
+	margin: 0 0 26px;
+	color: var(--text-body);
+	font-family: var(--font-sans);
+	font-size: 16px;
+	line-height: 1.6;
+}
+
+.terminal {
+	position: relative;
+	overflow: hidden;
+	border-radius: var(--edge-panel);
+	background: var(--surface-inverse);
+	color: var(--text-inverse);
+}
+
+.terminal-bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 18px 24px;
+	border-bottom: 1px solid var(--rule-inverse);
+	color: var(--text-inverse-muted);
+	font-family: var(--font-mono);
+	font-size: 10px;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.status-dot::before {
+	display: inline-block;
+	width: 7px;
+	height: 7px;
+	margin-right: 8px;
+	border-radius: 50%;
+	background: var(--brand-soft);
+	content: "";
+}
+
+.terminal-dots {
+	display: inline-flex;
+	gap: 6px;
+	margin-right: 4px;
+}
+
+.terminal-dots i {
+	width: 9px;
+	height: 9px;
+	border-radius: 50%;
+	background: var(--rule-inverse);
+}
+
+.terminal-bar > span:nth-child(2) {
+	margin-right: auto;
+}
+
+.terminal code {
+	display: grid;
+	gap: 10px;
+	padding: 26px 28px;
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	line-height: 1.5;
+}
+
+.terminal-line {
+	display: grid;
+	grid-template-columns: 62px minmax(0, 1fr) auto;
+	gap: 14px;
+	align-items: baseline;
+}
+
+.terminal-time {
+	color: var(--text-muted);
+	font-size: 10.5px;
+	letter-spacing: 0.04em;
+}
+
+/* Names the read -> act -> read-back cycle, and gives the wide card's empty
+   right-hand side something to carry. */
+.terminal-phase {
+	color: var(--text-muted);
+	font-size: 9px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.terminal-line:has(.accent) .terminal-phase {
+	color: var(--brand-soft);
+}
+
+.terminal .prompt {
+	color: var(--text-inverse);
+}
+
+.terminal .muted {
+	color: var(--text-inverse-muted);
+}
+
+.terminal .accent {
+	color: var(--brand-soft);
+}
+
+.terminal-foot {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	padding: 0 28px 26px;
+}
+
+.terminal-foot span {
+	padding: 7px 13px;
+	border: 1px solid var(--rule-inverse);
+	border-radius: var(--edge-pill);
+	color: var(--text-inverse-muted);
+	font-family: var(--font-mono);
+	font-size: 9.5px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+/* ── CTA panel ── */
+.cta-band {
+	padding-block: clamp(8px, 1.2vw, 20px);
+}
+
+.cta-inner {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 40px;
+	padding: var(--panel-pad);
+	border-radius: var(--edge-panel);
+	background: var(--surface-inverse);
+	color: var(--text-inverse);
+}
+
+.cta-inner .eyebrow {
+	background: var(--rule-inverse);
+	color: var(--brand-soft);
+}
+
+.cta-inner h2 {
+	max-width: 740px;
+	color: var(--text-inverse);
+}
+
+/* ── Pricing ── */
+.pricing-intro {
+	padding-block: clamp(40px, 6vw, 88px) clamp(28px, 3.6vw, 44px);
+	text-align: center;
+}
+
+.pricing-intro h1 {
+	margin: 0;
+	font-family: var(--font-display);
+	font-size: clamp(38px, 5.2vw, 66px);
+	font-weight: 700;
+	letter-spacing: -0.045em;
+	line-height: 1.02;
+}
+
+.pricing-sub {
+	margin: 6px 0 0;
+	font-family: var(--font-display);
+	font-size: clamp(24px, 3.2vw, 40px);
+	font-weight: 700;
+	letter-spacing: -0.04em;
+	line-height: 1.1;
+	color: var(--text-muted);
+}
+
+/* Segmented control — one pill, the active segment lifted out in white. */
+.plan-toggle {
+	display: inline-flex;
+	gap: 4px;
+	margin-top: clamp(24px, 3vw, 36px);
+	padding: 5px;
+	border-radius: var(--edge-pill);
+	background: var(--rule);
+}
+
+.plan-toggle button {
+	padding: 9px 20px;
+	border: 0;
+	border-radius: var(--edge-pill);
+	background: transparent;
+	color: var(--text-muted);
+	font-family: var(--font-sans);
+	font-size: 13.5px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	cursor: pointer;
+}
+
+.plan-toggle button:hover {
+	color: var(--text-strong);
+}
+
+.plan-toggle button[data-state="active"] {
+	background: var(--surface-raised);
+	color: var(--text-strong);
+	box-shadow: 0 6px 16px -10px rgb(0 0 0 / 45%);
+}
+
+.pricing-section {
+	padding-bottom: clamp(56px, 8vw, 112px);
+}
+
+.pricing-panel {
+	padding: clamp(12px, 1.4vw, 20px);
+	border-radius: var(--edge-panel);
+	background: var(--surface-raised);
+}
+
+.plan-grid {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: clamp(10px, 1.2vw, 16px);
+}
+
+.plan-grid.is-2 {
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.plan-card {
+	display: flex;
+	flex-direction: column;
+	padding: clamp(24px, 2.6vw, 34px);
+	border-radius: var(--edge-card);
+	background: var(--surface-soft);
+}
+
+.plan-card.is-featured {
+	background: var(--surface-inverse);
+	color: var(--text-inverse);
+}
+
+.plan-head {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 22px;
+}
+
+.plan-icon {
+	display: grid;
+	place-items: center;
+	width: 34px;
+	height: 34px;
+	border-radius: var(--edge-pill);
+	background: var(--surface-raised);
+	color: var(--text-strong);
+}
+
+.plan-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.plan-card.is-featured .plan-icon {
+	background: var(--brand);
+	color: var(--brand-contrast);
+}
+
+.plan-head h2 {
+	margin: 0;
+	font-family: var(--font-display);
+	font-size: 17px;
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+.plan-badge {
+	padding: 5px 11px;
+	border-radius: var(--edge-pill);
+	background: var(--brand);
+	color: var(--brand-contrast);
+	font-family: var(--font-mono);
+	font-size: 9px;
+	letter-spacing: 0.1em;
+	text-transform: uppercase;
+}
+
+.plan-note {
+	margin: 0 0 26px;
+	color: var(--text-body);
+	font-family: var(--font-sans);
+	font-size: 13.5px;
+	line-height: 1.55;
+}
+
+.plan-card.is-featured .plan-note {
+	color: var(--text-inverse-muted);
+}
+
+.plan-list-label {
+	margin: 0 0 16px;
+	font-family: var(--font-sans);
+	font-size: 13.5px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.plan-highlights,
+.plan-features {
+	display: grid;
+	gap: 13px;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+	font-family: var(--font-sans);
+	font-size: 13.5px;
+	line-height: 1.4;
+}
+
+.plan-highlights {
+	padding-bottom: 18px;
+	margin-bottom: 18px;
+	border-bottom: 1px solid var(--rule);
+}
+
+.plan-card.is-featured .plan-highlights {
+	border-bottom-color: var(--rule-inverse);
+}
+
+.plan-highlights li {
+	position: relative;
+	padding-left: 18px;
+	color: var(--text-body);
+}
+
+.plan-highlights li::before {
+	position: absolute;
+	top: 7px;
+	left: 4px;
+	width: 4px;
+	height: 4px;
+	border-radius: 50%;
+	background: var(--text-muted);
+	content: "";
+}
+
+.plan-features li {
+	display: grid;
+	grid-template-columns: 18px minmax(0, 1fr);
+	gap: 8px;
+	align-items: start;
+	color: var(--text-body);
+}
+
+.plan-features svg {
+	width: 13px;
+	height: 13px;
+	margin-top: 2px;
+	color: var(--brand);
+}
+
+.plan-card.is-featured .plan-highlights li,
+.plan-card.is-featured .plan-features li {
+	color: var(--text-inverse-muted);
+}
+
+.plan-card.is-featured .plan-features svg {
+	color: var(--brand-soft);
+}
+
+/* auto pins the CTA to the card floor so it lines up across the row; the list's
+   own bottom margin keeps a gap when a card has no slack to give. */
+.plan-features {
+	margin-bottom: clamp(26px, 3vw, 38px);
+}
+
+.plan-card > .button {
+	margin-top: auto;
+}
+
+.plan-card.is-featured > .button {
+	/* Featured card is dark (surface-inverse) both themes — button stays paper/ink. */
+	border-color: var(--color-paper);
+	background: var(--color-paper);
+	color: var(--color-ink);
+}
+
+.plan-card.is-featured > .button:hover {
+	background: var(--color-veil);
+	border-color: var(--color-veil);
+}
+
+.pricing-foot {
+	max-width: 640px;
+	margin: clamp(24px, 3vw, 36px) auto 0;
+	color: var(--text-muted);
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 1.6;
+	text-align: center;
+}
+
+/* ── Secondary pages ── */
+.page-intro {
+	padding-block: clamp(40px, 6vw, 88px) clamp(36px, 5vw, 64px);
+}
+
+.page-intro h1 {
+	max-width: 980px;
+	font-size: clamp(40px, 5.6vw, 76px);
+}
+
+.page-intro .lede {
+	max-width: 640px;
+}
+
+.flow-list {
+	display: grid;
+	gap: clamp(12px, 1.4vw, 20px);
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.flow-list li {
+	display: grid;
+	grid-template-columns: 56px minmax(0, 1fr) minmax(0, 1fr);
+	gap: clamp(20px, 2.4vw, 36px);
+	align-items: start;
+	padding: clamp(24px, 2.8vw, 38px);
+	border-radius: var(--edge-card);
+	background: var(--surface-raised);
+}
+
+.flow-index {
+	padding-top: 3px;
+	color: var(--brand);
+	font-family: var(--font-mono);
+	font-size: 11px;
+	letter-spacing: 0.08em;
+}
+
+.flow-list h3 {
+	margin: 0;
+	font-family: var(--font-display);
+	font-size: clamp(20px, 2.2vw, 28px);
+	font-weight: 700;
+	letter-spacing: -0.03em;
+	line-height: 1.15;
+}
+
+.flow-list > li > p {
+	margin: 0;
+	color: var(--text-body);
+	font-family: var(--font-sans);
+	font-size: 15px;
+	line-height: 1.6;
+}
+
+.decision-section,
+.about-statement {
+	padding-block: clamp(8px, 1.2vw, 20px);
+}
+
+.split-heading {
+	display: grid;
+	grid-template-columns: 1.25fr 0.75fr;
+	gap: clamp(28px, 5vw, 72px);
+	align-items: end;
+	margin-bottom: clamp(28px, 3.4vw, 44px);
+}
+
+.split-heading > p {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 16px;
+	line-height: 1.6;
+}
+
+.about-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 0.5fr) minmax(0, 1.5fr);
+	gap: clamp(24px, 4vw, 56px);
+	align-items: start;
+}
+
+.about-grid h2 {
+	max-width: 820px;
+	margin-bottom: 26px;
+	color: var(--text-inverse);
+}
+
+.about-grid > div > p {
+	max-width: 660px;
+	font-family: var(--font-sans);
+	font-size: 17px;
+	line-height: 1.65;
+}
+
+.contact-block {
+	display: grid;
+	grid-template-columns: 1.4fr 0.6fr;
+	gap: clamp(12px, 1.4vw, 20px);
+	padding-bottom: clamp(64px, 9vw, 128px);
+}
+
+.contact-card,
+.contact-block aside {
+	padding: clamp(28px, 4vw, 48px);
+	border-radius: var(--edge-panel);
+	background: var(--surface-raised);
+}
+
+.contact-card a {
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	padding-bottom: 24px;
+	border-bottom: 1px solid var(--rule);
+	font-family: var(--font-display);
+	font-size: clamp(22px, 3vw, 38px);
+	font-weight: 700;
+	letter-spacing: -0.04em;
+	overflow-wrap: anywhere;
+}
+
+.contact-card a:hover {
+	color: var(--brand);
+}
+
+.contact-card > p:last-child {
+	max-width: 520px;
+	margin: 22px 0 0;
+	color: var(--text-muted);
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 1.6;
+}
+
+.contact-block aside ul {
+	display: grid;
+	gap: 16px;
+	margin: 0;
+	padding-left: 18px;
+	list-style: disc;
+	color: var(--text-body);
+	font-family: var(--font-sans);
+	font-size: 14px;
+	line-height: 1.5;
+}
+
+.not-found {
+	display: grid;
+	place-content: center;
+	justify-items: start;
+	min-height: 58vh;
+	margin-block: clamp(24px, 4vw, 48px);
+	padding: clamp(36px, 6vw, 88px);
+	border-radius: var(--edge-panel);
+	background: var(--surface-raised);
+}
+
+.not-found > p:not(.eyebrow) {
+	margin-bottom: 28px;
+	color: var(--text-body);
+	font-family: var(--font-sans);
+	font-size: 17px;
+	line-height: 1.6;
+}
+
+/* ── Staggered reveal — single high-impact moment ── */
+.status-list {
+	display: flex;
+	flex-direction: column;
+	gap: clamp(12px, 1.4vw, 20px);
+	padding-block: clamp(8px, 1.2vw, 20px);
+}
+
+.status-card {
+	--status-up: var(--brand);
+	--status-degraded: oklch(0.75 0.15 75);
+	--status-down: var(--destructive);
+	display: flex;
+	flex-direction: column;
+	gap: clamp(16px, 1.8vw, 24px);
+	padding: clamp(24px, 2.6vw, 32px);
+	border-radius: var(--edge-card);
+	background: var(--surface-soft);
+}
+
+.status-card > header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
+}
+
+.status-card h2 {
+	margin: 0;
+	font-size: 1.05rem;
+}
+
+.status-pill {
+	padding: 4px 12px;
+	border-radius: var(--edge-pill);
+	font-size: 0.8rem;
+	white-space: nowrap;
+}
+
+.status-pill.is-up {
+	background: var(--brand-tint);
+	color: var(--brand-strong);
+}
+
+.status-pill.is-down {
+	background: color-mix(in oklch, var(--status-down) 12%, transparent);
+	color: var(--status-down);
+}
+
+.status-strip {
+	display: flex;
+	gap: 2px;
+}
+
+.status-day {
+	flex: 1 1 0;
+	min-width: 0;
+	height: 32px;
+	border-radius: 2px;
+}
+
+.status-day.is-up {
+	background: var(--status-up);
+}
+
+.status-day.is-degraded {
+	background: var(--status-degraded);
+}
+
+.status-day.is-down {
+	background: var(--status-down);
+}
+
+.status-uptime {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: var(--gutter);
+	margin: 0;
+	text-align: center;
+}
+
+.status-uptime dt {
+	color: var(--text-muted);
+	font-size: 0.8rem;
+}
+
+.status-uptime dd {
+	margin: 4px 0 0;
+	font-weight: 500;
+}
+
+.status-empty {
+	align-items: center;
+	text-align: center;
+}
+
+.status-empty p {
+	margin: 0;
+	color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+	.status-uptime {
+		grid-template-columns: 1fr;
+	}
+	.status-day {
+		height: 24px;
+	}
+}
+
+/* ── Responsive ── */
+@media (max-width: 1080px) {
+	.plan-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.step-grid,
+	.principle-grid,
+	.decision-grid,
+	.roles-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@media (max-width: 980px) {
+	.hero {
+		grid-template-columns: 1fr;
+		padding-block: 20px 48px;
+	}
+	.ticket-visual {
+		max-width: 560px;
+	}
+	.statement-grid,
+	.about-grid {
+		grid-template-columns: 1fr;
+		gap: 32px;
+	}
+	.device-section,
+	.split-heading {
+		grid-template-columns: 1fr;
+		gap: 28px;
+	}
+	.flow-list li {
+		grid-template-columns: 48px minmax(0, 1fr);
+		gap: 18px;
+	}
+	.flow-list > li > p {
+		grid-column: 2;
+	}
+	.contact-block {
+		grid-template-columns: 1fr;
+	}
+	.cta-inner {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 28px;
+	}
+}
+
+@media (max-width: 720px) {
+	.plan-grid,
+	.plan-grid.is-2 {
+		grid-template-columns: 1fr;
+	}
+	.step-grid,
+	.principle-grid,
+	.decision-grid,
+	.roles-grid {
+		grid-template-columns: 1fr;
+	}
+	.step-grid li,
+	.principle-grid article,
+	.decision-grid article,
+	.roles-grid article {
+		min-height: auto;
+	}
+}
+
+@media (max-width: 640px) {
+	/* Give the commands the full width rather than squeezing them to fit. */
+	.terminal-line {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 0;
+	}
+	.terminal-time,
+	.terminal-phase {
+		display: none;
+	}
+	.terminal code {
+		padding-inline: 20px;
+	}
+	.terminal-foot {
+		padding-inline: 20px;
+	}
+	.hero-actions .button,
+	.hero-actions .text-link {
+		width: 100%;
+	}
+}

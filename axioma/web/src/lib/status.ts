@@ -39,19 +39,23 @@ function isService(value: unknown): value is ServiceStatus {
 }
 
 export const fetchStatus = createServerFn({ method: "GET" }).handler(
-	async (): Promise<ServiceStatus[]> => {
-		const response = await fetch(`${API_URL()}/api-reference/readStatus`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ days: 90 }),
-		});
-		if (!response.ok) {
-			throw new Error(`Status service responded ${response.status}`);
+	async (): Promise<ServiceStatus[] | null> => {
+		try {
+			const response = await fetch(`${API_URL()}/api-reference/readStatus`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ days: 90 }),
+			});
+			if (!response.ok) {
+				return null;
+			}
+			const payload: unknown = await response.json();
+			if (!Array.isArray(payload) || !payload.every(isService)) {
+				return null;
+			}
+			return payload;
+		} catch {
+			return null;
 		}
-		const payload: unknown = await response.json();
-		if (!Array.isArray(payload) || !payload.every(isService)) {
-			throw new Error("Status service returned an unexpected payload");
-		}
-		return payload;
 	},
 );

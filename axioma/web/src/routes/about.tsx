@@ -1,17 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ContactCta, PageIntro } from "../components/site";
+import { pageMeta } from "../lib/seo";
 
 export const Route = createFileRoute("/about")({
-	head: () => ({
-		meta: [
-			{ title: "About — Axiōma" },
-			{
-				name: "description",
-				content:
-					"Axiōma is building one accountable loop from an employee’s IT ticket to action or informed escalation.",
-			},
-		],
-	}),
+	head: () =>
+		pageMeta({
+			title: "About — Axiōma",
+			description:
+				"Axiōma is building one accountable loop from an employee’s IT ticket to action or informed escalation.",
+			path: "/about",
+		}),
 	component: AboutPage,
 });
 

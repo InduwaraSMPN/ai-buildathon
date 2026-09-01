@@ -1,19 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageIntro } from "../components/site";
+import { pageMeta } from "../lib/seo";
 import { fetchStatus, type ServiceStatus } from "../lib/status";
 
 export const Route = createFileRoute("/status")({
-	head: () => ({
-		meta: [
-			{ title: "Service status — Axiōma" },
-			{
-				name: "description",
-				content:
-					"Daily availability for Axiōma services over the last 90 days.",
-			},
-		],
-	}),
-	loader: () => fetchStatus(),
+	head: () =>
+		pageMeta({
+			title: "Service status — Axiōma",
+			description:
+				"Daily availability for Axiōma services over the last 90 days.",
+			path: "/status",
+		}),
+	loader: async () => {
+		try {
+			return await fetchStatus();
+		} catch {
+			return null;
+		}
+	},
 	component: StatusPage,
 	errorComponent: StatusUnavailable,
 });
@@ -53,7 +57,10 @@ function ServiceCard({ service }: { service: ServiceStatus }) {
 					/>
 				))}
 			</div>
-			<ol className="sr-only" aria-label={`Daily availability for ${service.name}`}>
+			<ol
+				className="sr-only"
+				aria-label={`Daily availability for ${service.name}`}
+			>
 				{days.map((day) => (
 					<li key={day.date}>{dayLabel(day)}</li>
 				))}
@@ -73,20 +80,21 @@ function ServiceCard({ service }: { service: ServiceStatus }) {
 
 function StatusUnavailable() {
 	return (
-		<>
-			<PageIntro title="Service status">
-				<p>
-					We could not load availability data just now. This page reports on our
-					services, so a failure here does not necessarily mean a service is
-					down.
-				</p>
-			</PageIntro>
-		</>
+		<PageIntro title="Service status">
+			<p>
+				We could not load availability data just now. This page reports on our
+				services, so a failure here does not necessarily mean a service is down.
+			</p>
+		</PageIntro>
 	);
 }
 
 function StatusPage() {
 	const services = Route.useLoaderData();
+
+	if (services === null) {
+		return <StatusUnavailable />;
+	}
 
 	return (
 		<>
@@ -109,7 +117,6 @@ function StatusPage() {
 					</article>
 				)}
 			</section>
-
 		</>
 	);
 }

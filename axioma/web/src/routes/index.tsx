@@ -1,89 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AxiomaMark } from "../components/brand";
 import { Arrow, ContactCta } from "../components/site";
+import { stages, steps, systems, transcript } from "../content/home";
+import { pageMeta } from "../lib/seo";
 
 export const Route = createFileRoute("/")({
-	head: () => ({
-		meta: [
-			{ title: "Axiōma — IT support, from ticket to action" },
-			{
-				name: "description",
-				content:
-					"Axiōma gives Axel the context and tools to route, diagnose, resolve, or clearly escalate an IT support ticket.",
-			},
-		],
-	}),
+	head: () =>
+		pageMeta({
+			title: "Axiōma — IT support, from ticket to action",
+			description:
+				"Axiōma gives Axel the context and tools to route, diagnose, resolve, or clearly escalate an IT support ticket.",
+			path: "/",
+		}),
 	component: HomePage,
 });
-
-const steps = [
-	{
-		number: "01",
-		title: "Understand",
-		body: "Axel reads the report alongside the employee, device, and ticket context available to it.",
-	},
-	{
-		number: "02",
-		title: "Investigate",
-		body: "It gathers evidence from infrastructure or the employee’s laptop before deciding what to do.",
-	},
-	{
-		number: "03",
-		title: "Act or escalate",
-		body: "An available fix is applied and checked. Otherwise, a human receives the evidence and reasoning.",
-	},
-];
-
-type TranscriptLine = {
-	at: string;
-	kind: "prompt" | "muted" | "accent";
-	text: string;
-	phase?: string;
-};
-
-const transcript: TranscriptLine[] = [
-	{
-		at: "09:41:02",
-		kind: "prompt",
-		text: "$ evidence.read network_state",
-		phase: "read",
-	},
-	{
-		at: "09:41:03",
-		kind: "muted",
-		text: "dns.cache stale · resolver 10.42.0.17",
-	},
-	{ at: "09:41:04", kind: "muted", text: "adapter up · gateway reachable" },
-	{
-		at: "09:41:09",
-		kind: "prompt",
-		text: "$ action.run flush_dns",
-		phase: "act",
-	},
-	{ at: "09:41:11", kind: "muted", text: "exit 0 · 128 entries cleared" },
-	{
-		at: "09:41:12",
-		kind: "prompt",
-		text: "$ evidence.read network_state",
-		phase: "verify",
-	},
-	{
-		at: "09:41:13",
-		kind: "accent",
-		text: "✓ dns.cache fresh · issue cleared",
-		phase: "cleared",
-	},
-];
-
-const stages = [
-	{ title: "Ticket received", note: "Context attached", done: true },
-	{
-		title: "Evidence gathered",
-		note: "ImagePullBackOff · k8s/prod",
-		done: true,
-	},
-	{ title: "Fix checked", note: "Watching rollout", done: false },
-];
 
 function Check() {
 	return (
@@ -100,17 +30,6 @@ function Check() {
 	);
 }
 
-const systems: { label: string; note: string; found?: boolean }[] = [
-	{ label: "Kubernetes", note: "prod cluster", found: true },
-	{ label: "Identity", note: "group + access" },
-	{ label: "Device", note: "axel-cli / 017" },
-	{ label: "Change log", note: "last 24h" },
-];
-
-/**
- * The report arrives on its own; the evidence that explains it does not. One
- * strand resolves green — the system that actually held the cause.
- */
 function ContextMap() {
 	return (
 		<svg

@@ -1,17 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Arrow, PageIntro } from "../components/site";
+import { pageMeta } from "../lib/seo";
 
 export const Route = createFileRoute("/contact")({
-	head: () => ({
-		meta: [
-			{ title: "Contact — Axiōma" },
-			{
-				name: "description",
-				content:
-					"Contact Axiōma to discuss the IT support loop you are working on.",
-			},
-		],
-	}),
+	head: () =>
+		pageMeta({
+			title: "Contact — Axiōma",
+			description:
+				"Contact Axiōma to discuss the IT support loop you are working on.",
+			path: "/contact",
+		}),
 	component: ContactPage,
 });
 

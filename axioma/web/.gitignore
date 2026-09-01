@@ -1,3 +1,4 @@
+.baseline/
 node_modules/
 .output/
 dist/
@@ -5,3 +6,5 @@ dist/
 .env.local
 *.log
 .DS_Store
+.claude/skills/
+.impeccable/

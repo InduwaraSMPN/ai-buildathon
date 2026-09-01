@@ -1,44 +1,14 @@
 import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
+import { CONTACT_EMAIL, footerColumns, nav } from "../content/site";
 import { AxiomaWordmark } from "./brand";
-
-const nav = [
-	{ to: "/product", label: "Product" },
-	{ to: "/pricing", label: "Pricing" },
-	{ to: "/about", label: "About" },
-	{ to: "/contact", label: "Contact" },
-] as const;
-
-const CONTACT_EMAIL = "hello@axioma.dev";
-
-const footerColumns = [
-	{
-		heading: "Sitemap",
-		links: [
-			{ href: "/", label: "Home" },
-			{ href: "/product", label: "Product" },
-			{ href: "/pricing", label: "Pricing" },
-			{ href: "/about", label: "About" },
-			{ href: "/contact", label: "Contact" },
-			{ href: "/status", label: "Service status" },
-		],
-	},
-	{
-		heading: "The loop",
-		links: [
-			{ href: "/product#ticket-flow", label: "Ticket flow" },
-			{ href: "/product#decisions", label: "Tool order" },
-			{ href: "/product#roles", label: "Roles" },
-		],
-	},
-	{
-		heading: "Contact",
-		links: [
-			{ href: "/contact", label: "Start a conversation", accent: true },
-			{ href: `mailto:${CONTACT_EMAIL}`, label: CONTACT_EMAIL },
-		],
-	},
-] as const;
+import { ThemeToggle } from "./theme-toggle";
 
 /**
  * The site stores nothing, so "subscribe" hands the address to the visitor's
@@ -102,25 +72,26 @@ export function SiteHeader() {
 						</Link>
 					))}
 				</nav>
-				<details className="mobile-nav">
-					<summary>Menu</summary>
-					<nav aria-label="Mobile navigation">
-						{nav.map((item) => (
-							<Link
-								key={item.to}
-								to={item.to}
-								activeProps={{ "aria-current": "page" }}
-								onClick={(event) =>
-									event.currentTarget
-										.closest("details")
-										?.removeAttribute("open")
-								}
-							>
-								{item.label}
-							</Link>
-						))}
-					</nav>
-				</details>
+				<ThemeToggle />
+				<div className="mobile-nav">
+					<DropdownMenu>
+						<DropdownMenuTrigger className="mobile-nav-trigger">
+							Menu
+						</DropdownMenuTrigger>
+						<DropdownMenuContent
+							className="mobile-menu"
+							aria-label="Mobile navigation"
+						>
+							{nav.map((item) => (
+								<DropdownMenuItem key={item.to} asChild>
+									<Link to={item.to} activeProps={{ "aria-current": "page" }}>
+										{item.label}
+									</Link>
+								</DropdownMenuItem>
+							))}
+						</DropdownMenuContent>
+					</DropdownMenu>
+				</div>
 			</div>
 		</header>
 	);

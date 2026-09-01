@@ -4,9 +4,41 @@ import {
 	Outlet,
 	Scripts,
 } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { SiteFooter, SiteHeader } from "../components/site";
-import styles from "../styles.css?url";
+import { SITE_URL } from "../content/site";
+import styles from "../styles/index.css?url";
+
+// Applied before first paint so the theme never flashes.
+const themeInit = `(function () {
+	try {
+		var stored = localStorage.getItem("theme");
+		var setting = stored === "light" || stored === "dark" ? stored : "system";
+		var dark =
+			setting === "dark" ||
+			(setting === "system" &&
+				window.matchMedia("(prefers-color-scheme: dark)").matches);
+		var root = document.documentElement;
+		root.classList.toggle("dark", dark);
+		root.style.colorScheme = dark ? "dark" : "light";
+	} catch (e) {}
+})();`;
+
+const orgJsonLd = JSON.stringify({
+	"@context": "https://schema.org",
+	"@type": "Organization",
+	name: "Axiōma",
+	url: SITE_URL,
+	logo: `${SITE_URL}/android-chrome-512x512.png`,
+	email: "hello@axioma.dev",
+});
+
+const websiteJsonLd = JSON.stringify({
+	"@context": "https://schema.org",
+	"@type": "WebSite",
+	name: "Axiōma",
+	url: SITE_URL,
+});
 
 export const Route = createRootRoute({
 	head: () => ({
@@ -21,21 +53,25 @@ export const Route = createRootRoute({
 				content:
 					"Axiōma is an AI IT-support platform that carries tickets from employee report to diagnosis, action, and a reasoned outcome.",
 			},
-			{ name: "theme-color", content: "#008236" },
+			{
+				name: "theme-color",
+				media: "(prefers-color-scheme: light)",
+				content: "#f4f4f5",
+			},
+			{
+				name: "theme-color",
+				media: "(prefers-color-scheme: dark)",
+				content: "#09090b",
+			},
 			{ property: "og:site_name", content: "Axiōma" },
 			{ property: "og:type", content: "website" },
+			{ property: "og:locale", content: "en_US" },
+			{ property: "og:image", content: `${SITE_URL}/og.png` },
+			{ property: "og:image:width", content: "1200" },
+			{ property: "og:image:height", content: "630" },
+			{ name: "twitter:card", content: "summary_large_image" },
 		],
 		links: [
-			{ rel: "preconnect", href: "https://fonts.googleapis.com" },
-			{
-				rel: "preconnect",
-				href: "https://fonts.gstatic.com",
-				crossOrigin: "anonymous",
-			},
-			{
-				rel: "stylesheet",
-				href: "https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Fragment+Mono:ital@0;1&display=swap",
-			},
 			{ rel: "stylesheet", href: styles },
 			{ rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
 			{
@@ -83,6 +119,27 @@ function RootComponent() {
 }
 
 function NotFound() {
+	useEffect(() => {
+		const prevTitle = document.title;
+		document.title = "404 — Page not found — Axiōma";
+		let meta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+		const prevContent = meta?.content;
+		const created = !meta;
+		if (!meta) {
+			meta = document.createElement("meta");
+			meta.name = "robots";
+			document.head.appendChild(meta);
+		}
+		meta.content = "noindex, nofollow";
+		return () => {
+			document.title = prevTitle;
+			if (meta) {
+				if (created) meta.remove();
+				else if (prevContent !== undefined) meta.content = prevContent;
+			}
+		};
+	}, []);
+
 	return (
 		<section className="not-found shell">
 			<p className="eyebrow">404 / Route not found</p>
@@ -97,8 +154,17 @@ function NotFound() {
 
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
 	return (
-		<html lang="en">
+		<html lang="en" suppressHydrationWarning>
 			<head>
+				<script dangerouslySetInnerHTML={{ __html: themeInit }} />
+				<script
+					type="application/ld+json"
+					dangerouslySetInnerHTML={{ __html: orgJsonLd }}
+				/>
+				<script
+					type="application/ld+json"
+					dangerouslySetInnerHTML={{ __html: websiteJsonLd }}
+				/>
 				<HeadContent />
 			</head>
 			<body>
