@@ -59,12 +59,15 @@ const draftTicketText = z.object({
 });
 
 /**
- * §3.3's anti-rubber-stamping gate. The routing decision is the single
- * highest-stakes field, so when the *model* chose the subcategory the employee
- * has to have confirmed it before anything is created. A subcategory the
- * employee picked themselves is already a deliberate act and needs no second
- * one. This lived only in the client until now, which meant a direct
- * `submitIntakeDraft` call routed an unreviewed AI guess.
+ * The anti-rubber-stamping gate. A form that arrives already filled in invites
+ * a one-click approval nobody actually read, so submit carries exactly one
+ * piece of deliberate friction rather than a checkbox on every field. The
+ * routing decision is the single highest-stakes field, so when the *model*
+ * chose the subcategory the employee has to have confirmed it before anything
+ * is created. A subcategory the employee picked themselves is already a
+ * deliberate act and needs no second one. This lived only in the client until
+ * now, which meant a direct `submitIntakeDraft` call routed an unreviewed AI
+ * guess.
  */
 export function requireSubcategoryConfirmed(
 	values: Record<string, unknown> | null,

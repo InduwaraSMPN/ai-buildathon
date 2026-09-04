@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * §2.9: batch a self-filling surface into one announcement instead of narrating
+ * Batch a self-filling surface into one announcement instead of narrating
  * every streamed change. The delay is deliberately long — a screen reader user
  * hears the settled summary, not each mutation — and focus is never moved.
  */

@@ -73,7 +73,9 @@ api:
       # so naming any model at all exercises the branch, and the name has to be
       # one the configured gateway actually serves.
       model: "gpt-5.6-terra"
-      vision: true
+      # Deliberately the non-default: the chart now ships vision on, so setting
+      # it false here is what exercises the other branch of the template.
+      vision: false
       timeoutMs: 30000
       maxTurns: 6
       draftTtlHours: 24

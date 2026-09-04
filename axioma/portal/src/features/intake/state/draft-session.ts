@@ -4,8 +4,8 @@ const DRAFT_ID_KEY = "intake_draft_id";
 const READ_FLAGS_KEY = "intake_draft_attachment_reads";
 
 /**
- * The draft id and the per-attachment vision opt-out (§3.7) both survive a
- * reload here. The documents themselves come back from `listDocuments`, but the
+ * The draft id and the per-attachment vision opt-out both survive a reload
+ * here. The documents themselves come back from `listDocuments`, but the
  * `read` flag is client-only state the server never stores, so it is kept
  * beside the id and keyed by document id.
  */

@@ -67,9 +67,21 @@ export const env = createEnv({
 		// model the agent defaults to on the same endpoint, without LiteLLM's
 		// `openai/` routing prefix, which a direct HTTP call does not use.
 		AXIOMA_INTAKE_MODEL: z.string().default("gpt-5.6-terra"),
+		// On by default: the gateway probe in `scripts/probe-intake-model.mjs`
+		// confirms the endpoint accepts `image_url` content parts, which was the
+		// condition for enabling this. Reading the screenshot is most of the value
+		// of attaching one — error dialogues with legible text are the highest
+		// accuracy category there is.
+		//
+		// It has a real privacy cost: a screenshot of an error dialogue routinely
+		// captures the rest of the desktop, and enabling this sends those pixels to
+		// the model provider. The guards are that only png/jpeg/webp are read, at
+		// most 3 images per draft, nothing over 2 MB, the base64 is never persisted,
+		// and every attachment carries a per-file opt-out the employee controls.
+		// Set this to "false" to switch the capability off outright.
 		AXIOMA_INTAKE_VISION: z
 			.enum(["true", "false"])
-			.default("false")
+			.default("true")
 			.transform((v) => v === "true"),
 		AXIOMA_INTAKE_TIMEOUT_MS: z.coerce
 			.number()

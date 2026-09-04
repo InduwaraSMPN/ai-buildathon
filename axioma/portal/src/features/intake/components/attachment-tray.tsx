@@ -78,7 +78,7 @@ export function AttachmentTray({
 			const seen = new Set(kept.map((entry) => entry.id));
 			return [
 				...kept,
-				// §3.7: a document with no stored choice is opted OUT, so a row
+				// A document with no stored choice is opted OUT of vision, so a row
 				// recovered here never re-enables reading on its own.
 				...documents
 					.filter((item) => !seen.has(item.id))

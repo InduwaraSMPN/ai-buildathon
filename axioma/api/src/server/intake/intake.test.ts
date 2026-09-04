@@ -242,7 +242,8 @@ test("validateDraftText applies the manual path's bounds and trims", () => {
 
 test("mergeDraftPatch writes every supplied value and guards user edits", () => {
 	// An unlabelled patch is still an edit: dropping it left `values` unable to
-	// hold the effective post-edit values §3.5 diffs against.
+	// hold the effective post-edit values the correction diff compares against
+	// the model's original output.
 	assert.deepEqual(
 		mergeDraftPatch(
 			{ values: { title: "AI title" }, sources: { title: "ai" } },
@@ -450,11 +451,13 @@ test("submit creates a ticket, re-parents attachments, and writes one transcript
 			.from(ticketMessages)
 			.where(eq(ticketMessages.ticketId, result.ticketId));
 		assert.equal(messages.length, 1);
-		// Both halves of the conversation land on the ticket (§2.3).
+		// Both halves of the conversation land on the ticket, because the
+		// transcript is the evidence an analyst opens the ticket to read.
 		assert.match(String(messages[0]?.body), /Employee: Printer is jammed/);
 		assert.match(String(messages[0]?.body), /Assistant: I have drafted/);
 
-		// §3.5 retains the row, so it still has to read back after the flip.
+		// The draft row is retained rather than deleted on submit, so it still
+		// has to read back after the status flip.
 		const submitted = await readDraft(draftId, reporterId);
 		assert.equal(submitted.status, "submitted");
 		assert.equal(submitted.ticketId, result.ticketId);
@@ -822,7 +825,7 @@ test("vision filters by size before capping the image count", async () => {
 	}
 });
 
-test("§3.3 routing confirmation is enforced on the server, not just the client", () => {
+test("routing confirmation is enforced on the server, not just the client", () => {
 	const aiChosen = { subcategoryId: "sub-1" };
 	const aiSource = { subcategoryId: "ai" };
 	// The model picked the routing and nobody has confirmed it.

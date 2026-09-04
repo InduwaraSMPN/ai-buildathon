@@ -281,8 +281,9 @@ async function probeVision() {
 }
 
 async function probeTextFallback() {
-	// Documented §3.7 fallback: pass the filename and media type as text when
-	// the endpoint does not accept image_url parts.
+	// The documented fallback for when the endpoint does not accept image_url
+	// parts: pass the filename and media type as text, so a draft still records
+	// that a screenshot was attached even though nothing reads its pixels.
 	const body = {
 		model,
 		messages: [
@@ -324,7 +325,7 @@ function readableError(error) {
 function summaryLine() {
 	const fail = criticalFailures.length;
 	if (fail > 0) {
-		return `Recommendation: fix the failing path${criticalFailures.length > 1 ? "s" : ""} (${criticalFailures.join(", ")}). Intake will need the working mechanism wired through api/src/server/intake/model.ts and AXIOMA_INTAKE_VISION only if the vision check passed. See context/plans/ai-intake-plan.md §3.7–§3.9.`;
+		return `Recommendation: fix the failing path${criticalFailures.length > 1 ? "s" : ""} (${criticalFailures.join(", ")}). Intake needs whichever structured-output mechanism this gateway does accept wired through api/src/server/intake/model.ts, and it validates the reply itself either way. Leave AXIOMA_INTAKE_VISION false unless the vision check passed — when image_url is rejected, attachments degrade to filenames and media types passed as text.`;
 	}
 	return "Recommendation: all required pathways work — json_schema and tool calling are both usable, and vision can be switched on via AXIOMA_INTAKE_VISION.";
 }
@@ -400,8 +401,9 @@ async function main() {
 		(tool) => `tool called with args ${JSON.stringify(tool.args)}`,
 	);
 
-	// Non-critical: the §3.7 fallback is to pass names/media types as text and
-	// leave the vision flag off.
+	// Non-critical, because there is a documented fallback: when image_url is
+	// rejected, intake passes attachment names and media types as text and the
+	// vision flag simply stays off.
 	const visionOk = await runProbe(
 		"vision",
 		probeVision,
@@ -415,7 +417,7 @@ async function main() {
 	if (!visionOk && !checkMode) {
 		const reason = results.get("vision").detail;
 		console.warn(
-			`image_url was rejected (${reason}). Testing the §3.7 text fallback…`,
+			`image_url was rejected (${reason}). Testing the filename/media-type text fallback…`,
 		);
 		try {
 			const fallback = await probeTextFallback();

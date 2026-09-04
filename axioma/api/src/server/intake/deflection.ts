@@ -27,9 +27,9 @@ const portalKnowledgeScope: SearchAuthorizationScope = (document) =>
  * index holds no `knowledge_article` rows. `reconcileCoreSearchDocuments` is
  * incremental — it loads rows with `updatedAt >= since` — so on a fresh install,
  * or any deployment whose watermark advanced past the seed, published articles
- * are simply absent from the index and deflection returns nothing at all. §2.2
- * makes knowledge retrieval the first stage of intake, and a silently empty
- * first stage is worse than a slower query.
+ * are simply absent from the index and deflection returns nothing at all.
+ * Knowledge retrieval is the first stage of intake, and a first stage that is
+ * silently empty is worse than one that runs a slower query.
  *
  * `websearch_to_tsquery` is parameterised, so this is not a return of the
  * unescaped `ILIKE '%' || message || '%'` this module used to run.
@@ -49,7 +49,8 @@ const MIN_TERM_LENGTH = 3;
 const MIN_RANK = 0.02;
 /** Relative floor. An absolute threshold alone does not travel between corpora,
  * so a hit also has to be at least this good compared with the best hit —
- * §2.2 wants the article that answers the question, not three near-misses. */
+ * deflection should offer the one article that answers the question, not three
+ * near-misses. */
 const MIN_RANK_RATIO = 0.5;
 /** Cosine floor for the vector branch. Below this the nearest neighbour is
  * simply the least-unrelated article, which is not an answer. */

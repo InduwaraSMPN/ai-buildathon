@@ -221,9 +221,9 @@ export function applyDraft(
 
 /**
  * The server re-sends every field and then a `complete` on every turn, so a
- * draft landing while the user was typing used to discard the edit. §3.5 makes
- * `values` the effective post-edit values, so anything the user owns wins over
- * the server copy.
+ * draft landing while the user was typing used to discard the edit. A user edit
+ * always wins over a late-arriving AI draft, so `values` holds the effective
+ * post-edit values and anything the user owns overrides the server copy.
  */
 function mergeUserEdits(
 	state: DraftViewState,

@@ -46,7 +46,7 @@ export type DraftAttachment = {
 	name: string;
 	kind: "image" | "file";
 	status: "uploading" | "done" | "error";
-	/** §3.7 per-attachment vision opt-out; false excludes it from the model call. */
+	/** Per-attachment vision opt-out; false excludes it from the model call. */
 	read: boolean;
 };
 

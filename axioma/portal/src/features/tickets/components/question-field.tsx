@@ -6,7 +6,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
  * One plain-language question rendered as a card radio group. Shared by the
  * manual request form and the AI draft review so the two renderings of the same
  * question cannot drift; `value` is null when nothing is chosen yet, which is
- * how a low-confidence field stays empty instead of showing a guess (§3.2).
+ * how a low-confidence field stays empty instead of showing a guess.
  */
 export function Question({
 	legend,

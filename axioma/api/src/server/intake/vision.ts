@@ -11,9 +11,10 @@ export const IMAGE_MEDIA_TYPES = [
 export const MAX_DRAFT_IMAGES = 3;
 export const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
-// The per-file read opt-out (§3.7) is applied by the router, which filters the
-// linked documents on `documents.id` — the identifier `excludedAttachments`
-// carries. This function only sees blobs that are already cleared to be read.
+// The per-file read opt-out — the employee's choice not to have a particular
+// screenshot looked at — is applied by the router, which filters the linked
+// documents on `documents.id`, the identifier `excludedAttachments` carries.
+// This function only sees blobs that are already cleared to be read.
 export async function readDraftImages(
 	images: {
 		sha256: string;

@@ -129,7 +129,7 @@ function buildIncidentValues(
 } {
 	const values: Record<string, unknown> = {};
 	const sources: Record<string, "ai" | "user"> = {};
-	// §3.2 leaves a field the model was unsure of empty rather than guessing.
+	// A field the model was unsure of is left empty rather than guessed at.
 	// The client still has to hear about it to build "Needs your input".
 	const blank: Array<{ path: string; confidence: "high" | "low" }> = [];
 	const take = (
@@ -214,8 +214,10 @@ export const intakeRouter = {
 			(entry) => entry.role === "user",
 		).length;
 
-		// §10 is "one click to a ticket, always": deflection runs once, on the
-		// opening turn, and never short-circuits the draft the employee came for.
+		// The escape hatch to a real ticket stays one click away at all times: a
+		// confident knowledge answer changes what the employee is shown, never
+		// what they are allowed to do. So deflection runs once, on the opening
+		// turn, and never short-circuits the draft the employee came for.
 		if (userTurns === 0) {
 			yield { type: "status", stage: "retrieving" } as const;
 			const articles = await deflectKnowledge(input.body);
@@ -260,7 +262,9 @@ export const intakeRouter = {
 							eq(documentLinks.targetId, draft.id),
 						),
 					);
-				// filter out user-excluded attachments (per-file read opt-out §7.3)
+				// The composer offers a per-image opt-out and forwards the ids the
+				// employee unticked as `excludedAttachments`. Those documents are
+				// dropped here, so a screenshot they held back is never read.
 				const visibleDocs = excludedIds.size
 					? linkedDocs.filter((d) => !excludedIds.has(d.id))
 					: linkedDocs;
@@ -330,8 +334,10 @@ export const intakeRouter = {
 			});
 
 		// The model round trip below is the longest wait in the flow — up to
-		// AXIOMA_INTAKE_TIMEOUT_MS. §9 is explicit that it must never be a bare
-		// spinner, so the stage is announced before the call, not after it.
+		// AXIOMA_INTAKE_TIMEOUT_MS, which defaults to 45 seconds. A wait that
+		// long reads as a hang unless the client can say what is happening, so
+		// the stage is announced before the call rather than after it and the
+		// employee is never left in front of a bare spinner.
 		yield { type: "status", stage: "drafting" } as const;
 
 		let parsed: IncidentDraftOutput;
@@ -527,8 +533,10 @@ export const intakeRouter = {
 			.where(eq(ticketDrafts.id, draft.id));
 
 		if (parsed.assistantMessage) {
-			// §2.3: the conversation is the evidence that lands on the ticket, so
-			// the assistant's half of it has to be stored, not just streamed.
+			// The conversation is the evidence that lands on the ticket — an
+			// analyst who opens a ticket saying only "hi" has nothing to work
+			// with — so the assistant's half of it has to be stored, not merely
+			// streamed to the browser and lost.
 			await appendMessage(
 				draft.id,
 				context.userId,
@@ -551,7 +559,10 @@ export const intakeRouter = {
 		}
 		for (const { path, confidence } of blank)
 			yield { type: "field", path, value: null, confidence } as const;
-		// non-streaming: single terminal complete, partial stays empty (TanStack AI §2.8)
+		// Nothing here streams, so the turn ends with a single terminal `complete`
+		// and no deltas — the same shape TanStack AI documents for its own
+		// non-streaming adapters, which is why the client renderer has to cope
+		// with `partial` staying empty for the whole turn.
 		yield {
 			type: "complete",
 			draft: toDraftSummary(await readDraft(draft.id, context.userId)),
@@ -560,7 +571,9 @@ export const intakeRouter = {
 	getIntakeDraft: capabilityProcedure("ticket.create").getIntakeDraft.handler(
 		async ({ context, input }) => {
 			try {
-				// A submitted draft is retained by §3.5 and still has to read back.
+				// A submitted draft is retained rather than deleted, so that the
+				// employee's corrections can still be diffed against the model's
+				// original output, and it therefore has to stay readable here.
 				return toDraftSummary(await readDraft(input.draftId, context.userId));
 			} catch (error) {
 				if (error instanceof ORPCError && error.code === "NOT_FOUND")

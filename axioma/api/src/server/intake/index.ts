@@ -72,9 +72,12 @@ export function repairDraftOutput<T>(raw: unknown, schema: z.ZodType<T>): T {
 }
 
 /**
- * Calls the model, and on a parse failure calls it once more (§9). A blind
- * re-issue of the same prompt tends to reproduce the same malformed output, so
- * the retry carries what went wrong.
+ * Calls the model, and on a parse failure calls it once more. The gateway is
+ * not at full OpenAI parity — strict function calling is already forced off
+ * against it — so the reply is validated ourselves and given exactly one repair
+ * retry, whichever structured-output mechanism the provider ends up using. A
+ * blind re-issue of the same prompt tends to reproduce the same malformed
+ * output, so the retry carries what went wrong.
  *
  * Only the parse is retried. The call itself sits outside the guard because a
  * transport failure is not repair-eligible: a 429 or a 5xx has just asked us to
@@ -178,8 +181,10 @@ export async function startDraft(reporterId: string): Promise<DraftSummary> {
 }
 
 /**
- * Loads an owned draft in any status. §3.5 retains the row after submit, so a
- * read-back has to survive the status flip; only mutations require `open`.
+ * Loads an owned draft in any status. The row is kept after submit rather than
+ * deleted, so that the employee's corrections can be diffed against the model's
+ * original output later, which means a read-back has to survive the status
+ * flip; only mutations require `open`.
  */
 export async function readDraft(
 	draftId: string,
@@ -279,9 +284,10 @@ export async function appendUserTurn(
 
 /**
  * Folds a user edit into the stored draft. Every supplied key is written, so
- * `values` holds the effective post-edit values §3.5 diffs against; only the
- * provenance label is guarded, because an `ai` label must never demote a field
- * the employee has already corrected.
+ * `values` holds the effective post-edit values that the correction diff
+ * compares against the model's verbatim `aiDraft`; only the provenance label is
+ * guarded, because an `ai` label must never demote a field the employee has
+ * already corrected.
  */
 export function mergeDraftPatch(
 	current: {
@@ -331,8 +337,9 @@ export async function patchDraft(
 		},
 		{ values, sources },
 	);
-	// The §3.5 correction diff reads the columns, so they cannot be allowed to
-	// drift from the values they mirror.
+	// The correction diff reads these columns rather than digging into the
+	// `values` JSON, so they cannot be allowed to drift from the values they
+	// mirror.
 	const subcategoryId = asId(merged.values.subcategoryId);
 	const formId = asId(merged.values.formId);
 	await assertRoutingExists(

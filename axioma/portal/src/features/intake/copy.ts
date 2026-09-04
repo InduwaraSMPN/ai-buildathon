@@ -10,7 +10,7 @@ export const intakeCopy = {
 	manualCardTitle: "Request details",
 	submitHint: "Enter to send, Shift + Enter for a new line",
 	/**
-	 * §10 seeds the composer chips from the request catalogue; these are the
+	 * The composer chips are seeded from the request catalogue; these are the
 	 * deliberate hand-written stand-ins for an empty or still-loading catalogue.
 	 */
 	fallbackSuggestions: [
@@ -77,7 +77,7 @@ export const intakeCopy = {
 	errorNetwork:
 		"We couldn’t reach the assistant. Check your connection, then send your message again.",
 	retryStart: "Try again",
-	/** §3.2: an AI-filled device has to be removable, not only replaceable. */
+	/** An AI-filled device has to be removable, not only replaceable. */
 	noDevice: "No computer",
 } as const;
 

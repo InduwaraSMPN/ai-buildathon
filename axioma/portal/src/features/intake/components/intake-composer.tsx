@@ -43,10 +43,11 @@ export function IntakeComposer({
 	const [text, setText] = useState("");
 	const catalogue = useQuery(orpc.listRequestCatalogue.queryOptions());
 
-	// §10 seeds the chips from the catalogue, so the order has to be defined
-	// rather than whatever the query happened to return: the subcategories a
-	// request can actually be filed against first, then by name. Keyed by id
-	// because two subcategories under different services may share a name.
+	// The chips are seeded from the request catalogue, so the order has to be
+	// defined rather than whatever the query happened to return: the
+	// subcategories a request can actually be filed against first, then by name.
+	// Keyed by id because two subcategories under different services may share a
+	// name.
 	const suggestions = useMemo(() => {
 		const items = catalogue.data ?? [];
 		if (!items.length) return FALLBACK_SUGGESTIONS;

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { PageHeading, PageShell } from "@/components/ticket-ui";
 import { Alert, AlertAction, AlertTitle } from "@/components/ui/alert";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -45,7 +45,6 @@ import {
 import type { DraftAttachment } from "@/features/intake/types";
 import type { RequestFormInitialValues } from "@/features/tickets/components/request-form";
 import { RequestForm } from "@/features/tickets/components/request-form";
-import { randomId, readRandomId } from "@/lib/random-id";
 import { orpc } from "@/utils/orpc";
 
 type NewTicketSearch = { mode?: "manual" };
@@ -192,7 +191,7 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 					}),
 				]);
 				if (draft) {
-					// §3.7: the documents come back from the server, but the per-file
+					// The documents come back from the server, but the per-file
 					// "let Axel read this" choice is client-only, so it is restored
 					// from storage — and an id with no stored choice is treated as
 					// opted OUT. A reload must never re-enable reading a screenshot
@@ -454,7 +453,7 @@ function ReviewLayout({
 }) {
 	const [activeTab, setActiveTab] = useState("request");
 	const wide = useIsWide();
-	// §3.1 wants the badge to mean a *new* message, so it clears once the
+	// The Conversation tab badge means a *new* message, so it clears once the
 	// conversation has actually been on screen.
 	const [seenKey, setSeenKey] = useState<string | null>(null);
 	useEffect(() => {

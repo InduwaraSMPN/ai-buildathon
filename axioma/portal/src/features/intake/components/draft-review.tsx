@@ -52,7 +52,7 @@ const timingToKey: Record<string, string> = Object.fromEntries(
 	Object.entries(timingValues).map(([key, value]) => [value, key]),
 );
 
-/** §3.2's summary line names fields by the label the form already shows. */
+/** The "Needs your input" line names fields by the label the form shows. */
 const FIXED_FIELD_LABELS: Record<string, string> = {
 	title: requestFormCopy.summaryLabel,
 	body: requestFormCopy.incidentDetailsLabel,
@@ -66,7 +66,7 @@ const LIST_FORMAT = new Intl.ListFormat(undefined, {
 	type: "conjunction",
 });
 
-/** Counts what the assistant actually put in the form, for the §2.9 summary. */
+/** Counts what the assistant put in the form, for the screen-reader summary. */
 function countFilledFields(values: DraftViewState["values"]): number {
 	const filled = (value: unknown) =>
 		value !== undefined && value !== null && value !== "";
@@ -141,9 +141,10 @@ export function DraftReview({
 		[state.aiDraft],
 	);
 
-	// §3.2 wants one summary line naming the fields, not a warning bolted to
-	// each one. Container keys (`customFields`, `formValues`) and anything the
-	// form does not render carry no label and are dropped rather than shown raw.
+	// The fields the model left blank are collected into one summary line that
+	// names them, rather than a warning bolted to each one. Container keys
+	// (`customFields`, `formValues`) and anything the form does not render carry
+	// no label and are dropped rather than shown raw.
 	const needsInputLabels = useMemo(() => {
 		const dynamic = new Map<string, string>(
 			(fieldDefinitions.data ?? []).map((definition) => [
@@ -225,8 +226,9 @@ export function DraftReview({
 			className="flex min-w-0 flex-col gap-5"
 			aria-busy={state.streaming ? "true" : "false"}
 		>
-			{/* The form is what fills itself in, so the §2.9 summary belongs here
-			    rather than on the transcript, and it is the only live region on it. */}
+			{/* The form is what fills itself in, so the debounced summary belongs
+			    here rather than on the transcript, and it is the only live region
+			    on it. */}
 			<div className="sr-only" aria-live="polite" aria-atomic="false">
 				{announcement}
 			</div>
@@ -309,8 +311,8 @@ export function DraftReview({
 						hasAiValue={hasAiValue(state, "impact")}
 						onRevert={() => onRevert("impact")}
 					>
-						{/* §3.2: a field the model was unsure about is left empty, so
-						    nothing is preselected until a value actually exists. */}
+						{/* A field the model was unsure about is left empty rather than
+						    guessed, so nothing is preselected until a value exists. */}
 						<Question
 							legend={requestFormCopy.affectedPeopleLegend}
 							name="intake-impact"
@@ -466,8 +468,9 @@ export function DraftReview({
 			</FieldGroup>
 
 			<div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-end">
-				{/* The escape hatch has to stay reachable once the composer is gone,
-				    §2.2: never something the user has to argue past. */}
+				{/* The escape hatch has to stay reachable once the composer is gone:
+				    creating a ticket anyway is always visible, never something the
+				    user has to argue past. */}
 				<button
 					type="button"
 					className="self-start text-primary text-sm underline underline-offset-4 sm:mr-auto"

@@ -3,9 +3,10 @@ import { env } from "@/env";
 
 // The adapter is deliberately non-streaming: the gateway is called with
 // stream:false and the router yields one terminal `complete`, which is the
-// degraded case TanStack AI documents (plan §2.8/§3.8). An SSE parser that
-// buffered the whole body before decoding it streamed nothing and reported no
-// token usage, so it was removed rather than left claiming to stream.
+// degraded case TanStack AI documents for its own non-streaming adapters. An
+// SSE parser that buffered the whole body before decoding it streamed nothing
+// and reported no token usage, so it was removed rather than left claiming to
+// stream.
 
 export interface IntakeModelResult {
 	content: string;

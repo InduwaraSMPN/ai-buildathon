@@ -40,17 +40,33 @@ Thirty minutes before, not five.
    and `reporting` is `Pending`.
 4. **`AXIOMA_LLM_KEY` is set and the gateway answers.** This is the single most
    common way the demo dies. Test it with one throwaway ticket and delete it.
-5. If demoing the device path: the Windows machine is enrolled, `axel-cli status`
-   shows connected, and `pnpm seed:device` has planted the proxy fault.
-6. Browser tabs, left to right, in this order: portal (:3001), dashboard queue
-   (:3002), dashboard run transcript, `/device-commands`, `/admin/environments`.
-7. One terminal with `kubectl -n demo get pods -w` already running. Live pod status
+5. **A worker is connected.** `AXIOMA_AGENT_TOKEN` has to hold the same value in
+   `api/.env` and `agent/.env`, or the gateway refuses every agent connection and
+   nothing dispatches — the API log line to look for is
+   `[grpc] Axel worker=… connected`. Against a self-signed gateway certificate the
+   worker also needs `AXIOMA_API_GRPC_CA_FILE` pointing at `api/certs/grpc.crt`;
+   without it the handshake fails with `CERTIFICATE_VERIFY_FAILED` and the agent
+   retries silently in the background while the queue does nothing.
+6. If demoing the device path, both halves of enrolment are done: `axel-cli enroll`
+   with a token from the dashboard, the daemon connected, and the claim code from
+   `axel-cli status` entered in the portal under **Connect a computer**. A device
+   with no owner is not wrong — it is invisible, and act 3 files a ticket that binds
+   to nothing. Confirm the machine appears in that employee's own list, then run
+   `pnpm seed:device` to plant the proxy fault.
+7. Browser tabs, left to right, in this order: portal (:3001), portal
+   `/my-requests`, dashboard queue (:3002), dashboard run transcript,
+   `/device-commands`, `/admin/environments`.
+8. One terminal with `kubectl -n demo get pods -w` already running. Live pod status
    changing on screen is worth more than any slide.
-8. Run the whole arc once, end to end, timed. Every demo that has ever failed was
+9. Run the whole arc once, end to end, timed. Every demo that has ever failed was
    demoed for the first time in front of the audience.
 
 **Reset between runs:** `pnpm seed:reset && pnpm seed` restores the cluster faults.
-Tickets accumulate harmlessly — a fuller queue looks more real, not less.
+The reset deletes a namespace and takes its target from the context the workstation
+is pointed at, so it refuses any context outside the `kind-` allowlist — pass
+`--context` explicitly, or set `AXIOMA_SEED_CONTEXTS`, if your local cluster is named
+something else. Tickets accumulate harmlessly — a fuller queue looks more real, not
+less.
 
 ---
 
@@ -131,12 +147,23 @@ credible refusal, no operations team will grant write access to anything.
 Skip only if no Windows machine is available. Nothing else in the demo is as
 differentiating — most competing tools stop at the ticket.
 
-1. On the Windows machine, show the fault is real: the stale proxy override.
-2. From the portal, as that employee: *"I cannot reach internal sites since this
+1. **Show how the laptop got there.** Run `axel-cli status` on the machine: connected,
+   and a claim code. Open the portal as that employee, expand **Connect a computer**,
+   type the code. The machine appears in their list.
+   > "Enrolling bound the machine to the gateway. It did not say whose machine it is,
+   > and until someone says that, the agent has nothing to act on. The employee
+   > answers that themselves, from the code on their own screen — no ticket, no
+   > technician, and IT never types their name for them."
+
+   Skip this if you enrolled during pre-flight and want the time back — but say the
+   sentence, because the next step depends on it.
+2. On the Windows machine, show the fault is real: the stale proxy override.
+3. From the portal, as that employee: *"I cannot reach internal sites since this
    morning."*
-3. The run binds the ticket to that person's device, reads the `proxy` facet,
-   dispatches `clear_proxy_override`, **re-reads to verify**, closes.
-4. Show the registry value is gone. Show the command row with its sequence number.
+4. The run binds the ticket to that person's device — because they claimed it — reads
+   the `proxy` facet, dispatches `clear_proxy_override`, **re-reads to verify**,
+   closes.
+5. Show the registry value is gone. Show the command row with its sequence number.
 
 **Say:**
 
@@ -217,8 +244,11 @@ Ninety seconds. Deliver it plainly, without apology.
   image tag. Not scaling, not configuration, not secrets.
 - **It has no blast-radius limit** inside what it is granted. The action set is chosen
   to be safe; that is not the same as the system being safe.
-- **Retrying a dispatched device action can apply it twice.** Duplicate suppression
-  exists; durability across a restart does not.
+- **A device action interrupted mid-execution is not retried.** Delivery is
+  at-most-once by choice: the sequence is written to disk before the command runs, so
+  a laptop that loses power part-way through loses that command rather than repeating
+  it — and nothing on either side then knows whether it took effect. Retrying safely
+  needs durable results and idempotency keys, which are not built.
 - **We make no performance, savings, or accuracy claim.** Nothing in the repository
   supports one, so we do not make one.
 
@@ -259,6 +289,7 @@ It will, eventually. Have these ready.
 
 | Failure | Recovery |
 |---|---|
+| Tickets sit in the queue and nothing dispatches | No worker is connected. Check the API log for `[grpc] Axel worker=… connected`; the usual causes are `AXIOMA_AGENT_TOKEN` differing between `api/.env` and `agent/.env`, or a missing `AXIOMA_API_GRPC_CA_FILE`. Both fail closed and quietly, which is why pre-flight checks for the log line rather than for a running process |
 | Model gateway slow or down | Cut to a **pre-recorded run transcript** already open in a tab. The transcript is the artefact; a replay of it is honest as long as you say it is one |
 | Run exhausts or escalates unexpectedly | Use it. Open the transcript and walk what it tried. A bounded failure that escalates cleanly *is* the product working |
 | Cluster unhealthy | `pnpm seed:reset && pnpm seed`. If it will not recover, switch to act 3 or act 4 |
@@ -279,6 +310,15 @@ infrastructure write is one field on one object; every write names the read that
 confirms it and the run cannot close until that read happens; and an environment can
 be put in shadow, where writes are refused but the intent is still recorded. What it
 does *not* have is a blast-radius limit inside those grants — say so.
+
+**"What stops something pretending to be the agent?"**
+Both sides of the gateway authenticate, and the port is one an employee laptop can
+reach. A worker proves itself with a shared secret the operator sets on the API and on
+the agent; without it the gateway refuses the connection rather than accepting an
+unknown worker and handing it a run. A device proves itself with a per-device
+credential issued once at enrolment, rotatable and revocable, and the cluster
+namespaces the tools may touch are an allowlist the API enforces itself rather than
+leaving to whatever the mounted credential happens to permit.
 
 **"What if the ticket is a prompt injection?"**
 Demo it — act 4, step 5. The agent cannot compose a command. It selects from a fixed
@@ -311,6 +351,7 @@ Before you finish rehearsing, confirm each shipped capability appears somewhere.
 | Forced knowledge retrieval, cited | 1 |
 | Infrastructure fix with verification | 1 |
 | Correct refusal on a policy decision | 2 |
+| Employee self-service device claim | 3 |
 | Device typed action, verified | 3 |
 | GUI via UI Automation | 3, optional |
 | Change enablement with rollback and PIR | 4 |
@@ -322,9 +363,9 @@ Before you finish rehearsing, confirm each shipped capability appears somewhere.
 | Employee-facing progress in plain language | 1 |
 | Helm deployment in the customer's infrastructure | 5 |
 | ITSM connector, co-existence | 5 |
-| Device channel authentication | mention in 3, detail on request |
+| Device and agent channel authentication | mention in 3, detail on request |
 | Cross-employee redaction | mention in 4, detail on request |
 
 The last two are hard to *show* and easy to *state*. Keep the evidence a click away:
-the impersonation test and the de-identified projection query both make the point in
-one screen if someone pushes.
+the impersonation test, the agent-channel refusal test, and the de-identified
+projection query each make the point in one screen if someone pushes.

@@ -194,9 +194,16 @@ api:
       # Model that drafts the ticket. Empty uses the API's compiled default.
       model: ""
       # AXIOMA_INTAKE_VISION
-      # Allow the intake model to read uploaded screenshots. Off by default:
-      # keep it off until scripts/probe-intake-model.mjs passes its vision check.
-      vision: false
+      # Allow the intake model to read uploaded screenshots. On by default, now
+      # that scripts/probe-intake-model.mjs confirms the endpoint accepts
+      # image_url content parts.
+      #
+      # This sends screenshot pixels to the model provider, and a screenshot of
+      # an error dialogue routinely captures the rest of the desktop. The guards
+      # are png/jpeg/webp only, at most 3 images per draft, nothing over 2 MB,
+      # base64 never persisted, and a per-file opt-out the employee controls.
+      # Set false to switch the capability off for the whole install.
+      vision: true
       # AXIOMA_INTAKE_TIMEOUT_MS
       # Per model call timeout in milliseconds.
       timeoutMs: 45000

@@ -91,12 +91,12 @@ export function IntakeConversation({
 }) {
 	const deflection = articleCount > 0;
 
-	// §2.9 lives on the transcript for stage 2, where the assistant's reply and
-	// the deflection result are the only things that change and a screen reader
-	// user would otherwise hear nothing but the status line. Stage 3 keeps its
-	// announcement on the form, which is the surface that fills itself in there;
-	// both regions are mounted in stage 3, so this one goes quiet to stop the
-	// same turn being read out twice.
+	// The debounced summary announcement lives on the transcript for stage 2,
+	// where the assistant's reply and the deflection result are the only things
+	// that change and a screen reader user would otherwise hear nothing but the
+	// status line. Stage 3 keeps its announcement on the form, which is the
+	// surface that fills itself in there; both regions are mounted in stage 3, so
+	// this one goes quiet to stop the same turn being read out twice.
 	const summary = useMemo(() => {
 		if (stage !== "triage") return "";
 		const parts = [

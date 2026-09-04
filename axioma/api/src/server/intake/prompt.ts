@@ -20,12 +20,12 @@ export interface FieldDefinitionOption {
  * makes turn N cost O(N): the whole transcript and the whole catalogue were
  * re-serialised each time, and a single message may be 10,000 characters.
  *
- * Sixteen entries is eight exchanges, well past the clarifying loop §3.2 asks
- * for; 1,500 characters keeps an ordinary message whole while capping the worst
- * case; and forty catalogue lines is a shortlist the model can actually read,
- * where a large customer's full catalogue is not. Four-letter terms are the
- * shortest worth matching a category name against — "the" and "and" match
- * everything and rank nothing.
+ * Sixteen entries is eight exchanges, well past the one or two clarifying
+ * questions the intake flow is designed to ask; 1,500 characters keeps an
+ * ordinary message whole while capping the worst case; and forty catalogue
+ * lines is a shortlist the model can actually read, where a large customer's
+ * full catalogue is not. Four-letter terms are the shortest worth matching a
+ * category name against — "the" and "and" match everything and rank nothing.
  */
 const MAX_TRANSCRIPT_ENTRIES = 16;
 const MAX_TRANSCRIPT_ENTRY_CHARS = 1_500;
