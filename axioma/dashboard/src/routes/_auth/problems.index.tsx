@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { PageState } from "@/components/support-ui";
 import {
 	ProblemEditor,
@@ -20,10 +21,15 @@ function ProblemsRoute() {
 	const queryClient = useQueryClient();
 	const query = useQuery(orpc.listProblems.queryOptions());
 	const navigate = useNavigate();
+	const [editorOpen, setEditorOpen] = useState(false);
 	const create = useMutation(
 		orpc.createProblem.mutationOptions({
-			onSuccess: () =>
-				queryClient.invalidateQueries({ queryKey: orpc.listProblems.key() }),
+			onSuccess: () => {
+				setEditorOpen(false);
+				return queryClient.invalidateQueries({
+					queryKey: orpc.listProblems.key(),
+				});
+			},
 		}),
 	);
 	if (query.isPending && query.data == null) {
@@ -50,6 +56,8 @@ function ProblemsRoute() {
 			problems={query.data ?? []}
 			action={
 				<ProblemEditor
+					open={editorOpen}
+					onOpenChange={setEditorOpen}
 					pending={create.isPending}
 					onSubmit={(value) => create.mutate(value)}
 				/>

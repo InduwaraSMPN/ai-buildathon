@@ -143,7 +143,8 @@ pnpm e2e:local -- --run
 ```
 
 The read-only verifier records every test-plan scenario as `ran`, `skipped`, or
-`failed` and always writes timestamped JSON and Markdown under `../../temp/results/`.
+`failed` and always writes timestamped JSON and Markdown under `temp/results/` at the
+repository root — resolved from the script, so it lands there wherever you run it from.
 Skips exit 2 by default; use `--allow-skips` when known external prerequisites are
 unavailable. Add `--json` for machine output or `--report=PATH` for an extra Markdown
 copy. Run `pnpm e2e:local -- --self-test` without a stack to test its pure logic.
@@ -165,10 +166,25 @@ carries a `vector(1536)` embedding column behind an HNSW index, and knowledge re
 vector ranks. Embeddings are only written when `AXIOMA_LLM_KEY` is set; without it retrieval degrades to
 lexical and reports `mode: "lexical"`.
 
-**AI intake** reuses that same credential. `intakeCapabilities.enabled` is `Boolean(env.AXIOMA_LLM_KEY)`, so
+**Embeddings can come from a different provider than chat**, and in practice often must: a gateway
+credential is commonly scoped to a list of chat models and answers `/embeddings` with a 403. Set
+`AXIOMA_EMBEDDING_API_BASE` and `AXIOMA_EMBEDDING_KEY` to point only the embedding call elsewhere; both fall
+back to their `AXIOMA_LLM_*` counterpart, so a single-provider install needs neither.
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `AXIOMA_EMBEDDING_API_BASE` | falls back to `AXIOMA_LLM_API_BASE` | OpenAI-compatible endpoint for `/embeddings` only. |
+| `AXIOMA_EMBEDDING_KEY` | falls back to `AXIOMA_LLM_KEY` | Credential for that endpoint. |
+| `AXIOMA_EMBEDDING_MODEL` | `text-embedding-3-small` | Must return **exactly 1536** values; `search_documents.embedding` is `vector(1536)` and its HNSW index is built for that width. A vector of any other size is discarded and logged with the width that came back. |
+| `AXIOMA_EMBEDDING_DIMENSIONS` | unset | Only for a model whose native width is not 1536 but which implements Matryoshka truncation — Google's `gemini-embedding-001` is natively 3072 and honours this. Leave unset for a natively-1536 model. |
+
+A known-good pairing is `openai/text-embedding-3-small` through OpenRouter
+(`https://openrouter.ai/api/v1`), which is natively 1536 and needs no `AXIOMA_EMBEDDING_DIMENSIONS`.
+
+**AI intake** reuses the chat credential. `intakeCapabilities.enabled` is `Boolean(env.AXIOMA_LLM_KEY)`, so
 setting the key switches the AI composer on at the portal's `/tickets/new`, and clearing it drops that page
-back to the plain ticket form. One variable governs both embeddings and intake. Five more tune the composer,
-each with a default in `api/src/env.ts` that works unchanged:
+back to the plain ticket form. Five more variables tune the composer, each with a default in
+`api/src/env.ts` that works unchanged:
 
 | Variable | Default | What it does |
 | --- | --- | --- |
@@ -177,6 +193,19 @@ each with a default in `api/src/env.ts` that works unchanged:
 | `AXIOMA_INTAKE_TIMEOUT_MS` | `45000` | Per-call timeout in milliseconds. |
 | `AXIOMA_INTAKE_MAX_TURNS` | `20` | How many conversational turns are allowed before a draft is forced. |
 | `AXIOMA_INTAKE_DRAFT_TTL_HOURS` | `72` | How long an abandoned `open` draft survives before it is swept. |
+
+**The agent channel is authenticated.** `AXIOMA_AGENT_TOKEN` is a shared secret the API and the
+worker both hold; the gateway refuses every `AgentChannel` connection when it is unset, because the
+gateway port is reachable by every enrolled laptop and that channel carries ticket text, reporter
+identity and tool execution. Set the same value in `api/.env` and `agent/.env`, or as
+`secrets.agentToken` in the chart, which injects it into both pods.
+
+**Two more API variables bound the cluster tools.** `AXIOMA_K8S_NAMESPACES` is a comma-separated
+allowlist the tools enforce themselves — the chart's per-namespace Role only binds the in-cluster
+ServiceAccount, so under `kubeconfig` mode it is inert and this is the control that still applies.
+`AXIOMA_K8S_ALLOW_INSECURE_TLS` must be `true` before a stored environment credential's
+`insecureSkipTlsVerify` is honoured; without it the request is refused and logged. `PORT` and
+`DATABASE_POOL_MAX` are the listen port and the per-replica Postgres pool bound.
 
 **Protobuf codegen** is wired on both sides. After syncing the agent dependencies, `grpcio-tools`
 provides protoc for `agent/scripts/generate-proto.sh` and `agent/scripts/generate-proto.ps1`. CLI
@@ -201,3 +230,17 @@ around it. Run `axel-cli enroll` with a short-lived token issued from the dashbo
 the daemon then connects over TLS with its per-device credential. The binary remains
 unsigned pending Authenticode certificate procurement, so managed-device policy or
 Windows SmartScreen may still block it.
+
+Enrolment binds the machine to the gateway. It does not say **whose** machine it is, and until it
+does the device is invisible to `listMyDevices`, to the intake composer's device picker, and to the
+agent's owned-device lookup — so a second, employee-facing step completes it. On first successful
+connection the gateway issues a short claim code, which the daemon persists and `axel-cli status`
+prints:
+
+```powershell
+axel-cli status
+```
+
+The employee enters that code under "Connect a computer" in the portal. It is single-use, expires
+after 24 hours, and is cleared on the claim, so a screenshot of it in a chat thread is worth
+nothing afterwards.

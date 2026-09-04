@@ -14,7 +14,8 @@ import {
 	inventoryReports,
 	softwareInventoryApps,
 } from "@/db/schema/inventory";
-import { daysFromEpoch } from "./data";
+import { softwareIdentityKey } from "@/server/inventory";
+import { daysFromEpoch, INSTALLED_SOFTWARE } from "./data";
 
 /** 15 devices are seeded; each maps onto the asset of the same ordinal. */
 const DEVICE_COUNT = 15;
@@ -63,57 +64,6 @@ const DISKS = [
 	{ model: "SAMSUNG MZVL21T0HCLR", size: "1024209543168" },
 	{ model: "WD PC SN740 SDDPNQD-512G", size: "512110190592" },
 	{ model: "KIOXIA KXG80ZNV1T02", size: "1024209543168" },
-] as const;
-
-const SOFTWARE = [
-	{
-		key: "com.google.chrome",
-		name: "Google Chrome",
-		version: "141.0.7390.54",
-		publisher: "Google LLC",
-	},
-	{
-		key: "com.microsoft.office",
-		name: "Microsoft 365 Apps for enterprise",
-		version: "16.92.24101",
-		publisher: "Microsoft Corporation",
-	},
-	{
-		key: "com.slack.slack",
-		name: "Slack",
-		version: "4.42.115",
-		publisher: "Slack Technologies",
-	},
-	{
-		key: "com.microsoft.vscode",
-		name: "Visual Studio Code",
-		version: "1.96.2",
-		publisher: "Microsoft Corporation",
-	},
-	{
-		key: "com.crowdstrike.falcon",
-		name: "CrowdStrike Falcon Sensor",
-		version: "7.18.18604",
-		publisher: "CrowdStrike, Inc.",
-	},
-	{
-		key: "com.zoom.client",
-		name: "Zoom Workplace",
-		version: "6.2.11",
-		publisher: "Zoom Communications",
-	},
-	{
-		key: "com.adobe.acrobat.reader",
-		name: "Adobe Acrobat Reader",
-		version: "24.5.20320",
-		publisher: "Adobe Inc.",
-	},
-	{
-		key: "com.1password.1password",
-		name: "1Password",
-		version: "8.10.48",
-		publisher: "AgileBits Inc.",
-	},
 ] as const;
 
 export async function seedInventory(): Promise<void> {
@@ -169,16 +119,18 @@ export async function seedInventory(): Promise<void> {
 					.onConflictDoNothing();
 			}
 
-			// 5–8 installed applications per device.
+			// 5–8 installed applications per device. The identity key is derived
+			// the way ingestInventoryReport derives it, so the compliance join
+			// against software_products actually matches.
 			const appCount = 5 + (i % 4);
 			for (let a = 0; a < appCount; a++) {
-				const app = SOFTWARE[(i + a) % SOFTWARE.length]!;
+				const app = INSTALLED_SOFTWARE[(i + a) % INSTALLED_SOFTWARE.length]!;
 				await tx
 					.insert(softwareInventoryApps)
 					.values({
 						id: `demo-sw-inventory-${ordinal}-${String(a + 1).padStart(2, "0")}`,
 						assetDeviceId,
-						identityKey: app.key,
+						identityKey: softwareIdentityKey(app.name, app.publisher),
 						name: app.name,
 						version: app.version,
 						publisher: app.publisher,

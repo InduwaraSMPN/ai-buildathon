@@ -108,6 +108,30 @@ DEVICE_USER_PROCESSES: Final[tuple[str, ...]] = (
     "slack",
 )
 
+# Mirrors DEVICE_ACTION_FACETS in api/src/server/tools/device.ts: the facets of
+# device state that actually observe each action. Every device write verifies
+# through device_read_state, so without this a read of any facet discharges any
+# action's verification obligation — a storage read would "confirm" a DNS flush.
+DEVICE_ACTION_FACETS: Final[dict[str, tuple[str, ...]]] = {
+    "flush_dns": ("resolver",),
+    "renew_dhcp_lease": ("adapters",),
+    "clear_proxy_override": ("proxy",),
+    "reset_credential_cache": ("identity",),
+    "restart_user_process": ("processes",),
+    "disable_proxy": ("proxy",),
+    "refresh_certificate_store": ("certificates",),
+    "clear_temp_files": ("storage",),
+    "clear_outlook_cache": ("app_cache",),
+    "clear_teams_cache": ("app_cache",),
+    "clear_icon_cache": ("app_cache",),
+    "clear_print_queue": ("printing",),
+    "gui_invoke_control": ("screen",),
+    "gui_set_control_value": ("screen",),
+    "gui_toggle_control": ("screen",),
+    "gui_select_item": ("screen",),
+    "gui_expand_control": ("screen",),
+}
+
 
 class DeviceReadState(StrictToolInput):
     device_id: str = Field(min_length=1)

@@ -2,11 +2,23 @@ package tui
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/axioma/cli/internal/device"
 )
+
+// trimRune removes the last rune, not the last byte: slicing by byte split a
+// multi-byte character in an internationalised hostname and left an invalid
+// string that was then written verbatim into config.json.
+func trimRune(value string) string {
+	if value == "" {
+		return value
+	}
+	_, size := utf8.DecodeLastRuneInString(value)
+	return value[:len(value)-size]
+}
 
 type enrollModel struct {
 	theme    theme
@@ -58,10 +70,10 @@ func (m enrollModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.done = true
 		return m, tea.Quit
 	case "backspace":
-		if m.field == 0 && len(m.config.GRPCHost) > 0 {
-			m.config.GRPCHost = m.config.GRPCHost[:len(m.config.GRPCHost)-1]
-		} else if m.field == 1 && len(m.token) > 0 {
-			m.token = m.token[:len(m.token)-1]
+		if m.field == 0 {
+			m.config.GRPCHost = trimRune(m.config.GRPCHost)
+		} else {
+			m.token = trimRune(m.token)
 		}
 	default:
 		if key.Text != "" {
@@ -92,7 +104,10 @@ func (m enrollModel) View() tea.View {
 		cursor[m.field] = ">"
 		t := newTable().StyleFunc(keyValueStyles).Rows(
 			[]string{cursor[0] + " gateway", m.config.GRPCHost},
-			[]string{cursor[1] + " token", m.token},
+			// Masked: the token is a bearer credential that mints a device
+			// credential, and this is typed on the employee's own screen, often
+			// with them watching or a support session recording.
+			[]string{cursor[1] + " token", strings.Repeat("•", utf8.RuneCountInString(m.token))},
 		)
 		out += t.Render() + "\n\nTab switches fields; Enter stores the token; Esc cancels.\n"
 	}

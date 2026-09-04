@@ -60,7 +60,10 @@ export function dueRecurrenceOccurrences(
 	for (let ordinal = startOrdinal; ; ordinal++) {
 		const occursAt = occurrenceAt(rule, ordinal);
 		if (occursAt > last) break;
-		const idempotencyKey = `${rule.id}:${occursAt.toISOString()}`;
+		// Keyed on the ordinal, not the instant: editing a rule's start or cadence
+		// recomputes every instant, and an instant-keyed slot would then look new
+		// and re-materialise periods that were already generated.
+		const idempotencyKey = `${rule.id}:${ordinal}`;
 		if (!existingKeys.has(idempotencyKey)) {
 			if (result.length === limit) break;
 			result.push({ recurringTicketId: rule.id, occursAt, idempotencyKey });

@@ -90,13 +90,32 @@ const catalogueSchema = z.object({
 	subcategories: z.array(serviceSubcategorySchema),
 });
 
+/**
+ * Every constraint validateFormFieldValue understands. Which keys are legal for
+ * a given field type stays that function's business — this only stops an
+ * unknown or unbounded constraint being stored in the first place. `pattern` is
+ * compiled and run against portal-supplied text, so its length is capped here
+ * as well as at the write boundary. `min`/`max` are numbers on a number field
+ * and YYYY-MM-DD strings on a date field.
+ */
+const formFieldValidation = z.strictObject({
+	minLength: z.number().int().min(0).max(100_000).optional(),
+	maxLength: z.number().int().min(0).max(100_000).optional(),
+	pattern: z.string().max(200).optional(),
+	min: z.union([z.number(), z.string().max(10)]).optional(),
+	max: z.union([z.number(), z.string().max(10)]).optional(),
+	integer: z.boolean().optional(),
+	minItems: z.number().int().min(0).max(1_000).optional(),
+	maxItems: z.number().int().min(0).max(1_000).optional(),
+});
+
 const formFieldInput = z.object({
 	key: z.string().trim().min(1).max(100),
 	label: z.string().trim().min(1).max(200),
 	description: z.string().trim().max(2_000).nullable().optional(),
 	type: formFieldType,
 	options: z.unknown().nullable().optional(),
-	validation: z.unknown().nullable().optional(),
+	validation: formFieldValidation.nullable().optional(),
 	condition: z.unknown().nullable().optional(),
 	isMandatory: z.boolean().default(false),
 	isHidden: z.boolean().default(false),

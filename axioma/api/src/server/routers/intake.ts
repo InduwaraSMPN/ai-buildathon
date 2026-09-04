@@ -16,9 +16,11 @@ import { env } from "@/env";
 import { listActiveFieldDefinitions } from "../dynamic-fields";
 import {
 	appendMessage,
+	appendUserTurn,
 	discardDraft,
 	draftWithRepair,
 	loadDraft,
+	mergeDraftPatch,
 	patchDraft,
 	readDraft,
 	repairDraftOutput,
@@ -37,10 +39,10 @@ import {
 	systemPrompt,
 } from "../intake/prompt";
 import {
+	type CatalogueFormValuesOutput,
 	catalogueFormValuesJsonSchema,
 	catalogueFormValuesSchema,
 	entriesToRecord,
-	type CatalogueFormValuesOutput,
 	type IncidentDraftOutput,
 	incidentDraftJsonSchema,
 	incidentDraftSchema,
@@ -105,8 +107,6 @@ async function loadOwnedDevices(reporterId: string) {
 /** Every element of a chat content array must be a content-part object. */
 const textPart = (text: string) => ({ type: "text" as const, text });
 
-type TranscriptEntry = { role: "user" | "assistant"; body: string };
-
 /** Null only when both calls reported nothing, so "unknown" stays distinct from zero. */
 const sumTokens = (
 	first: number | null | undefined,
@@ -114,13 +114,14 @@ const sumTokens = (
 ): number | null =>
 	first == null && second == null ? null : (first ?? 0) + (second ?? 0);
 
-const transcriptOf = (draft: { transcript: unknown }): TranscriptEntry[] =>
-	(draft.transcript ?? []) as TranscriptEntry[];
+const asId = (value: unknown): string | null =>
+	typeof value === "string" && value ? value : null;
 
 function buildIncidentValues(
 	parsed: IncidentDraftOutput,
 	subcategoryId: string | null,
 	allowedCustomFields: ReadonlySet<string>,
+	allowedDevices: ReadonlySet<string>,
 ): {
 	values: Record<string, unknown>;
 	sources: Record<string, "ai" | "user">;
@@ -146,7 +147,15 @@ function buildIncidentValues(
 	take("body", parsed.body);
 	take("impact", parsed.impact);
 	take("urgency", parsed.urgency);
-	take("deviceId", parsed.deviceId);
+	// `tickets.device_id` is the sole authorization anchor for every device tool
+	// call, so the model may only name a machine this employee already owns —
+	// an id it invented, or one a pasted message talked it into, is dropped.
+	take(
+		"deviceId",
+		parsed.deviceId.value !== null && !allowedDevices.has(parsed.deviceId.value)
+			? { value: null, confidence: parsed.deviceId.confidence }
+			: parsed.deviceId,
+	);
 	// customFields arrives as a key/value list, which is what strict structured
 	// outputs allow, and is stored as the record the write paths expect.
 	if (
@@ -182,13 +191,15 @@ export const intakeRouter = {
 	).sendIntakeMessage.handler(async function* ({ context, input }) {
 		const draft = await loadDraft(input.draftId, context.userId);
 		const excludedIds = new Set(input.excludedAttachments ?? []);
-		const transcript = transcriptOf(draft);
-		// Only user turns are counted: the transcript holds both roles, so
-		// halving its length would let the cap drift with the assistant's replies.
-		const userTurns = transcript.filter(
-			(entry) => entry.role === "user",
-		).length;
-		if (userTurns >= env.AXIOMA_INTAKE_MAX_TURNS) {
+		// The cap and the append are one statement, so two messages sent at once
+		// can no longer both find the draft under the cap and both append.
+		const appended = await appendUserTurn(
+			draft.id,
+			context.userId,
+			input.body,
+			env.AXIOMA_INTAKE_MAX_TURNS,
+		);
+		if (!appended) {
 			yield {
 				type: "error",
 				code: "MAX_TURNS_EXCEEDED",
@@ -196,7 +207,12 @@ export const intakeRouter = {
 			} as const;
 			return;
 		}
-		await appendMessage(draft.id, context.userId, "user", input.body);
+		// The turn just appended is carried separately as the model's `message`,
+		// so the prompt's conversation is everything that came before it.
+		const transcript = appended.slice(0, -1);
+		const userTurns = transcript.filter(
+			(entry) => entry.role === "user",
+		).length;
 
 		// §10 is "one click to a ticket, always": deflection runs once, on the
 		// opening turn, and never short-circuits the draft the employee came for.
@@ -256,8 +272,22 @@ export const intakeRouter = {
 					}));
 					visionImageParts = await readDraftImages(imageInputs);
 				}
-			} catch {
+			} catch (error) {
+				// Reading the attachments is best-effort — the draft is still worth
+				// having without them — but a bare catch made a misconfigured blob
+				// store indistinguishable from a draft with nothing attached, so the
+				// assistant drafted blind and nobody found out.
+				console.error(
+					`[intake] attachment read failed for draft ${draft.id}:`,
+					error instanceof Error ? error.message : error,
+				);
 				visionImageParts = [];
+				yield {
+					type: "error",
+					code: "ATTACHMENT_READ_FAILED",
+					message:
+						"I could not open the files you attached, so this draft is based on your message alone.",
+				} as const;
 			}
 		}
 
@@ -266,7 +296,7 @@ export const intakeRouter = {
 		// string inside a content array is rejected by the gateway before
 		// generation, which previously broke the whole non-vision path.
 		const turnContent = [
-			textPart(classifyContext(catalogue)),
+			textPart(classifyContext(catalogue, input.body)),
 			textPart(
 				draftContext({
 					message: input.body,
@@ -329,6 +359,7 @@ export const intakeRouter = {
 			parsed,
 			whitelistedSubcategoryId,
 			new Set(fieldDefinitions.map((definition) => definition.key)),
+			new Set(ownedDevices.map((device) => device.id)),
 		);
 		const matchedCatalogue = whitelistedSubcategoryId
 			? (catalogue.find(
@@ -452,15 +483,36 @@ export const intakeRouter = {
 			unknown
 		>;
 		suppressLowConfidence(parsed);
+		// The model's output is a patch, not the whole draft. Writing `values` and
+		// `fieldSources` wholesale discarded every key this turn had no opinion
+		// about — `subcategoryConfirmed` and the catalogue's `formValues` among
+		// them — and reset the employee's corrections to whatever the model had
+		// just said, under a `user` label that was no longer true.
+		const stored = await readDraft(draft.id, context.userId);
+		const current = {
+			values: (stored.values ?? {}) as Record<string, unknown>,
+			sources: (stored.fieldSources ?? {}) as Record<string, "ai" | "user">,
+		};
+		// A key the employee has already corrected is theirs, so the model's
+		// opinion of it is dropped rather than folded in.
+		const corrected = (key: string) => current.sources[key] === "user";
+		const merged = mergeDraftPatch(current, {
+			values: Object.fromEntries(
+				Object.entries(values).filter(([key]) => !corrected(key)),
+			),
+			sources: Object.fromEntries(
+				Object.entries(sources).filter(([key]) => !corrected(key)),
+			),
+		});
 		await db
 			.update(ticketDrafts)
 			.set({
 				intent: parsed.intent,
 				aiDraft,
-				values,
-				fieldSources: sources,
-				subcategoryId: (values.subcategoryId as string | null) ?? null,
-				formId: (values.formId as string | null) ?? null,
+				values: merged.values,
+				fieldSources: merged.sources,
+				subcategoryId: asId(merged.values.subcategoryId),
+				formId: asId(merged.values.formId),
 				model: modelResult.model,
 				promptTokens: sumTokens(
 					modelResult.promptTokens,
@@ -488,10 +540,12 @@ export const intakeRouter = {
 		for (const [path, value] of Object.entries(values)) {
 			if (value === null || value === undefined) continue;
 			if (!(path in sources)) continue;
+			// The effective value, not the model's: a key the employee corrected
+			// keeps their answer, and the client has to be told which one won.
 			yield {
 				type: "field",
 				path,
-				value,
+				value: merged.values[path],
 				confidence: "high",
 			} as const;
 		}

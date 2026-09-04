@@ -185,6 +185,99 @@ test("the watermark query orders by sys_updated_on for keyset paging", async () 
 	assert.match(query, /ORDERBYsys_updated_on/);
 });
 
+/** Serves a scripted sequence of pages, so paging itself can be observed. */
+function pagingFetch(pages: Record<string, unknown>[][]) {
+	const queries: string[] = [];
+	const impl = (async (input: string | URL | Request) => {
+		const url = String(input);
+		if (url.includes("oauth_token.do"))
+			return Response.json({ access_token: "token-1", expires_in: 1800 });
+		queries.push(decodeURIComponent(url));
+		return Response.json({ result: pages[queries.length - 1] ?? [] });
+	}) as unknown as typeof fetch;
+	return { impl, queries };
+}
+
+const incidentAt = (sysId: string, updatedAt: string) => ({
+	sys_id: sysId,
+	number: sysId,
+	short_description: "Checkout is down",
+	sys_updated_on: updatedAt,
+	state: "2",
+});
+
+test("paging continues until a page comes back short", async () => {
+	const { impl, queries } = pagingFetch([
+		[
+			incidentAt("a", "2026-08-30 10:00:00"),
+			incidentAt("b", "2026-08-30 10:00:01"),
+			incidentAt("c", "2026-08-30 10:00:02"),
+		],
+		[
+			// The boundary second is re-read, so `d` — which shared it with the
+			// last row of the previous page — is not lost.
+			incidentAt("c", "2026-08-30 10:00:02"),
+			incidentAt("d", "2026-08-30 10:00:02"),
+			incidentAt("e", "2026-08-30 10:00:03"),
+		],
+		[incidentAt("f", "2026-08-30 10:00:04")],
+	]);
+	const client = new ServiceNowClient(credentials, impl, () => 1_000_000);
+	const records = await client.fetchChangedIncidents({
+		since: null,
+		pageSize: 3,
+	});
+	assert.deepEqual(
+		records.map((record) => record.externalId),
+		["a", "b", "c", "d", "e", "f"],
+	);
+	assert.equal(queries.length, 3);
+	// Every page after the first opens on `>=` its own last timestamp. On `>`
+	// the watermark would move past 10:00:02 with `d` never having been seen.
+	assert.match(queries[1] ?? "", /sys_updated_on>=2026-08-30 10:00:02/);
+});
+
+test("the page ceiling withholds the second it did not finish", async () => {
+	const { impl } = pagingFetch([
+		[
+			incidentAt("a", "2026-08-30 10:00:00"),
+			incidentAt("b", "2026-08-30 10:00:01"),
+			incidentAt("c", "2026-08-30 10:00:02"),
+		],
+		[
+			incidentAt("c", "2026-08-30 10:00:02"),
+			incidentAt("d", "2026-08-30 10:00:03"),
+			incidentAt("e", "2026-08-30 10:00:03"),
+		],
+	]);
+	const client = new ServiceNowClient(credentials, impl, () => 1_000_000);
+	const records = await client.fetchChangedIncidents({
+		since: null,
+		pageSize: 3,
+		maxPages: 2,
+	});
+	// The caller's watermark is the highest timestamp returned, so handing back
+	// a second this pass only half-read would step the next poll over the rest.
+	assert.deepEqual(
+		records.map((record) => record.externalId),
+		["a", "b", "c"],
+	);
+});
+
+test("a second wider than a page fails the poll rather than losing records", async () => {
+	const tied = [
+		incidentAt("a", "2026-08-30 10:00:00"),
+		incidentAt("b", "2026-08-30 10:00:00"),
+		incidentAt("c", "2026-08-30 10:00:00"),
+	];
+	const { impl } = pagingFetch([tied, tied, tied]);
+	const client = new ServiceNowClient(credentials, impl, () => 1_000_000);
+	await assert.rejects(
+		() => client.fetchChangedIncidents({ since: null, pageSize: 3 }),
+		/cannot page past/,
+	);
+});
+
 test("a caret in a filter value cannot inject a second query term", async () => {
 	const { impl, calls } = fakeFetch([
 		tokenFixture,

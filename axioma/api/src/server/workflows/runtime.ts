@@ -50,6 +50,11 @@ export async function fireEvent(input: {
 	recordId: string;
 	actorId?: string;
 	payload?: Record<string, unknown>;
+	/**
+	 * Leave webhook rows for `sweepWebhookDeliveries` instead of sending them here.
+	 * Callers that run on a tick pass this so one slow endpoint cannot stall them.
+	 */
+	queueWebhooks?: boolean;
 }) {
 	if (!canTriggerWorkflow(input)) return;
 	const matching = await db
@@ -99,7 +104,7 @@ export async function fireEvent(input: {
 							requestBody,
 							requestHeaders,
 						});
-						await deliverWebhook(db, deliveryId);
+						if (!input.queueWebhooks) await deliverWebhook(db, deliveryId);
 						break;
 					}
 					case "send_notification": {

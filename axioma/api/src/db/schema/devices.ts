@@ -47,6 +47,15 @@ export const devices = pgTable(
 		// operator turns it on, and the device refuses independently as well.
 		executionEnabled: boolean("execution_enabled").notNull().default(false),
 
+		// Enrolment binds a machine to the gateway; it does not say whose machine
+		// it is. The employee claims it by typing this short code — shown on their
+		// own screen by `axel-cli status` after the daemon connects — into the
+		// portal, which is what fills `owner_id` and makes the device visible to
+		// `listMyDevices`, to the intake composer, and to the agent's device tools.
+		// Stored hashed, like every other bearer value in this schema.
+		claimCodeHash: text("claim_code_hash"),
+		claimCodeExpiresAt: timestamp("claim_code_expires_at"),
+
 		connected: text("connected", { enum: DEVICE_CONNECTION_STATES })
 			.notNull()
 			.default("offline"),
@@ -56,6 +65,7 @@ export const devices = pgTable(
 	(t) => [
 		index("devices_owner_idx").on(t.ownerId),
 		index("devices_connected_idx").on(t.connected),
+		uniqueIndex("devices_claim_code_uidx").on(t.claimCodeHash),
 	],
 );
 
@@ -159,8 +169,11 @@ export const deviceCommandProposals = pgTable(
 		status: text("status", { enum: DEVICE_PROPOSAL_STATUSES })
 			.notNull()
 			.default("proposed"),
+		// The proposal is the audit record and survives the approver's account;
+		// only the personal link is dropped. RESTRICT would have blocked the
+		// deletion outright rather than preserving anything.
 		approvedById: text("approved_by_id").references(() => user.id, {
-			onDelete: "restrict",
+			onDelete: "set null",
 		}),
 		decidedAt: timestamp("decided_at"),
 		decisionNote: text("decision_note"),

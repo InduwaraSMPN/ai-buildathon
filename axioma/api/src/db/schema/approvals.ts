@@ -16,12 +16,15 @@ export const approvals = pgTable(
 	"approvals",
 	{
 		id: text("id").primaryKey(),
+		// Cascades with the ticket, which is itself cascaded from the reporter.
+		// RESTRICT on these two made offboarding — and any erasure request —
+		// impossible, because the cascade could never reach the approval row.
 		requesterId: text("requester_id")
 			.notNull()
-			.references(() => user.id, { onDelete: "restrict" }),
+			.references(() => user.id, { onDelete: "cascade" }),
 		approverId: text("approver_id")
 			.notNull()
-			.references(() => user.id, { onDelete: "restrict" }),
+			.references(() => user.id, { onDelete: "cascade" }),
 		ticketId: text("ticket_id")
 			.notNull()
 			.references(() => tickets.id, { onDelete: "cascade" }),

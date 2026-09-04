@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
 	boolean,
 	index,
@@ -24,7 +25,15 @@ export const ticketStatuses = pgTable(
 		displayOrder: integer("display_order").notNull().default(0),
 		isActive: boolean("is_active").notNull().default(true),
 	},
-	(t) => [index("ticket_statuses_order_idx").on(t.isActive, t.displayOrder)],
+	(t) => [
+		index("ticket_statuses_order_idx").on(t.isActive, t.displayOrder),
+		// `createTicketInTransaction` takes the first `is_default` row with no
+		// ORDER BY, so a second default made the status of every new ticket
+		// depend on heap order — and change after any VACUUM FULL.
+		uniqueIndex("ticket_statuses_default_uidx")
+			.on(t.isDefault)
+			.where(sql`${t.isDefault} = true`),
+	],
 );
 
 export const ticketStatusTransitions = pgTable(

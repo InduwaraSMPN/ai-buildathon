@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { AppsV1Api, CoreV1Api, KubeConfig } from "@kubernetes/client-node";
 import { aesGcmProviderSecretLoader } from "@/auth/providers";
 import { env } from "@/env";
@@ -102,6 +103,28 @@ function normalizeCaData(value: string): string {
 		: value;
 }
 
+/**
+ * `insecureSkipTlsVerify` arrives from a decrypted, database-stored credential,
+ * so anyone able to write an `environments` row could silently downgrade the
+ * API's connection to a customer cluster to unverified TLS — exposing that
+ * cluster credential, and every image patch issued with it, to interception.
+ * It is honoured only when the operator has opted in at the process level, and
+ * every use is logged so it cannot be a quiet default.
+ */
+function skipTlsVerify(name: string, requested: boolean): boolean {
+	if (!requested) return false;
+	if (!env.AXIOMA_K8S_ALLOW_INSECURE_TLS) {
+		console.warn(
+			`[k8s] environment "${name}" asked to skip TLS verification; refused because AXIOMA_K8S_ALLOW_INSECURE_TLS is not set`,
+		);
+		return false;
+	}
+	console.warn(
+		`[k8s] environment "${name}" is connecting without TLS verification`,
+	);
+	return true;
+}
+
 function applyServerTokenConnection(
 	config: KubeConfig,
 	options: {
@@ -120,7 +143,7 @@ function applyServerTokenConnection(
 	config.addCluster({
 		name,
 		server,
-		skipTLSVerify: options.insecure ?? false,
+		skipTLSVerify: skipTlsVerify(name, options.insecure ?? false),
 		...(options.ca ? { caData: normalizeCaData(options.ca) } : {}),
 	});
 	config.addUser({
@@ -247,15 +270,36 @@ export function createClientCache(
 ): ClientCache {
 	const maxSize = opts.maxSize ?? CLIENT_CACHE_MAX;
 	const buildOptions: BuildOptions = { secretKey: opts.secretKey };
-	const cache = new Map<string, KubernetesClients>();
-	const key = (connection: EnvironmentConnection) => JSON.stringify(connection);
+	const cache = new Map<string, { id: string; clients: KubernetesClients }>();
+	// Keyed on the environment id plus a digest of the credential material, never
+	// on the material itself: `JSON.stringify(connection)` put the decrypted
+	// credential in a Map key held for the process lifetime and parsed it back
+	// out on every eviction. The digest still changes when a credential is
+	// rotated, which is the only reason the material was in the key at all.
+	const key = (connection: EnvironmentConnection) =>
+		`${connection.id}:${createHash("sha256")
+			.update(
+				JSON.stringify([
+					connection.connectionType,
+					connection.credential ?? "",
+					connection.server ?? "",
+					connection.token ?? "",
+				]),
+			)
+			.digest("hex")}`;
 	return {
 		get(connection) {
 			const cacheKey = key(connection);
 			const hit = cache.get(cacheKey);
-			if (hit) return hit;
+			if (hit) {
+				// Re-inserting makes eviction least-recently-used; insertion order
+				// alone evicted a hot environment because a cold one arrived later.
+				cache.delete(cacheKey);
+				cache.set(cacheKey, hit);
+				return hit.clients;
+			}
 			const clients = createKubernetesClient(connection, buildOptions);
-			cache.set(cacheKey, clients);
+			cache.set(cacheKey, { id: connection.id, clients });
 			if (cache.size > maxSize) {
 				const oldest = cache.keys().next().value;
 				if (oldest !== undefined) cache.delete(oldest);
@@ -263,9 +307,8 @@ export function createClientCache(
 			return clients;
 		},
 		evict(id) {
-			for (const key of cache.keys())
-				if ((JSON.parse(key) as EnvironmentConnection).id === id)
-					cache.delete(key);
+			for (const [cacheKey, entry] of cache)
+				if (entry.id === id) cache.delete(cacheKey);
 		},
 		evictAll() {
 			cache.clear();

@@ -24,6 +24,7 @@ export const documents = pgTable(
 	(t) => [
 		uniqueIndex("documents_sha256_uidx").on(t.sha256),
 		uniqueIndex("documents_stored_filename_uidx").on(t.storedFilename),
+		index("documents_created_at_idx").on(t.createdAt),
 	],
 );
 

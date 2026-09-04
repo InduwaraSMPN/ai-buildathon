@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { test } from "node:test";
-import { and, eq } from "drizzle-orm";
+import { createRouterClient, ORPCError } from "@orpc/server";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	agentRuns,
@@ -13,6 +14,7 @@ import {
 	ticketTransitions,
 	user,
 } from "@/db/schema";
+import { env } from "@/env";
 import { hashDeviceSecret, issueDeviceCredential } from "./device-auth";
 import { Gateway, readReporterContext } from "./grpc";
 import {
@@ -22,6 +24,7 @@ import {
 	replayToolResult,
 	runMaintenanceJobs,
 } from "./grpc-core";
+import { devicesRouter } from "./routers/devices";
 
 test("inbound queue pauses at its bound and resumes after draining", async () => {
 	let release = () => {};
@@ -725,4 +728,135 @@ test("replayed tool calls never request execution and preserve settled results",
 			},
 		},
 	);
+});
+
+test("enrolment issues a claim code that binds the device to one employee", async () => {
+	const deviceId = crypto.randomUUID();
+	const token = `axen_${crypto.randomUUID()}`;
+	const ownerId = `claim-owner-${crypto.randomUUID()}`;
+	const otherId = `claim-other-${crypto.randomUUID()}`;
+	await db.insert(user).values([
+		{ id: ownerId, name: "Owner", email: `${ownerId}@example.test` },
+		{ id: otherId, name: "Other", email: `${otherId}@example.test` },
+	]);
+	await db.insert(deviceEnrolmentTokens).values({
+		id: crypto.randomUUID(),
+		tokenHash: hashDeviceSecret(token),
+		expiresAt: new Date(Date.now() + 60_000),
+	});
+	const writes: Array<Record<string, unknown>> = [];
+	const gateway = new Gateway();
+	const registerDevice = (
+		gateway as unknown as {
+			registerDevice(
+				deviceId: string,
+				generation: symbol,
+				stream: never,
+				hello: Record<string, unknown>,
+			): Promise<void>;
+		}
+	).registerDevice.bind(gateway);
+	const claim = (code: string, userId: string) =>
+		createRouterClient(devicesRouter, {
+			context: {
+				auth: null,
+				session: null,
+				userId,
+				capabilities: new Set(),
+			} as never,
+		}).claimDevice({ code });
+	try {
+		await registerDevice(
+			deviceId,
+			Symbol(deviceId),
+			{
+				write: (value: Record<string, unknown>) => void writes.push(value),
+				end: () => {},
+				destroy: () => {},
+			} as never,
+			{
+				deviceId,
+				hostname: "claimable",
+				enrolmentToken: token,
+			},
+		);
+		const code = String(
+			(writes[0]?.enrollment as Record<string, unknown>)?.claimCode ?? "",
+		);
+		assert.match(code, /^[A-Z0-9]{6}-[A-Z0-9]{4}$/);
+
+		// Enrolment on its own leaves the machine unowned, which is what made it
+		// invisible to `listMyDevices` and to the intake composer's device picker.
+		assert.equal(
+			(await db.select().from(devices).where(eq(devices.id, deviceId)))[0]
+				?.ownerId,
+			null,
+		);
+
+		// Typed as it is read off the screen: any case, hyphen optional.
+		const claimed = await claim(code.toLowerCase().replace("-", " "), ownerId);
+		assert.deepEqual(claimed, { deviceId, hostname: "claimable" });
+		assert.equal(
+			(await db.select().from(devices).where(eq(devices.id, deviceId)))[0]
+				?.ownerId,
+			ownerId,
+		);
+
+		// Single use: the code is cleared, so a screenshot of it in a chat thread
+		// cannot hand the machine to someone else afterwards.
+		await assert.rejects(
+			() => claim(code, otherId),
+			(error: unknown) =>
+				error instanceof ORPCError && error.code === "NOT_FOUND",
+		);
+	} finally {
+		await db.delete(devices).where(eq(devices.id, deviceId));
+		await db
+			.delete(deviceEnrolmentTokens)
+			.where(eq(deviceEnrolmentTokens.tokenHash, hashDeviceSecret(token)));
+		await db.delete(user).where(inArray(user.id, [ownerId, otherId]));
+	}
+});
+
+test("the agent channel refuses a stream without the shared credential", async () => {
+	const gateway = new Gateway();
+	const onAgentMessage = (
+		gateway as unknown as {
+			onAgentMessage(
+				stream: never,
+				message: Record<string, unknown>,
+				workerId: string,
+			): Promise<{ workerId: string } | undefined>;
+		}
+	).onAgentMessage.bind(gateway);
+	const stream = { write: () => {}, end: () => {}, destroy: () => {} } as never;
+	const hello = (credential?: string) => ({
+		hello: { workerId: "worker-1", modelLabel: "test", credential },
+	});
+	const refused = (error: unknown) =>
+		error instanceof Error && error.message === "agent authentication failed";
+
+	// The gateway port is reachable by every enrolled laptop, and this channel
+	// carries ticket text, reporter identity and tool execution — so a worker id
+	// on its own must not be an identity.
+	await assert.rejects(() => onAgentMessage(stream, hello(), ""), refused);
+	await assert.rejects(
+		() => onAgentMessage(stream, hello("wrong"), ""),
+		refused,
+	);
+	assert.equal(
+		(gateway as unknown as { agents: Map<string, unknown> }).agents.size,
+		0,
+	);
+
+	assert.ok(
+		env.AXIOMA_AGENT_TOKEN,
+		"AXIOMA_AGENT_TOKEN must be set to test this",
+	);
+	const registered = await onAgentMessage(
+		stream,
+		hello(env.AXIOMA_AGENT_TOKEN),
+		"",
+	);
+	assert.equal(registered?.workerId, "worker-1");
 });

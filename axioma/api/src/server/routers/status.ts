@@ -134,6 +134,10 @@ export const statusRouter = {
 			throw new ORPCError("BAD_REQUEST", {
 				message: "Resolution cannot precede start",
 			});
+		// status_incidents carries no updatedAt to stamp, so an id-only patch —
+		// which the contract permits — has nothing to write.
+		if (Object.values(input).every((value) => value === undefined))
+			return { id: current.id };
 		const [row] = await db
 			.update(statusIncidents)
 			.set(input)

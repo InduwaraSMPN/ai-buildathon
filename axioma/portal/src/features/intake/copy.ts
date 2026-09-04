@@ -71,4 +71,24 @@ export const intakeCopy = {
 	articlesSuggested: (count: number) =>
 		`${count} help ${count === 1 ? "article" : "articles"} suggested.`,
 	unexpectedError: "Something went wrong. Please try again.",
+	errorHeading: "We couldn’t finish that",
+	errorMaxTurns:
+		"This conversation has run on longer than the assistant can follow. Fill in the form yourself to finish the request and send it to support.",
+	errorNetwork:
+		"We couldn’t reach the assistant. Check your connection, then send your message again.",
+	retryStart: "Try again",
+	/** §3.2: an AI-filled device has to be removable, not only replaceable. */
+	noDevice: "No computer",
 } as const;
+
+/**
+ * The copy for a failed intake turn, chosen by code.
+ *
+ * The `message` on the event is written for whoever reads the server logs, so
+ * the code is the only part of a failure the employee is ever shown.
+ */
+export function intakeErrorCopy(code: string): string {
+	if (code === "MAX_TURNS_EXCEEDED") return intakeCopy.errorMaxTurns;
+	if (code === "NETWORK") return intakeCopy.errorNetwork;
+	return intakeCopy.unexpectedError;
+}

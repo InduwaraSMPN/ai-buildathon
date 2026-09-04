@@ -108,15 +108,30 @@ export function toIncidentValues(
 	};
 }
 
+/**
+ * The patch payload for the current values.
+ *
+ * `patchDraft` merges key by key, so an omitted key keeps whatever the server
+ * already holds. That is right for a field nobody touched and wrong for one the
+ * user cleared: dropping the empty value left the model's guess in place, and a
+ * ticket was filed against a device the employee had explicitly removed. A
+ * field the user owns therefore sends `null` — an explicit clear — rather than
+ * nothing at all.
+ */
 export function fromIncidentValues(
 	values: IntakeDraftValues,
+	sources: Record<string, DraftFieldSource> = {},
 ): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
-	if (values.title) out.title = values.title;
-	if (values.body) out.body = values.body;
-	if (values.impact) out.impact = values.impact;
-	if (values.urgency) out.urgency = values.urgency;
-	if (values.deviceId) out.deviceId = values.deviceId;
+	const put = (key: string, value: unknown) => {
+		if (value) out[key] = value;
+		else if (sources[key] === "user") out[key] = null;
+	};
+	put("title", values.title);
+	put("body", values.body);
+	put("impact", values.impact);
+	put("urgency", values.urgency);
+	put("deviceId", values.deviceId);
 	if (Object.keys(values.customFields).length > 0) {
 		out.customFields = values.customFields;
 	}

@@ -27,36 +27,78 @@ export function parseCsv(input: string): string[][] {
 	let row: string[] = [];
 	let field = "";
 	let quoted = false;
+	// Excel and many supplier exports write `a, "b,c"`, so a field that has seen
+	// nothing but whitespace still opens a quoted field — testing for an empty
+	// field instead splits that row on the comma inside the quotes.
+	let blank = true;
+	let closed = false;
 
 	for (let index = 0; index < input.length; index += 1) {
-		const character = input[index];
+		const character = input[index] ?? "";
 		if (quoted) {
 			if (character === '"' && input[index + 1] === '"') {
 				field += '"';
 				index += 1;
-			} else if (character === '"') quoted = false;
-			else field += character;
-		} else if (character === '"' && field.length === 0) quoted = true;
-		else if (character === ",") {
+			} else if (character === '"') {
+				quoted = false;
+				closed = true;
+			} else field += character;
+		} else if (character === '"' && blank) {
+			quoted = true;
+			blank = false;
+			field = "";
+		} else if (character === ",") {
 			row.push(field);
 			field = "";
+			blank = true;
+			closed = false;
 		} else if (character === "\n" || character === "\r") {
 			row.push(field);
 			rows.push(row);
 			row = [];
 			field = "";
+			blank = true;
+			closed = false;
 			if (character === "\r" && input[index + 1] === "\n") index += 1;
-		} else field += character;
+		} else if (closed) {
+			// Only whitespace may follow a closing quote. Appending the rest would
+			// turn `"a"x` into `ax`, which reads as a value the file never held.
+			if (character.trim() !== "")
+				throw new Error(
+					`CSV row ${rows.length + 1} has content after a closing quote`,
+				);
+		} else {
+			field += character;
+			if (character.trim() !== "") blank = false;
+		}
 	}
 
 	if (quoted) throw new Error("CSV has an unterminated quoted field");
-	if (field.length > 0 || row.length > 0) {
+	if (field.length > 0 || row.length > 0 || closed) {
 		row.push(field);
 		rows.push(row);
 	}
 	if (rows.length > MAX_CSV_ROWS + 1)
 		throw new Error(`CSV exceeds ${MAX_CSV_ROWS} data rows`);
 	return rows;
+}
+
+/**
+ * The stable identity of one imported row. Length-prefixing each part keeps two
+ * different column/value combinations from producing the same key. Exported so
+ * anything writing assetImportIdentities directly builds the key the importer
+ * will look it up by, rather than a shape of its own.
+ */
+export function assetIdentityKey(
+	identityColumns: readonly string[],
+	row: CsvRow,
+): string {
+	return identityColumns
+		.map(
+			(column) =>
+				`${column.length}:${column}=${row[column]?.length}:${row[column]}`,
+		)
+		.join("|");
 }
 
 export function previewAssetCsv(
@@ -109,12 +151,7 @@ export function previewAssetCsv(
 		}
 		accepted.push({
 			rowNumber,
-			identityKey: identityColumns
-				.map(
-					(column) =>
-						`${column.length}:${column}=${row[column]?.length}:${row[column]}`,
-				)
-				.join("|"),
+			identityKey: assetIdentityKey(identityColumns, row),
 			values: row,
 		});
 	}

@@ -413,6 +413,7 @@ export function RolesPage() {
 					filterLabel="Search capabilities"
 					emptyTitle="No capabilities"
 					emptyDescription="Nothing is defined yet."
+					getRowId={(row) => row.capability}
 					pageSize={12}
 				/>
 			</SectionPanel>
@@ -430,6 +431,7 @@ export function RolesPage() {
 					filterLabel="Search people"
 					emptyTitle="No people"
 					emptyDescription="Nobody has signed in yet."
+					getRowId={(person) => person.id}
 					pageSize={12}
 				/>
 			</SectionPanel>
@@ -467,6 +469,7 @@ export function RolesPage() {
 					filterLabel="Search departments"
 					emptyTitle="No departments"
 					emptyDescription="No departments yet."
+					getRowId={(department) => department.id}
 					pageSize={12}
 				/>
 			</SectionPanel>
@@ -504,6 +507,7 @@ export function RolesPage() {
 					filterLabel="Search teams"
 					emptyTitle="No teams"
 					emptyDescription="No teams yet."
+					getRowId={(team) => team.id}
 					pageSize={12}
 				/>
 			</SectionPanel>

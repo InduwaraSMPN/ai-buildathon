@@ -85,7 +85,18 @@ export async function callIntakeModel(input: {
 			});
 		}
 
-		const parsed = JSON.parse(await response.text()) as ChatCompletionResponse;
+		// A 200 is not a promise of JSON: a gateway interstitial or a truncated
+		// body arrives with one, and an unmapped SyntaxError here was treated as
+		// malformed *model output* and paid for a second full-priced repair call.
+		const raw = await response.text();
+		let parsed: ChatCompletionResponse;
+		try {
+			parsed = JSON.parse(raw) as ChatCompletionResponse;
+		} catch {
+			throw new ORPCError("UPSTREAM_SERVICE_ERROR", {
+				message: `Intake model returned a non-JSON body: ${raw.slice(0, 200)}`,
+			});
+		}
 		return {
 			content: parsed.choices?.[0]?.message?.content ?? "",
 			model: parsed.model ?? env.AXIOMA_INTAKE_MODEL,

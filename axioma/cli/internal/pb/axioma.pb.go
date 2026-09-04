@@ -619,9 +619,14 @@ type AgentHello struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
 	AgentVersion string                 `protobuf:"bytes,1,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
 	// Model actually backing Axel for this worker, observed rather than configured.
-	ModelLabel    string   `protobuf:"bytes,2,opt,name=model_label,json=modelLabel,proto3" json:"model_label,omitempty"`
-	Capabilities  []string `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
-	WorkerId      string   `protobuf:"bytes,4,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	ModelLabel   string   `protobuf:"bytes,2,opt,name=model_label,json=modelLabel,proto3" json:"model_label,omitempty"`
+	Capabilities []string `protobuf:"bytes,3,rep,name=capabilities,proto3" json:"capabilities,omitempty"`
+	WorkerId     string   `protobuf:"bytes,4,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	// Shared secret proving this stream is a worker the operator deployed. The
+	// channel carries ticket text, reporter identity and tool execution, and the
+	// gateway port is reachable by every enrolled laptop, so a worker id alone is
+	// not an identity. Compared against AXIOMA_AGENT_TOKEN on the gateway.
+	Credential    string `protobuf:"bytes,5,opt,name=credential,proto3" json:"credential,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -680,6 +685,13 @@ func (x *AgentHello) GetCapabilities() []string {
 func (x *AgentHello) GetWorkerId() string {
 	if x != nil {
 		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *AgentHello) GetCredential() string {
+	if x != nil {
+		return x.Credential
 	}
 	return ""
 }
@@ -1567,8 +1579,13 @@ type DeviceEnrollment struct {
 	Claimed     bool                   `protobuf:"varint,1,opt,name=claimed,proto3" json:"claimed,omitempty"`
 	CodeExpired bool                   `protobuf:"varint,2,opt,name=code_expired,json=codeExpired,proto3" json:"code_expired,omitempty"`
 	// Returned once after enrolment, or pushed to an online device during rotation.
-	Credential    string `protobuf:"bytes,3,opt,name=credential,proto3" json:"credential,omitempty"`
-	AuthValid     bool   `protobuf:"varint,4,opt,name=auth_valid,json=authValid,proto3" json:"auth_valid,omitempty"`
+	Credential string `protobuf:"bytes,3,opt,name=credential,proto3" json:"credential,omitempty"`
+	AuthValid  bool   `protobuf:"varint,4,opt,name=auth_valid,json=authValid,proto3" json:"auth_valid,omitempty"`
+	// Short code the employee types into the portal to claim this machine as
+	// theirs. Sent once, on the message that completes enrolment; empty on every
+	// later message. Enrolment alone leaves the device unowned, so without this
+	// the device never appears in the employee's own list.
+	ClaimCode     string `protobuf:"bytes,5,opt,name=claim_code,json=claimCode,proto3" json:"claim_code,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1629,6 +1646,13 @@ func (x *DeviceEnrollment) GetAuthValid() bool {
 		return x.AuthValid
 	}
 	return false
+}
+
+func (x *DeviceEnrollment) GetClaimCode() string {
+	if x != nil {
+		return x.ClaimCode
+	}
+	return ""
 }
 
 type DeviceHello struct {
@@ -1960,14 +1984,17 @@ const file_axioma_proto_rawDesc = "" +
 	"\apayload\">\n" +
 	"\vTerminalAck\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x18\n" +
-	"\aordinal\x18\x02 \x01(\rR\aordinal\"\x93\x01\n" +
+	"\aordinal\x18\x02 \x01(\rR\aordinal\"\xb3\x01\n" +
 	"\n" +
 	"AgentHello\x12#\n" +
 	"\ragent_version\x18\x01 \x01(\tR\fagentVersion\x12\x1f\n" +
 	"\vmodel_label\x18\x02 \x01(\tR\n" +
 	"modelLabel\x12\"\n" +
 	"\fcapabilities\x18\x03 \x03(\tR\fcapabilities\x12\x1b\n" +
-	"\tworker_id\x18\x04 \x01(\tR\bworkerId\"\xa1\x04\n" +
+	"\tworker_id\x18\x04 \x01(\tR\bworkerId\x12\x1e\n" +
+	"\n" +
+	"credential\x18\x05 \x01(\tR\n" +
+	"credential\"\xa1\x04\n" +
 	"\bStartRun\x12\x15\n" +
 	"\x06run_id\x18\x01 \x01(\tR\x05runId\x12\x1b\n" +
 	"\tticket_id\x18\x02 \x01(\tR\bticketId\x12\x14\n" +
@@ -2052,7 +2079,7 @@ const file_axioma_proto_rawDesc = "" +
 	"\n" +
 	"enrollment\x18\x03 \x01(\v2\x1b.axioma.v1.DeviceEnrollmentH\x00R\n" +
 	"enrollmentB\t\n" +
-	"\apayload\"\x8e\x01\n" +
+	"\apayload\"\xad\x01\n" +
 	"\x10DeviceEnrollment\x12\x18\n" +
 	"\aclaimed\x18\x01 \x01(\bR\aclaimed\x12!\n" +
 	"\fcode_expired\x18\x02 \x01(\bR\vcodeExpired\x12\x1e\n" +
@@ -2060,7 +2087,9 @@ const file_axioma_proto_rawDesc = "" +
 	"credential\x18\x03 \x01(\tR\n" +
 	"credential\x12\x1d\n" +
 	"\n" +
-	"auth_valid\x18\x04 \x01(\bR\tauthValid\"\xb4\x02\n" +
+	"auth_valid\x18\x04 \x01(\bR\tauthValid\x12\x1d\n" +
+	"\n" +
+	"claim_code\x18\x05 \x01(\tR\tclaimCode\"\xb4\x02\n" +
 	"\vDeviceHello\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
 	"\bhostname\x18\x02 \x01(\tR\bhostname\x12\x1a\n" +

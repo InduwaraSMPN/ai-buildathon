@@ -52,8 +52,25 @@ export const assignDefaultRole = (
 	actorId?: string,
 ) => db.transaction((tx) => assignDefaultRoleIn(tx, userId, kind, actorId));
 
-export async function bootstrapAdministrator(email: string): Promise<boolean> {
+export type BootstrapOutcome = "granted" | "not_found" | "already_administered";
+
+/**
+ * Promotes the configured address to Platform Engineer, but only while the
+ * deployment has no administrator at all. Running unconditionally on every boot
+ * made the variable a standing grant rather than a bootstrap: an account
+ * deliberately demoted regained the role on the next pod restart, and — because
+ * sign-up is open — whoever registered the address first was promoted by the
+ * next deploy.
+ */
+export async function bootstrapAdministrator(
+	email: string,
+): Promise<BootstrapOutcome> {
 	return db.transaction(async (tx) => {
+		// Two pods starting together would otherwise both see no administrator.
+		await tx.execute(
+			sql`select pg_advisory_xact_lock(hashtext('axioma-admin-roles'))`,
+		);
+		if (await administratorCount(tx)) return "already_administered";
 		const account = (
 			await tx
 				.select({ id: user.id })
@@ -61,7 +78,7 @@ export async function bootstrapAdministrator(email: string): Promise<boolean> {
 				.where(eq(user.email, email))
 				.limit(1)
 		)[0];
-		if (!account) return false;
+		if (!account) return "not_found";
 		const role = (
 			await tx
 				.select({ id: roles.id })
@@ -85,7 +102,7 @@ export async function bootstrapAdministrator(email: string): Promise<boolean> {
 				targetType: "user",
 				targetId: account.id,
 			});
-		return true;
+		return "granted";
 	});
 }
 
@@ -116,12 +133,8 @@ export async function resolveCapabilities(
 
 export const LAST_ADMIN_CONFLICT = "LAST_ADMIN_REQUIRED";
 
-export async function assertAdministratorRemains(
-	tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
-): Promise<void> {
-	await tx.execute(
-		sql`select pg_advisory_xact_lock(hashtext('axioma-admin-roles'))`,
-	);
+/** Staff accounts holding `admin.roles`, directly or through a team. */
+async function administratorCount(tx: Transaction): Promise<number> {
 	const result = await tx.execute(sql`
 		select count(distinct admins.user_id)::int as count
 		from (
@@ -139,7 +152,16 @@ export async function assertAdministratorRemains(
 			where rc.capability = 'admin.roles'
 		) admins
 	`);
-	if (Number(result.rows[0]?.count ?? 0) === 0)
+	return Number(result.rows[0]?.count ?? 0);
+}
+
+export async function assertAdministratorRemains(
+	tx: Transaction,
+): Promise<void> {
+	await tx.execute(
+		sql`select pg_advisory_xact_lock(hashtext('axioma-admin-roles'))`,
+	);
+	if ((await administratorCount(tx)) === 0)
 		throw new Error(LAST_ADMIN_CONFLICT);
 }
 

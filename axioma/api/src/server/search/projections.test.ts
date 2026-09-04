@@ -55,8 +55,6 @@ test("projects knowledge articles into cross-record search", () => {
 		audience: "employees",
 		isRestricted: false,
 		currentVersion: 1,
-		embedding: null,
-		embeddingModel: null,
 		metadata: null,
 		publishedAt: null,
 		nextReviewAt: null,

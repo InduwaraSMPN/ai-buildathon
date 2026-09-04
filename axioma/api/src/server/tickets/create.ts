@@ -56,10 +56,21 @@ export interface CreatedTicket {
 	created: boolean;
 }
 
-async function allocateTicketNumber(recordType: RecordType): Promise<string> {
+/**
+ * Runs on the caller's transaction, never on the pool. Taking a second pool
+ * client while the first is held inside `db.transaction` needs two of the ten
+ * default slots per creation, so ten concurrent creations deadlock the pool
+ * permanently — `pg.Pool` queues acquisitions with no timeout. Sharing `tx`
+ * also keeps the counter's increment inside the transaction, so a rollback no
+ * longer burns a number.
+ */
+async function allocateTicketNumber(
+	tx: Transaction,
+	recordType: RecordType,
+): Promise<string> {
 	const year = String(new Date().getUTCFullYear());
 	const prefix = recordType === "incident" ? "INC" : "REQ";
-	const [counter] = await db
+	const [counter] = await tx
 		.insert(ticketNumberCounters)
 		.values({ prefix, year, lastValue: 1 })
 		.onConflictDoUpdate({
@@ -188,7 +199,7 @@ export async function createTicketInTransaction(
 	const settled = evaluation.ticket;
 	const priority = derivePriority(settled.impact, settled.urgency);
 	const id = crypto.randomUUID();
-	const number = await allocateTicketNumber(settled.recordType);
+	const number = await allocateTicketNumber(tx, settled.recordType);
 
 	await tx.insert(tickets).values({
 		id,
@@ -238,7 +249,9 @@ export async function createTicketInTransaction(
 						ticketId: id,
 						fieldName: "status",
 						oldValue: null,
-						newValue: "open",
+						// The default status is configurable, so naming it here rather
+						// than hardcoding "open" keeps the audit row true after a rename.
+						newValue: defaultStatus.key,
 						actorId: `source:${normalized.source}`,
 					},
 				],

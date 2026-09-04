@@ -1,0 +1,61 @@
+{{- if .Values.api.networkPolicy.enabled }}
+{{/*
+The device gateway is the one port on this platform that an untrusted machine
+dials directly, and neither Service type that publishes it has a source
+control: a NodePort answers on every node, and loadBalancerSourceRanges is
+implemented by some providers and ignored by others. This policy is the
+in-cluster answer — the gRPC port is admitted from the CIDRs the operator named
+and from Axel, and from nothing else.
+
+Enforcement belongs to the CNI, not to Kubernetes. A cluster whose CNI does not
+implement NetworkPolicy accepts this object and enforces nothing, so confirm
+yours does before treating the gateway as constrained.
+*/}}
+{{- $grpcPort := .Values.api.config.grpcAddress | splitList ":" | last | int }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "axioma.api.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "axioma.componentLabels" (dict "root" . "component" "api") | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "axioma.selectorLabels" (dict "root" . "component" "api") | nindent 6 }}
+  # Ingress only. Egress is left alone: the API reaches the database, the
+  # Kubernetes API, and whichever model provider is configured, and a chart
+  # cannot know where any of those are.
+  policyTypes:
+    - Ingress
+  ingress:
+    # 3000 from every source. The ingress controller, the frontends' server-side
+    # calls and the kubelet's probes all arrive here, from addresses this chart
+    # has no way to name; narrowing it would take the portal down and leave the
+    # gateway exactly as exposed as it was.
+    - ports:
+        - port: 3000
+          protocol: TCP
+    {{- if .Values.agent.enabled }}
+    # Axel dials the gateway from inside the cluster, so it is admitted by
+    # identity rather than by address.
+    - ports:
+        - port: {{ $grpcPort }}
+          protocol: TCP
+      from:
+        - podSelector:
+            matchLabels:
+              {{- include "axioma.selectorLabels" (dict "root" . "component" "agent") | nindent 14 }}
+    {{- end }}
+    {{- with .Values.api.networkPolicy.grpcSourceRanges }}
+    # Where employee laptops dial from.
+    - ports:
+        - port: {{ $grpcPort }}
+          protocol: TCP
+      from:
+        {{- range . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+    {{- end }}
+{{- end }}

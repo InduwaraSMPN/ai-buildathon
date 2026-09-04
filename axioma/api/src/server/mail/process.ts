@@ -6,7 +6,12 @@ export interface MailboxContext {
 }
 
 export interface InboundActivity {
-	decision: "threaded" | "ticket_created" | "auto_reply_suppressed" | "failed";
+	decision:
+		| "threaded"
+		| "ticket_created"
+		| "auto_reply_suppressed"
+		| "rejected"
+		| "failed";
 	reason: string;
 	ticketId?: string;
 }
@@ -57,8 +62,9 @@ export async function applyInboundPlan(input: {
 			});
 			await input.actions.recordActivity({
 				decision: "ticket_created",
-				reason:
-					"no retained ticket reference matched; classification rules applied",
+				reason: input.plan.threadRejectionReason
+					? `${input.plan.threadRejectionReason}; classification rules applied`
+					: "no retained ticket reference matched; classification rules applied",
 				ticketId,
 			});
 		}

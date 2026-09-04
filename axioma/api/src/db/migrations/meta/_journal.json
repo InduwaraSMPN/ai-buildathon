@@ -22,6 +22,13 @@
       "when": 1788286839154,
       "tag": "0002_melted_human_torch",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788553212929,
+      "tag": "0003_glorious_wild_child",
+      "breakpoints": true
     }
   ]
 }

@@ -67,6 +67,13 @@ secrets:
   # Key: AXIOMA_PROVIDER_ENCRYPTION_KEY
   providerEncryptionKey: ""
 
+  # Shared secret proving an AgentChannel stream is a worker you deployed. The
+  # gateway port is reachable by every enrolled laptop and the channel carries
+  # ticket text, reporter identity and tool execution, so a worker id alone is
+  # not an identity: with this unset the gateway refuses every agent connection.
+  # The same value is given to the agent. Key: AXIOMA_AGENT_TOKEN
+  agentToken: ""
+
   # Credential for the chat provider Axel calls. Read the egress note under
   # `agent.model` before setting this. Key: AXIOMA_LLM_KEY
   llmKey: ""
@@ -106,6 +113,15 @@ api:
     # requests. Both SPAs send `credentials: include`, so an origin missing here
     # makes sign-in fail with no visible error.
     corsOrigin: "http://localhost:3001,http://localhost:3002"
+
+    # The port the API listens on inside the container. The Service and the
+    # probes follow it.
+    port: 3000
+
+    # Maximum Postgres connections this replica opens. Every ticket creation
+    # holds one for the whole transaction, so this is the ceiling on concurrent
+    # writes; size it against the database's own max_connections across replicas.
+    databasePoolMax: 20
 
     # Set on first install to promote this address to administrator when the
     # account signs up. Leave empty afterwards.
@@ -265,6 +281,29 @@ api:
     nodePort: null
     annotations: {}
     loadBalancerIP: ""
+    # CIDRs a LoadBalancer gateway accepts connections from. Empty is the cloud
+    # provider's default, which on every provider that implements this field
+    # means the whole internet. Honoured by LoadBalancer only: a NodePort is
+    # reachable on every node's port whatever is written here, which is what
+    # api.networkPolicy below is for.
+    loadBalancerSourceRanges: []
+
+  # A NetworkPolicy in front of the API pods, off by default because a cluster
+  # without a policy-enforcing CNI silently ignores it and one with a CNI that
+  # does enforce it changes what already works.
+  #
+  # It admits the device gateway port from `grpcSourceRanges` and from Axel, and
+  # nothing else — which is how the channel is kept inside a network you control
+  # when the Service type cannot do it. The HTTP port stays open to every
+  # source: the chart does not know where your ingress controller sits, and
+  # narrowing it here would take the frontends down rather than the gateway.
+  #
+  # Leaving grpcSourceRanges empty with the policy on is a deliberate shape —
+  # Axel keeps its stream and no device outside the cluster can reach the
+  # gateway at all — but it is not the shape anyone wants by accident.
+  networkPolicy:
+    enabled: false
+    grpcSourceRanges: []
 
   resources:
     requests:
@@ -596,7 +635,10 @@ serviceAccount:
 rbac:
   create: true
   # Namespaces the API may read pods in and patch deployments in. Empty means
-  # the release namespace alone.
+  # the release namespace alone. Every namespace named here must already exist
+  # — the chart binds a Role in each one and creates none of them, so a name
+  # that is not there yet fails the install at apply, after the rest of the
+  # release has gone in.
   managedNamespaces: []
   # Grant the same verbs cluster-wide instead of per namespace. Off by default.
   clusterWide: false

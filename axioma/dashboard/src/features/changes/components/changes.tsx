@@ -1,5 +1,5 @@
 import { createColumnHelper } from "@tanstack/react-table";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { DataTable } from "@/components/data-table";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ import {
 	NativeSelectOption,
 } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
+import { fromDateTimeLocal, toDateTimeLocal } from "@/lib/datetime-local";
 
 export type ChangeSummary = {
 	id: string;
@@ -81,11 +82,19 @@ export function ChangesPage({
 	);
 }
 
+/**
+ * The dialog is controlled by the caller so it closes on a successful create
+ * and not before — a rejected create must leave the typed values in place.
+ */
 export function ChangeEditor({
+	open,
+	onOpenChange,
 	pending = false,
 	cabMemberId,
 	onSubmit,
 }: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
 	pending?: boolean;
 	cabMemberId?: string;
 	onSubmit: (value: {
@@ -98,70 +107,86 @@ export function ChangeEditor({
 		cabMemberIds: string[];
 	}) => void;
 }) {
-	const [open, setOpen] = useState(false);
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
+		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogTrigger render={<Button size="sm">New change</Button>} />
 			<DialogContent className="sm:max-w-2xl">
-		<form
-			onSubmit={(event) => {
-				event.preventDefault();
-				const data = new FormData(event.currentTarget);
-				onSubmit({
-					title: String(data.get("title")),
-					description: String(data.get("description")) || undefined,
-					reasonForChange: String(data.get("reasonForChange")),
-					changeType: String(data.get("changeType")) as "normal" | "emergency",
-					testPlan: String(data.get("testPlan")),
-					rollbackPlan: String(data.get("rollbackPlan")),
-					cabMemberIds: [String(data.get("cabMemberIds"))].filter(Boolean),
-				});
-				setOpen(false);
-			}}
-		>
-			<DialogHeader>
-				<DialogTitle>Raise a change</DialogTitle>
-				<DialogDescription>
-					Describe the change, how it will be tested, and how it rolls back.
-				</DialogDescription>
-			</DialogHeader>
-			<FieldGroup className="grid py-4 sm:grid-cols-2">
-				<Field>
-					<FieldLabel htmlFor="change-title">Title</FieldLabel>
-					<Input id="change-title" name="title" required minLength={3} />
-				</Field>
-				<Field>
-					<FieldLabel htmlFor="change-type">Type</FieldLabel>
-					<NativeSelect id="change-type" name="changeType" className="w-full">
-						<NativeSelectOption value="normal">Normal</NativeSelectOption>
-						<NativeSelectOption value="emergency">Emergency</NativeSelectOption>
-					</NativeSelect>
-				</Field>
-				<Field>
-					<FieldLabel htmlFor="change-description">Description</FieldLabel>
-					<Input id="change-description" name="description" />
-				</Field>
-				<Field>
-					<FieldLabel htmlFor="change-reason">Reason for change</FieldLabel>
-					<Input id="change-reason" name="reasonForChange" required />
-				</Field>
-				<Field>
-					<FieldLabel htmlFor="change-test-plan">Test plan</FieldLabel>
-					<Input id="change-test-plan" name="testPlan" required />
-				</Field>
-				<Field>
-					<FieldLabel htmlFor="change-rollback-plan">Rollback plan</FieldLabel>
-					<Input id="change-rollback-plan" name="rollbackPlan" required />
-				</Field>
-				<input type="hidden" name="cabMemberIds" value={cabMemberId ?? ""} />
-			</FieldGroup>
-			<DialogFooter>
-				<Button type="button" variant="outline" onClick={() => setOpen(false)}>
-					Cancel
-				</Button>
-				<Button disabled={pending}>Create change</Button>
-			</DialogFooter>
-		</form>
+				<form
+					onSubmit={(event) => {
+						event.preventDefault();
+						const data = new FormData(event.currentTarget);
+						onSubmit({
+							title: String(data.get("title")),
+							description: String(data.get("description")) || undefined,
+							reasonForChange: String(data.get("reasonForChange")),
+							changeType: String(data.get("changeType")) as
+								| "normal"
+								| "emergency",
+							testPlan: String(data.get("testPlan")),
+							rollbackPlan: String(data.get("rollbackPlan")),
+							cabMemberIds: [String(data.get("cabMemberIds"))].filter(Boolean),
+						});
+					}}
+				>
+					<DialogHeader>
+						<DialogTitle>Raise a change</DialogTitle>
+						<DialogDescription>
+							Describe the change, how it will be tested, and how it rolls back.
+						</DialogDescription>
+					</DialogHeader>
+					<FieldGroup className="grid py-4 sm:grid-cols-2">
+						<Field>
+							<FieldLabel htmlFor="change-title">Title</FieldLabel>
+							<Input id="change-title" name="title" required minLength={3} />
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="change-type">Type</FieldLabel>
+							<NativeSelect
+								id="change-type"
+								name="changeType"
+								className="w-full"
+							>
+								<NativeSelectOption value="normal">Normal</NativeSelectOption>
+								<NativeSelectOption value="emergency">
+									Emergency
+								</NativeSelectOption>
+							</NativeSelect>
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="change-description">Description</FieldLabel>
+							<Input id="change-description" name="description" />
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="change-reason">Reason for change</FieldLabel>
+							<Input id="change-reason" name="reasonForChange" required />
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="change-test-plan">Test plan</FieldLabel>
+							<Input id="change-test-plan" name="testPlan" required />
+						</Field>
+						<Field>
+							<FieldLabel htmlFor="change-rollback-plan">
+								Rollback plan
+							</FieldLabel>
+							<Input id="change-rollback-plan" name="rollbackPlan" required />
+						</Field>
+						<input
+							type="hidden"
+							name="cabMemberIds"
+							value={cabMemberId ?? ""}
+						/>
+					</FieldGroup>
+					<DialogFooter>
+						<Button
+							type="button"
+							variant="outline"
+							onClick={() => onOpenChange(false)}
+						>
+							Cancel
+						</Button>
+						<Button disabled={pending}>Create change</Button>
+					</DialogFooter>
+				</form>
 			</DialogContent>
 		</Dialog>
 	);
@@ -169,11 +194,15 @@ export function ChangeEditor({
 
 export function ChangeDetailPage({
 	change,
+	currentUserId,
 	onVote,
 	onUpdate,
 	pending,
 }: {
 	change: ChangeDetail;
+	/** The viewer. `voteOnChange` always records *their* vote, so the button
+	 * belongs on their own row and nowhere else. */
+	currentUserId?: string;
 	onVote?: (vote: "approve" | "reject" | "abstain") => void;
 	onUpdate?: (value: {
 		pirWasSuccessful?: boolean;
@@ -188,6 +217,7 @@ export function ChangeDetailPage({
 		<PageContainer title={change.changeNumber} description={change.title}>
 			<ChangeDetailView
 				change={change}
+				currentUserId={currentUserId}
 				onVote={onVote}
 				onUpdate={onUpdate}
 				pending={pending}
@@ -263,6 +293,7 @@ export function ChangeList({
 			filterPlaceholder="Filter title, number, type, or status…"
 			emptyTitle="No changes found"
 			emptyDescription="No changes have been raised."
+			getRowId={(change) => change.id}
 			onRowClick={onSelect}
 			rowLabel={(change) => `View ${change.title} change details`}
 		/>
@@ -271,11 +302,13 @@ export function ChangeList({
 
 export function ChangeDetailView({
 	change,
+	currentUserId,
 	onVote,
 	onUpdate,
 	pending,
 }: {
 	change: ChangeDetail;
+	currentUserId?: string;
 	onVote?: (vote: "approve" | "reject" | "abstain") => void;
 	onUpdate?: (value: {
 		pirWasSuccessful?: boolean;
@@ -340,10 +373,10 @@ export function ChangeDetailView({
 								onUpdate({
 									pirWasSuccessful: data.get("successful") === "true",
 									pirActualStartAt: data.get("start")
-										? new Date(String(data.get("start")))
+										? fromDateTimeLocal(String(data.get("start")))
 										: undefined,
 									pirActualEndAt: data.get("end")
-										? new Date(String(data.get("end")))
+										? fromDateTimeLocal(String(data.get("end")))
 										: undefined,
 									pirLessonsLearned: String(data.get("lessons")),
 									pirFollowUp: String(data.get("followUp")),
@@ -377,9 +410,7 @@ export function ChangeDetailView({
 										type="datetime-local"
 										defaultValue={
 											change.pirActualStartAt
-												? new Date(change.pirActualStartAt)
-														.toISOString()
-														.slice(0, 16)
+												? toDateTimeLocal(change.pirActualStartAt)
 												: ""
 										}
 									/>
@@ -392,9 +423,7 @@ export function ChangeDetailView({
 										type="datetime-local"
 										defaultValue={
 											change.pirActualEndAt
-												? new Date(change.pirActualEndAt)
-														.toISOString()
-														.slice(0, 16)
+												? toDateTimeLocal(change.pirActualEndAt)
 												: ""
 										}
 									/>
@@ -446,7 +475,7 @@ export function ChangeDetailView({
 									>
 										{member.vote ?? "pending"}
 									</Badge>
-									{onVote && !member.vote ? (
+									{onVote && !member.vote && member.userId === currentUserId ? (
 										<Button
 											size="sm"
 											disabled={pending}

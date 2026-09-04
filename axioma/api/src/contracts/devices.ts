@@ -65,6 +65,12 @@ export const devicesContract = {
 	createDeviceEnrolmentToken: oc.output(
 		z.object({ token: z.string(), expiresAt: z.date() }),
 	),
+	// Enrolment binds a machine to the gateway; claiming binds it to a person.
+	// The employee reads the code off their own screen, so it is accepted in any
+	// case and with or without the grouping hyphen.
+	claimDevice: oc
+		.input(z.object({ code: z.string().trim().min(4).max(32) }))
+		.output(z.object({ deviceId: z.string(), hostname: z.string() })),
 	rotateDeviceCredential: oc
 		.input(z.object({ deviceId: z.string().uuid() }))
 		.output(z.object({ delivered: z.boolean() })),

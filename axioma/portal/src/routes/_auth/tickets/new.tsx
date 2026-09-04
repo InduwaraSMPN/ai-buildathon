@@ -4,7 +4,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { PageHeading, PageShell } from "@/components/ticket-ui";
-import { buttonVariants } from "@/components/ui/button";
+import { Alert, AlertAction, AlertTitle } from "@/components/ui/alert";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,10 +39,13 @@ import {
 	readSavedReadFlags,
 	saveDraftId,
 	saveReadFlags,
+	takeSavedDraftValues,
+	writeSavedDraftValues,
 } from "@/features/intake/state/draft-session";
 import type { DraftAttachment } from "@/features/intake/types";
 import type { RequestFormInitialValues } from "@/features/tickets/components/request-form";
 import { RequestForm } from "@/features/tickets/components/request-form";
+import { randomId, readRandomId } from "@/lib/random-id";
 import { orpc } from "@/utils/orpc";
 
 type NewTicketSearch = { mode?: "manual" };
@@ -67,65 +71,48 @@ function RouteComponent() {
 		);
 	}
 
-	if (mode === "manual" || !capabilities.data?.enabled) {
-		let initialValues: RequestFormInitialValues | undefined;
-		try {
-			const raw =
-				typeof window !== "undefined"
-					? sessionStorage.getItem("intake_draft_values")
-					: null;
-			if (raw) {
-				const parsed = JSON.parse(raw) as Record<string, unknown>;
-				initialValues = {
-					title: typeof parsed.title === "string" ? parsed.title : undefined,
-					body: typeof parsed.body === "string" ? parsed.body : undefined,
-					impact: typeof parsed.impact === "string" ? parsed.impact : undefined,
-					urgency:
-						typeof parsed.urgency === "string" ? parsed.urgency : undefined,
-					deviceId:
-						typeof parsed.deviceId === "string" ? parsed.deviceId : undefined,
-					customFields:
-						parsed.customFields !== null &&
-						typeof parsed.customFields === "object"
-							? (parsed.customFields as Record<string, unknown>)
-							: undefined,
-					subcategoryId:
-						typeof parsed.subcategoryId === "string"
-							? parsed.subcategoryId
-							: undefined,
-					catalogueValues:
-						parsed.catalogueValues !== null &&
-						typeof parsed.catalogueValues === "object"
-							? (parsed.catalogueValues as Record<string, unknown>)
-							: undefined,
-				};
-			}
-		} catch {
-			// ignore parse errors
-		}
-		return (
-			<PageShell>
-				<BackLink />
-				<PageHeading
-					eyebrow={intakeCopy.eyebrow}
-					title={intakeCopy.composerTitle}
-					description={intakeCopy.composerDescription}
-				/>
-				<Card className="max-w-2xl">
-					<CardHeader className="border-b">
-						<CardTitle className="text-base">
-							{intakeCopy.manualCardTitle}
-						</CardTitle>
-					</CardHeader>
-					<CardContent>
-						<RequestForm initialValues={initialValues} />
-					</CardContent>
-				</Card>
-			</PageShell>
-		);
-	}
+	if (mode === "manual" || !capabilities.data?.enabled) return <ManualBranch />;
 
 	return <IntakeFlow />;
+}
+
+/**
+ * The plain form, and the only branch at all when `AXIOMA_LLM_KEY` is unset.
+ * Values carried over from the assistant are consumed in an effect rather than
+ * read during render: reading them on every render and never clearing them left
+ * every later visit pre-filled with a request the employee had already sent.
+ */
+function ManualBranch() {
+	const [initialValues, setInitialValues] = useState<
+		RequestFormInitialValues | undefined
+	>();
+	const [ready, setReady] = useState(false);
+	useEffect(() => {
+		setInitialValues(takeSavedDraftValues());
+		setReady(true);
+	}, []);
+	return (
+		<PageShell>
+			<BackLink />
+			<PageHeading
+				eyebrow={intakeCopy.eyebrow}
+				title={intakeCopy.composerTitle}
+				description={intakeCopy.composerDescription}
+			/>
+			<Card className="max-w-2xl">
+				<CardHeader className="border-b">
+					<CardTitle className="text-base">
+						{intakeCopy.manualCardTitle}
+					</CardTitle>
+				</CardHeader>
+				<CardContent>
+					{/* Mounted only once the carried values are known, so the
+					    uncontrolled form is not built from an empty first pass. */}
+					{ready ? <RequestForm initialValues={initialValues} /> : <Spinner />}
+				</CardContent>
+			</Card>
+		</PageShell>
+	);
 }
 
 function BackLink() {
@@ -252,8 +239,11 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 		[],
 	);
 
-	const handleMessage = (body: string) => {
-		if (!state.draftId || state.streaming) return;
+	// Returns whether the message was accepted. The composer used to clear the
+	// textarea unconditionally, so anything typed before `startIntakeDraft`
+	// resolved vanished with no error and no spinner.
+	const handleMessage = (body: string): boolean => {
+		if (!state.draftId || state.streaming) return false;
 		setState((prev) => addUserMessage(prev, body));
 		// Replacing the ref without aborting left the previous stream running.
 		abortRef.current?.abort();
@@ -277,6 +267,7 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 				}),
 			),
 		);
+		return true;
 	};
 
 	const handleCreateAnyway = () => {
@@ -294,23 +285,16 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 	};
 
 	const handleManual = () => {
-		try {
-			sessionStorage.setItem(
-				"intake_draft_values",
-				JSON.stringify({
-					title: state.values.title,
-					body: state.values.body,
-					impact: state.values.impact,
-					urgency: state.values.urgency,
-					deviceId: state.values.deviceId,
-					customFields: state.values.customFields,
-					subcategoryId: state.subcategoryId ?? undefined,
-					catalogueValues: state.values.formValues,
-				}),
-			);
-		} catch {
-			// ignore storage errors
-		}
+		writeSavedDraftValues({
+			title: state.values.title,
+			body: state.values.body,
+			impact: state.values.impact,
+			urgency: state.values.urgency,
+			deviceId: state.values.deviceId,
+			customFields: state.values.customFields,
+			subcategoryId: state.subcategoryId ?? undefined,
+			catalogueValues: state.values.formValues,
+		});
 		void navigate({ to: "/tickets/new", search: { mode: "manual" } });
 	};
 
@@ -352,7 +336,7 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 	const composer = (
 		<IntakeComposer
 			draftId={state.draftId}
-			busy={state.streaming}
+			streaming={state.streaming}
 			visionEnabled={capabilities.data?.vision ?? false}
 			attachments={attachments}
 			onAttachmentsChange={setAttachments}
@@ -385,8 +369,10 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 							assistantMessage={state.assistantMessage}
 							articleCount={state.articles.length}
 							stage={state.stage}
+							error={state.error}
 							onDeflectionSolved={handleSolved}
 							onDeflectionContinue={handleCreateAnyway}
+							onManual={handleManual}
 							renderDeflection={
 								deflection
 									? () => (
@@ -426,8 +412,10 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 						assistantMessage={state.assistantMessage}
 						articleCount={state.articles.length}
 						stage={state.stage}
+						error={state.error}
 						onDeflectionSolved={handleSolved}
 						onDeflectionContinue={handleCreateAnyway}
+						onManual={handleManual}
 					/>
 				}
 				review={

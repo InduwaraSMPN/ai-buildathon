@@ -111,6 +111,7 @@ export async function deliverWebhook(
 		)
 		.returning();
 	if (!delivery) return undefined;
+	const claimedAt = delivery.claimedAt ?? now;
 
 	const { responseStatus, responseHeaders, responseBody, error } =
 		await sendWebhookRequest(delivery, fetcher);
@@ -134,9 +135,17 @@ export async function deliverWebhook(
 			and(
 				eq(webhookDeliveries.id, id),
 				eq(webhookDeliveries.status, "delivering"),
+				// Only the holder of this claim may write the result. Without it a
+				// worker whose lease expired overwrites whoever re-claimed the row,
+				// and the endpoint is sent the same delivery twice.
+				eq(webhookDeliveries.claimedAt, claimedAt),
 			),
 		)
 		.returning();
+	if (!updated)
+		console.warn(
+			`[webhooks] delivery ${id} was re-claimed before its result was written`,
+		);
 	return updated;
 }
 

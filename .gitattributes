@@ -1,0 +1,11 @@
+# The UI mirror writes its banner and trailing newline as LF while passing each
+# file's own line endings through. On a checkout with core.autocrlf=true the
+# mirrored copies come back CRLF and the freshness check fails on every one of
+# them, so the working tree is normalised instead.
+* text=auto eol=lf
+
+# Generated and binary artefacts keep their own bytes.
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

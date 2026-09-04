@@ -11,6 +11,82 @@ import {
 	ITSM_WRITEBACK_STATUSES,
 } from "../shared";
 
+const IPV4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+
+/** 0/8, 10/8, 127/8, 169.254/16, 172.16/12 and 192.168/16. */
+function isPrivateIpv4(host: string): boolean {
+	const match = IPV4.exec(host);
+	if (!match) return false;
+	const first = Number(match[1]);
+	const second = Number(match[2]);
+	return (
+		first === 0 ||
+		first === 10 ||
+		first === 127 ||
+		(first === 169 && second === 254) ||
+		(first === 172 && second >= 16 && second <= 31) ||
+		(first === 192 && second === 168)
+	);
+}
+
+/** `::1` and `::`, fc00::/7 (unique local) and fe80::/10 (link local). */
+function isPrivateIpv6(host: string): boolean {
+	if (!host.includes(":")) return false;
+	if (host === "::1" || host === "::") return true;
+	// An IPv4-mapped address reaches the same interface by another spelling, and
+	// URL parsing rewrites the dotted form into hex, so both are decoded.
+	const mapped = /^::(?:ffff:)?([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+	if (mapped) {
+		const high = Number.parseInt(mapped[1] ?? "", 16);
+		const low = Number.parseInt(mapped[2] ?? "", 16);
+		return isPrivateIpv4(
+			`${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`,
+		);
+	}
+	if (isPrivateIpv4(host.slice(host.lastIndexOf(":") + 1))) return true;
+	const head = host.split(":")[0] ?? "";
+	return /^f[cd][0-9a-f]{0,2}$/.test(head) || /^fe[89ab][0-9a-f]?$/.test(head);
+}
+
+/**
+ * Says why a connector may not be pointed at this URL, or null if it may.
+ *
+ * The client-credentials POST carries the decrypted client secret in its body,
+ * so whoever answers at `baseUrl` is handed the credential into the customer's
+ * system of record. Plain `http:` hands it to the network as well, and a host
+ * that only resolves from inside the deployment — a cloud metadata endpoint, a
+ * neighbouring service, the API itself — is an exfiltration target rather than
+ * a plausible ITSM. Neither is something an administrator has any reason to
+ * type, so both are refused here and again before the client is built: this
+ * schema guards the one path a URL is typed through, and the row can be
+ * written by paths that never saw it.
+ */
+export function connectorBaseUrlIssue(value: string): string | null {
+	let url: URL;
+	try {
+		url = new URL(value);
+	} catch {
+		return "must be an absolute URL";
+	}
+	if (url.protocol !== "https:")
+		return "must use https, because the client secret travels in the request body";
+	const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+	if (
+		host === "localhost" ||
+		host.endsWith(".localhost") ||
+		host.endsWith(".internal") ||
+		isPrivateIpv4(host) ||
+		isPrivateIpv6(host)
+	)
+		return "must not name a loopback, link-local, private or internal host";
+	return null;
+}
+
+const connectorBaseUrl = z.string().superRefine((value, ctx) => {
+	const issue = connectorBaseUrlIssue(value);
+	if (issue) ctx.addIssue({ code: "custom", message: `baseUrl ${issue}` });
+});
+
 /**
  * The connector as an administrator sees it.
  *
@@ -245,7 +321,7 @@ export const connectorContract = {
 				key: z.string().min(1),
 				vendor: z.enum(ITSM_VENDORS),
 				label: z.string().min(1),
-				baseUrl: z.url(),
+				baseUrl: connectorBaseUrl,
 				clientId: z.string().min(1),
 				clientSecret: z.string().min(1),
 				recordFilter: z.string().default(""),
@@ -263,7 +339,7 @@ export const connectorContract = {
 			z.object({
 				connectorId: z.string(),
 				label: z.string().min(1).optional(),
-				baseUrl: z.url().optional(),
+				baseUrl: connectorBaseUrl.optional(),
 				clientId: z.string().min(1).optional(),
 				/** Omit to leave the stored secret untouched. */
 				clientSecret: z.string().min(1).optional(),

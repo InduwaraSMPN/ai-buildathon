@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -16,6 +18,28 @@ from pydantic import ValidationError
 
 from axel import tools
 from axel.config import config
+
+LOG = logging.getLogger(__name__)
+
+# What each exception class means to a reader. RunUpdate.notice and .error are
+# read by IT staff and by the employee, so the raw text — which carries
+# endpoints, the internal model id, and whatever an upstream echoed back — stays
+# in the process log and only the classification reaches the transcript.
+_FAILURE_SUMMARIES: dict[str, str] = {
+    "ConnectionError": "the connection to the platform dropped",
+    "TimeoutError": "the call timed out",
+    "ValueError": "the platform returned a malformed result",
+    "RuntimeError": "the platform could not complete the call",
+}
+
+
+def classify(exc: BaseException) -> str:
+    """Name a failure for the transcript without publishing its text."""
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return f"the provider returned HTTP {status}"
+    name = type(exc).__name__
+    return _FAILURE_SUMMARIES.get(name, f"an unexpected {name} occurred")
 
 
 class SystemMessage(TypedDict):
@@ -200,6 +224,26 @@ async def run(ctx: RunContext) -> RunResult:
             return await _finish(
                 ctx, RunStatus.EXHAUSTED, "run deadline exceeded during model call"
             )
+        except Exception as exc:  # noqa: BLE001
+            # A provider-side fault is one bad turn, not a dead run: recover
+            # through the same ceiling as a malformed tool call.
+            LOG.warning("run %s model call failed: %s", ctx.run_id, exc, exc_info=exc)
+            model_turns += 1
+            failed_call_id = uuid.uuid4().hex
+            _append_call(ctx, failed_call_id, "invalid_model_output", {})
+            await _failure(
+                ctx,
+                failed_call_id,
+                None,
+                f"model call failed: {classify(exc)}",
+                detail=f"model call failed: {exc}",
+            )
+            consecutive_failures += 1
+            if consecutive_failures >= config.max_consecutive_failures:
+                return await _finish(
+                    ctx, RunStatus.EXHAUSTED, "consecutive failure ceiling reached"
+                )
+            continue
         model_turns += 1
         ctx.prompt_tokens += decision.prompt_tokens
         ctx.completion_tokens += decision.completion_tokens
@@ -350,7 +394,15 @@ async def run(ctx: RunContext) -> RunResult:
             await _failure(ctx, call_id, tool.name, message, payload)
             return await _finish(ctx, RunStatus.EXHAUSTED, message)
         except Exception as exc:  # noqa: BLE001
-            await _failure(ctx, call_id, tool.name, f"tool failed: {exc}", payload)
+            LOG.warning("run %s tool %s failed: %s", ctx.run_id, tool.name, exc, exc_info=exc)
+            await _failure(
+                ctx,
+                call_id,
+                tool.name,
+                f"tool failed: {classify(exc)}",
+                payload,
+                detail=f"tool failed: {exc}",
+            )
             consecutive_failures += 1
             if consecutive_failures >= config.max_consecutive_failures:
                 return await _finish(
@@ -441,11 +493,19 @@ async def _failure(
     tool_name: str | None,
     message: str,
     tool_input: dict | None = None,
+    *,
+    detail: str | None = None,
 ) -> None:
+    """Report `message` on the wire; give the model `detail` when the raw text is
+    too revealing to publish but the model still needs it to recover. Both are
+    truncated: an unbounded API- or provider-supplied string would otherwise grow
+    the context and be resent on every later turn."""
     await ctx.report(
         Step(kind=StepKind.OBSERVATION, tool_name=tool_name, tool_input=tool_input, error=message)
     )
-    ctx.transcript.append({"role": "tool", "tool_call_id": call_id, "content": message})
+    ctx.transcript.append(
+        {"role": "tool", "tool_call_id": call_id, "content": _truncate(detail or message)}
+    )
 
 
 def _tool_failure(output: object) -> str | None:
@@ -453,10 +513,18 @@ def _tool_failure(output: object) -> str | None:
         return None
     error = output.get("error")
     typed_error = error if isinstance(error, dict) else output
-    if output.get("ok") is not False and typed_error.get("code") != "unknown_property":
+    # A truthy error is a failure whether or not the tool set `ok`. Scoring it as
+    # success would reset the failure count, mark the CMDB observation recorded,
+    # and let a read that errored out discharge a verification obligation.
+    if (
+        not error
+        and output.get("ok") is not False
+        and typed_error.get("code") != "unknown_property"
+    ):
         return None
     detail = error if error is not None else output
-    return f"tool returned failure: {json.dumps(detail, default=str, separators=(',', ':'))}"
+    rendered = json.dumps(detail, default=str, separators=(",", ":"))
+    return f"tool returned failure: {_truncate(rendered)}"
 
 
 def _same_resource(
@@ -470,7 +538,14 @@ def _same_resource(
     is discharged only by a read of that same environment. A read naming a different
     environment, or a write+read pair agreeing on any environment other than the run's,
     must never clear the obligation.
+
+    A device write names an `action`, and the only key it shares with a device read
+    is `device_id` — so without the facet check below, reading storage would
+    "verify" a DNS flush. The read must touch a facet that actually observes the
+    action, per the same mapping the API holds in DEVICE_ACTION_FACETS.
     """
+    if "action" in write and not _observes_action(write["action"], read.get("facets")):
+        return False
     shared = set(write) & set(read) - {
         "reasoning",
         "facets",
@@ -494,6 +569,18 @@ def _same_resource(
     return all(write[key] == read[key] for key in shared)
 
 
+def _observes_action(action: object, facets: object) -> bool:
+    """True when a read of `facets` can see what `action` changed.
+
+    An action missing from the table is verifiable by nothing rather than by
+    everything: a new action added without its facets must fail the gate loudly,
+    not silently accept the first read that follows it.
+    """
+    if not isinstance(facets, (list, tuple, set)):
+        return False
+    return bool(set(facets) & set(tools.DEVICE_ACTION_FACETS.get(str(action), ())))
+
+
 def _truncate(text: str) -> str:
     limit = config.model_output_max_chars
     if len(text) <= limit:
@@ -506,20 +593,40 @@ def _truncate(text: str) -> str:
     return f"{text[:limit]}\n{marker}"
 
 
+# Keys whose value reports what happened rather than merely mentioning it.
+_EVIDENCE_KEYS = frozenset(
+    {"reason", "message", "status", "phase", "state", "error", "outcome"}
+)
+# Anchored on word boundaries: unanchored, "error" matched "DNS errors" in prose.
+_EVIDENCE_NEEDLES = re.compile(
+    r"\b(?:insufficient cpu|imagepullbackoff|unschedulable|error|failed)\b", re.IGNORECASE
+)
+
+
 def _evidence(output: object) -> tuple[str | None, str]:
-    """Select the evidence line and its tone: destructive when a failure
-    needle matched, otherwise success."""
+    """Select the evidence line and its tone.
+
+    Destructive is reserved for a needle matched against a field that reports an
+    outcome. A needle anywhere else — a knowledge excerpt mentioning "DNS
+    errors", a log line quoted inside an unrelated payload — says nothing about
+    this run, so it can raise a warning but never a red alert.
+    """
     values: list[str] = []
-    stack = [output]
+    reported: list[str] = []
+    stack: list[tuple[object, str]] = [(output, "")]
     scanned_items = scanned_chars = 0
     while stack and scanned_items < config.evidence_scan_max_items:
-        value = stack.pop()
+        value, key = stack.pop()
         scanned_items += 1
         remaining_items = config.evidence_scan_max_items - scanned_items
         if isinstance(value, dict):
-            stack.extend(reversed(tuple(islice(value.values(), remaining_items))))
+            stack.extend(
+                reversed(
+                    [(item, str(name)) for name, item in islice(value.items(), remaining_items)]
+                )
+            )
         elif isinstance(value, list):
-            stack.extend(reversed(value[:remaining_items]))
+            stack.extend(reversed([(item, key) for item in value[:remaining_items]]))
         elif value is not None:
             text = str(value)
             remaining = config.evidence_scan_max_chars - scanned_chars
@@ -527,14 +634,18 @@ def _evidence(output: object) -> tuple[str | None, str]:
                 break
             text = text[:remaining]
             scanned_chars += len(text)
-            values.extend(line.strip() for line in text.splitlines() if line.strip())
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            values.extend(lines)
+            if key.casefold() in _EVIDENCE_KEYS:
+                reported.extend(lines)
 
-    needles = ("Insufficient cpu", "ImagePullBackOff", "Unschedulable", "error", "failed")
-    matches = [
-        value for value in values if any(needle.lower() in value.lower() for needle in needles)
-    ]
-    if matches:
-        return max(matches, key=len)[:1000], "destructive"
+    matched = [value for value in reported if _EVIDENCE_NEEDLES.search(value)]
+    if matched:
+        # Longest wins among fields that actually report an outcome: "0/3 nodes
+        # are available: 3 Insufficient cpu" tells the reader more than "Unschedulable".
+        return max(matched, key=len)[:1000], "destructive"
+    if any(_EVIDENCE_NEEDLES.search(value) for value in values):
+        return values[0][:1000], "warning"
     return (values[0][:1000] if values else None), "success"
 
 

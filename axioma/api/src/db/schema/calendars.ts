@@ -19,7 +19,12 @@ export const calendars = pgTable(
 		timezone: text("timezone").notNull(),
 		isDefault: boolean("is_default").notNull().default(false),
 	},
-	(t) => [index("calendars_default_idx").on(t.isDefault)],
+	(t) => [
+		index("calendars_default_idx").on(t.isDefault),
+		uniqueIndex("calendars_default_uidx")
+			.on(t.isDefault)
+			.where(sql`${t.isDefault} = true`),
+	],
 );
 
 export const calendarHours = pgTable(

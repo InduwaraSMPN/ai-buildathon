@@ -4,6 +4,7 @@ import {
 	type V1Deployment,
 } from "@kubernetes/client-node";
 import { z } from "zod";
+import { env } from "@/env";
 import {
 	defaultEnvironmentConnection,
 	type EnvironmentConnection,
@@ -37,19 +38,52 @@ export const patchImageInput = readDeploymentInput.extend({
 	image: z.string().min(1),
 });
 
+const POD_PAGE_LIMIT = 200;
+/**
+ * Long enough for a cold image pull. The previous 15 seconds routinely expired
+ * on a patch that had already been applied, so the agent saw a failure for a
+ * change the cluster had accepted and retried it.
+ */
+const ROLLOUT_CEILING_MS = 180_000;
+
 function resolveConnection(ctx?: ClusterToolCtx): EnvironmentConnection {
 	return ctx?.environment?.connection ?? defaultEnvironmentConnection();
+}
+
+const managedNamespaces = (): string[] =>
+	(env.AXIOMA_K8S_NAMESPACES ?? "")
+		.split(",")
+		.map((value) => value.trim())
+		.filter(Boolean);
+
+/**
+ * The namespace is model-supplied and the chart's per-namespace Role only binds
+ * the in-cluster ServiceAccount — under `kubeconfig` mode the pod uses a mounted
+ * credential instead and that Role is inert, so a prompt-injected ticket could
+ * otherwise reach `kube-system`. This is the allowlist the documentation already
+ * describes, enforced where the call is made rather than only in RBAC.
+ */
+function assertManagedNamespace(namespace: string): void {
+	const allowed = managedNamespaces();
+	if (!allowed.length || allowed.includes(namespace)) return;
+	throw new Error(
+		`namespace ${namespace} is not managed by this deployment; allowed: ${allowed.join(", ")}`,
+	);
 }
 
 export async function readPods(
 	input: z.infer<typeof readPodsInput>,
 	ctx?: ClusterToolCtx,
 ) {
+	assertManagedNamespace(input.namespace);
 	const connection = resolveConnection(ctx);
 	const { coreApi } = getKubernetesClients(connection);
+	// Bounded: an unfiltered list of a large namespace is materialised whole and
+	// then serialised into a model payload.
 	const result = await coreApi.listNamespacedPod({
 		namespace: input.namespace,
 		labelSelector: input.label_selector,
+		limit: POD_PAGE_LIMIT,
 	});
 	return result.items.map((pod) => ({
 		name: pod.metadata?.name ?? "",
@@ -69,6 +103,7 @@ export async function readDeployment(
 	input: z.infer<typeof readDeploymentInput>,
 	ctx?: ClusterToolCtx,
 ) {
+	assertManagedNamespace(input.namespace);
 	const connection = resolveConnection(ctx);
 	const { appsApi } = getKubernetesClients(connection);
 	const deployment = await appsApi.readNamespacedDeployment(input);
@@ -95,6 +130,7 @@ export async function patchImage(
 	input: z.infer<typeof patchImageInput>,
 	ctx?: ClusterToolCtx,
 ) {
+	assertManagedNamespace(input.namespace);
 	const connection = resolveConnection(ctx);
 	const { appsApi } = getKubernetesClients(connection);
 	const body = [
@@ -114,7 +150,7 @@ export async function patchImage(
 	return {
 		dryRun: deploymentObservation(dryRun),
 		applied: deploymentObservation(applied),
-		rollout: await pollRollout(input.namespace, input.name, connection),
+		...(await pollRollout(input.namespace, input.name, connection)),
 	};
 }
 
@@ -124,24 +160,26 @@ export async function pollRollout(
 	namespace: string,
 	name: string,
 	connection?: EnvironmentConnection,
-	ceilingMs = 15_000,
+	ceilingMs = ROLLOUT_CEILING_MS,
 ) {
-	const observations: Awaited<ReturnType<typeof readDeployment>>[] = [];
+	const rollout: Awaited<ReturnType<typeof readDeployment>>[] = [];
 	const deadline = Date.now() + ceilingMs;
 	do {
 		const observation = await readDeployment(
 			{ namespace, name },
 			connection ? { environment: { connection } } : undefined,
 		);
-		observations.push(observation);
+		rollout.push(observation);
 		if (
 			observation.replicas > 0 &&
 			observation.readyReplicas === observation.replicas
 		)
-			return observations;
+			return { rollout, rolloutTimedOut: false };
 		await new Promise((resolve) => setTimeout(resolve, 2_000));
 	} while (Date.now() < deadline);
-	throw new Error(
-		`deployment ${namespace}/${name} did not become ready within ${ceilingMs}ms; observations=${JSON.stringify(observations)}`,
-	);
+	// Not an error: the patch has already been applied by the time this runs, so
+	// throwing told the agent a completed write had failed and invited a retry
+	// against a cluster that had already changed. The caller reads the flag and
+	// verifies with its own read, which is what the prompt already requires.
+	return { rollout, rolloutTimedOut: true };
 }

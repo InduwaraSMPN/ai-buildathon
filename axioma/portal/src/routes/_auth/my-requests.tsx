@@ -54,13 +54,12 @@ function RouteComponent() {
 	);
 	const firstName = session.data?.user.name?.split(" ")[0];
 	const items = tickets.data?.items ?? [];
-	// `enrollDevice` is not yet part of `PortalContract` (the device
-	// claim flow is still using the portal's ad-hoc mutation). The cast
-	// keeps the existing behaviour while `tsc` stays green; adding the
-	// procedure to the contract is tracked separately.
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const enroll: any = useMutation(
-		(orpc as any).enrollDevice.mutationOptions({
+	// Enrolment binds the machine to the gateway; this binds it to the person.
+	// `axel-cli status` prints the code on the employee's own screen after the
+	// daemon connects, and until it is entered here the device has no owner and
+	// appears in none of their lists.
+	const enroll = useMutation(
+		orpc.claimDevice.mutationOptions({
 			onSuccess: () =>
 				queryClient.invalidateQueries({ queryKey: orpc.listMyDevices.key() }),
 		}),
@@ -166,7 +165,7 @@ function RouteComponent() {
 							className="flex flex-col gap-3 p-4 sm:flex-row sm:items-end sm:p-6"
 							onSubmit={(event) => {
 								event.preventDefault();
-								enrollmentForm.handleSubmit();
+								void enrollmentForm.handleSubmit().catch(() => undefined);
 							}}
 						>
 							<enrollmentForm.Field name="code">

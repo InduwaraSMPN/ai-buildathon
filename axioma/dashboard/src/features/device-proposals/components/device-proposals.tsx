@@ -1,13 +1,13 @@
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
 	Card,
 	CardContent,
 	CardFooter,
 	CardHeader,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 
 export type DeviceProposalSummary = {
 	id: string;

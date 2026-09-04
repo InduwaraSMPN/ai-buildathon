@@ -1,3 +1,7 @@
+// Extension-qualified because dynamic-fields.validation.mjs loads this module
+// through Node, which does no extensionless resolution.
+import { fromDateTimeLocal } from "../../../lib/datetime-local.ts";
+
 export type DynamicFieldDefinition = {
 	key: string;
 	fieldType: string;
@@ -17,7 +21,7 @@ export function serializeDynamicFields(
 				value === undefined
 					? null
 					: definition.fieldType === "datetime" && typeof value === "string"
-						? new Date(value).toISOString()
+						? fromDateTimeLocal(value).toISOString()
 						: value,
 			];
 		}),

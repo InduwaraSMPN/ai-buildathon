@@ -14,6 +14,7 @@
 
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { aesGcmProviderSecretLoader } from "@/auth/providers";
+import { connectorBaseUrlIssue } from "@/contracts/connectors";
 import { db } from "@/db";
 import {
 	environments,
@@ -61,6 +62,15 @@ export async function loadConnectorClient(connectorId: string) {
 		.where(eq(itsmConnectors.id, connectorId))
 		.limit(1);
 	if (!connector || !connector.enabled) return null;
+	// Re-validated rather than trusted. The contract guards the one path an
+	// administrator types a URL through; the row is also written by the seed and
+	// by whatever imports a connector next, and the very first request built
+	// from it posts the decrypted client secret to whatever host it names.
+	const issue = connectorBaseUrlIssue(connector.baseUrl);
+	if (issue)
+		throw new Error(
+			`Connector ${connectorId} has an unusable base URL: it ${issue}.`,
+		);
 	return new ServiceNowClient({
 		baseUrl: connector.baseUrl,
 		clientId: connector.clientId,
@@ -222,16 +232,19 @@ export async function runConnectorSync(
 				ticketOrigin: connector.ticketOrigin,
 				fallbackReporterId: connector.fallbackReporterId,
 			}).apply(plan)) as unknown as Record<string, unknown>;
-			if (plan.watermark)
-				await db
-					.update(itsmConnectors)
-					.set({
-						watermark: new Date(plan.watermark),
-						lastSuccessfulSyncAt: new Date(),
-						consecutiveFailures: 0,
-						disabledReason: null,
-					})
-					.where(eq(itsmConnectors.id, connectorId));
+			// A pass that found nothing is still a pass. Recording it only when the
+			// watermark moved would leave an idle connector — the ordinary case —
+			// permanently due, and its poll interval decorative again. Only the
+			// watermark itself is conditional, because nothing moved it.
+			await db
+				.update(itsmConnectors)
+				.set({
+					...(plan.watermark ? { watermark: new Date(plan.watermark) } : {}),
+					lastSuccessfulSyncAt: new Date(),
+					consecutiveFailures: 0,
+					disabledReason: null,
+				})
+				.where(eq(itsmConnectors.id, connectorId));
 		}
 
 		await record(
@@ -347,21 +360,39 @@ export async function runConnectorTick(now = new Date()): Promise<void> {
 				eq(itsmConnectors.enabled, true),
 				or(
 					isNull(itsmConnectors.lastSuccessfulSyncAt),
-					lte(itsmConnectors.lastSuccessfulSyncAt, now),
+					// `pollIntervalSeconds` is the connector's cadence, and the tick is
+					// only how often it is asked. Comparing against `now` alone made
+					// every enabled connector due on every tick and the stored interval
+					// decorative. Sent as the ISO string drizzle itself writes into this
+					// column, so the comparison stays in the same UTC wall-clock the
+					// rows are stored in whatever the server's zone is.
+					lte(
+						itsmConnectors.lastSuccessfulSyncAt,
+						sql`${now.toISOString()}::timestamp - make_interval(secs => ${itsmConnectors.pollIntervalSeconds})`,
+					),
 				),
 			),
 		);
 	for (const connector of due) await runConnectorSync(connector.id, "apply");
 	await sweepDeferredDispatches();
+	// A connector whose stored base URL is refused must not take the rest of the
+	// sweep down with it; the other connectors' back-fills and write-backs have
+	// nothing to do with it.
+	const clientOrNull = async (connectorId: string) => {
+		try {
+			return await loadConnectorClient(connectorId);
+		} catch (error) {
+			console.error("[connectors] client unavailable", connectorId, error);
+			return null;
+		}
+	};
 	// Asks what became of the tickets we proposed on. Without this the agreement
 	// surface has nothing to compare against.
 	await backfillProposalOutcomes(async (connectorId, externalId) => {
-		const client = await loadConnectorClient(connectorId);
+		const client = await clientOrNull(connectorId);
 		return client ? client.fetchIncidentState(externalId) : null;
 	});
-	await sweepWritebacks(async (connectorId) =>
-		loadConnectorClient(connectorId),
-	);
+	await sweepWritebacks(clientOrNull);
 }
 
 export function startConnectorSweep(intervalMs = 60_000) {

@@ -15,6 +15,7 @@ import { resolveRunEnvironment } from "../environments/runtime";
 import { grpcGateway } from "../grpc";
 import { healthProcedure } from "../orpc";
 import { routesToHuman } from "../rules";
+import { transitionTicketStopwatches } from "../sla/runtime";
 import { canRerun, resolveTicketStatus, ticketRunOrigin } from "../tickets";
 import { readContextForTicket } from "../tools/cmdb";
 import type { findTicket } from "./tickets";
@@ -151,6 +152,7 @@ export async function startTicketRun(
 			actorType: "agent",
 			actorId: runId,
 		});
+		await transitionTicketStopwatches(ticketId, nextStatus, new Date(), tx);
 	});
 	try {
 		await grpcGateway.startRun({
@@ -191,6 +193,12 @@ export async function startTicketRun(
 			await tx
 				.delete(ticketTransitions)
 				.where(eq(ticketTransitions.id, transitionId));
+			await transitionTicketStopwatches(
+				ticketId,
+				ticket.status,
+				new Date(),
+				tx,
+			);
 		});
 		throw new ORPCError("SERVICE_UNAVAILABLE", {
 			message: error instanceof Error ? error.message : "Axel is not connected",

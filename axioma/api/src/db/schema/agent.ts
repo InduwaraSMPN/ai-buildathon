@@ -63,6 +63,9 @@ export const agentRuns = pgTable(
 		index("agent_runs_expired_lease_idx")
 			.on(t.leaseExpiresAt)
 			.where(sql`${t.status} = 'running'`),
+		index("agent_runs_ended_at_idx").on(t.endedAt),
+		index("agent_runs_environment_idx").on(t.environmentId),
+		index("agent_runs_started_by_idx").on(t.startedById),
 	],
 );
 

@@ -78,6 +78,10 @@ export const anyCapabilityProcedure = (...capabilities: Capability[]) =>
 	authenticatedProcedure.use(requireAnyCapability(capabilities));
 export const reporterProcedure = {
 	listMyDevices: authenticatedProcedure.listMyDevices,
+	// Possession of the code printed on the employee's own machine is the
+	// authorization; no device capability is involved, because claiming is a
+	// self-service act and an employee holds none.
+	claimDevice: authenticatedProcedure.claimDevice,
 	listPublicKnowledge: authenticatedProcedure.listPublicKnowledge,
 	getPublicKnowledgeArticle: authenticatedProcedure.getPublicKnowledgeArticle,
 	getMyApprovalStatus: authenticatedProcedure.getMyApprovalStatus,

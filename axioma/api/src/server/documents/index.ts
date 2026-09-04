@@ -58,6 +58,34 @@ export const DEFAULT_DOCUMENT_EXTENSIONS = [
 	".xlsx",
 ] as const;
 
+/**
+ * The media type each allowed extension implies. The multipart `Content-Type`
+ * is chosen by the uploader and never validated against the bytes, so trusting
+ * it let any blob claim `image/png` to the vision reader or `text/plain` to the
+ * agent's document fetch. The extension is the one thing already validated, so
+ * it is what the served and stored type are derived from.
+ */
+const MEDIA_TYPES: Record<string, string> = {
+	".csv": "text/csv",
+	".doc": "application/msword",
+	".docx":
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+	".gif": "image/gif",
+	".jpeg": "image/jpeg",
+	".jpg": "image/jpeg",
+	".json": "application/json",
+	".log": "text/plain",
+	".pdf": "application/pdf",
+	".png": "image/png",
+	".ppt": "application/vnd.ms-powerpoint",
+	".pptx":
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+	".txt": "text/plain",
+	".webp": "image/webp",
+	".xls": "application/vnd.ms-excel",
+	".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+
 export type DocumentTarget = {
 	targetType: "ticket" | "case_note" | "draft";
 	targetId: string;
@@ -66,6 +94,13 @@ export type DocumentViewer = { userId: string; role: "reporter" | "analyst" };
 
 const normalizedExtension = (filename: string) =>
 	extname(filename).toLowerCase();
+
+/** Serving type for a stored document, from its name rather than its uploader. */
+export function documentMediaType(filename: string): string {
+	return (
+		MEDIA_TYPES[normalizedExtension(filename)] ?? "application/octet-stream"
+	);
+}
 
 export function documentExtensionAllowList(
 	configured: readonly string[] = DEFAULT_DOCUMENT_EXTENSIONS,
@@ -105,6 +140,7 @@ export function prepareFileDocument(
 	const sha256 = createHash("sha256").update(content).digest("hex");
 	return {
 		displayName: originalFilename,
+		mediaType: documentMediaType(originalFilename),
 		sha256,
 		storageKey: sha256,
 		storedFilename: `${randomUUID()}${extension}`,

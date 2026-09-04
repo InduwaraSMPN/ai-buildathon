@@ -22,7 +22,8 @@ const requireWriteCapability = (
 	target: DocumentTarget,
 	capabilities: ReadonlySet<string>,
 ) => {
-	const required = target.targetType === "draft" ? "ticket.create" : "ticket.update";
+	const required =
+		target.targetType === "draft" ? "ticket.create" : "ticket.update";
 	if (!capabilities.has(required)) throw new ORPCError("FORBIDDEN");
 };
 
@@ -80,16 +81,14 @@ export const documentsRouter = {
 	unlinkDocument: anyCapabilityProcedure(
 		"ticket.update",
 		"ticket.create",
-	).unlinkDocument.handler(
-		async ({ context, input }) => {
-			requireWriteCapability(input, context.capabilities);
-			await requireDocumentWriteTarget(input, {
-				userId: context.userId,
-				role: context.capabilities.has("ticket.read.all")
-					? "analyst"
-					: "reporter",
-			});
-			return unlinkDocumentFromTarget(input.documentId, input);
-		},
-	),
+	).unlinkDocument.handler(async ({ context, input }) => {
+		requireWriteCapability(input, context.capabilities);
+		await requireDocumentWriteTarget(input, {
+			userId: context.userId,
+			role: context.capabilities.has("ticket.read.all")
+				? "analyst"
+				: "reporter",
+		});
+		return unlinkDocumentFromTarget(input.documentId, input);
+	}),
 };

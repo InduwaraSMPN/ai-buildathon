@@ -101,3 +101,71 @@ export function readSavedReadFlags(draftId: string): Record<string, boolean> {
 		flags[id] = value === true;
 	return flags;
 }
+
+const DRAFT_VALUES_KEY = "intake_draft_values";
+
+/**
+ * The values carried across when the employee abandons the assistant for the
+ * plain form. Written by the composer, read exactly once by the form: this used
+ * to be read on every render and never removed, so once a user had taken the
+ * manual route every later visit to `/tickets/new` was pre-filled with a stale
+ * request for the life of the tab — and with `AXIOMA_LLM_KEY` unset the manual
+ * branch is the only branch, so every visit hit it.
+ */
+export function writeSavedDraftValues(values: Record<string, unknown>): void {
+	try {
+		storage()?.setItem(DRAFT_VALUES_KEY, JSON.stringify(values));
+	} catch {
+		// A full or blocked store just means the values do not carry across.
+	}
+}
+
+const optionalString = (value: unknown): string | undefined =>
+	typeof value === "string" ? value : undefined;
+
+const optionalRecord = (value: unknown): Record<string, unknown> | undefined =>
+	isRecord(value) ? value : undefined;
+
+/** Reads the carried-over values and removes them, so they apply exactly once. */
+export function takeSavedDraftValues(): SavedDraftValues | undefined {
+	let parsed: unknown;
+	try {
+		const raw = storage()?.getItem(DRAFT_VALUES_KEY);
+		storage()?.removeItem(DRAFT_VALUES_KEY);
+		if (!raw) return undefined;
+		parsed = JSON.parse(raw);
+	} catch {
+		return undefined;
+	}
+	if (!isRecord(parsed)) return undefined;
+	return {
+		title: optionalString(parsed.title),
+		body: optionalString(parsed.body),
+		impact: optionalString(parsed.impact),
+		urgency: optionalString(parsed.urgency),
+		deviceId: optionalString(parsed.deviceId),
+		customFields: optionalRecord(parsed.customFields),
+		subcategoryId: optionalString(parsed.subcategoryId),
+		catalogueValues: optionalRecord(parsed.catalogueValues),
+	};
+}
+
+export type SavedDraftValues = {
+	title?: string;
+	body?: string;
+	impact?: string;
+	urgency?: string;
+	deviceId?: string;
+	customFields?: Record<string, unknown>;
+	subcategoryId?: string;
+	catalogueValues?: Record<string, unknown>;
+};
+
+/** Clears the carried-over values once the manual form has been submitted. */
+export function clearSavedDraftValues(): void {
+	try {
+		storage()?.removeItem(DRAFT_VALUES_KEY);
+	} catch {
+		// ignore storage errors
+	}
+}

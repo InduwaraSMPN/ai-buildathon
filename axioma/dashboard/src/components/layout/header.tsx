@@ -69,7 +69,9 @@ export function Header({
 						>
 							<Search />
 							<span className="hidden sm:inline">Search</span>
-							<kbd className="hidden text-muted-foreground md:inline">⌘ + K</kbd>
+							<kbd className="hidden text-muted-foreground md:inline">
+								⌘ + K
+							</kbd>
 						</Button>
 						<NotificationCenter />
 					</>

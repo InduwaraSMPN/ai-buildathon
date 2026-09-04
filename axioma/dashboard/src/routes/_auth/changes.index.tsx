@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { PageState } from "@/components/support-ui";
 import {
 	ChangeEditor,
@@ -21,9 +22,11 @@ function ChangesRoute() {
 	const query = useQuery(orpc.listChanges.queryOptions());
 	const me = useQuery(orpc.privateData.queryOptions());
 	const navigate = useNavigate();
+	const [editorOpen, setEditorOpen] = useState(false);
 	const create = useMutation(
 		orpc.createChange.mutationOptions({
 			onSuccess: async (change) => {
+				setEditorOpen(false);
 				await client.invalidateQueries({ queryKey: orpc.listChanges.key() });
 				await navigate({
 					to: "/changes/$changeId",
@@ -65,6 +68,8 @@ function ChangesRoute() {
 			changes={query.data ?? []}
 			action={
 				<ChangeEditor
+					open={editorOpen}
+					onOpenChange={setEditorOpen}
 					pending={create.isPending}
 					cabMemberId={me.data?.user?.id}
 					onSubmit={(value) => create.mutate(value)}

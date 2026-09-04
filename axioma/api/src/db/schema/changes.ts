@@ -126,6 +126,7 @@ export const changes = pgTable(
 		index("changes_source_run_idx").on(t.sourceRunId),
 		index("changes_source_step_idx").on(t.sourceStepId),
 		index("changes_created_by_id_idx").on(t.createdById),
+		index("changes_updated_at_idx").on(t.updatedAt),
 		index("changes_verification_deadline_idx")
 			.on(t.verificationDeadlineAt)
 			.where(sql`${t.status} = 'in_progress'`),

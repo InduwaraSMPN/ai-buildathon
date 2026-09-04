@@ -295,9 +295,7 @@ function NoteForm({
 			<form.Field name="resolutionCode">
 				{(field) => (
 					<Field>
-						<FieldLabel htmlFor="ticket-resolution-code">
-							Resolution code
-						</FieldLabel>
+						<FieldLabel htmlFor="operator-resolve">Resolution code</FieldLabel>
 						<Select
 							value={field.state.value}
 							onValueChange={(value) =>

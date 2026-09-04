@@ -16,6 +16,12 @@ export type CalendarLoader = (calendarId: string) => Promise<WorkingCalendar>;
 
 const partsFormatters = new Map<string, Intl.DateTimeFormat>();
 const MAX_FORMATTERS = 64;
+/**
+ * Bounds every calendar traversal. Callers run inside sweeps and ticket
+ * transactions, so a range wider than this is capped rather than rejected: a
+ * stopwatch left running for years must still report a usable figure.
+ */
+const MAX_TRAVERSAL_MS = 366 * 86_400_000;
 
 function formatter(timezone: string) {
 	let value = partsFormatters.get(timezone);
@@ -58,16 +64,19 @@ function dateKey(date: Date, timezone: string) {
 	return `${year.toString().padStart(4, "0")}-${month.toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
 }
 
-function nextDate(date: string) {
+function shiftDate(date: string, days: number) {
 	const [year, month, day] = date.split("-").map(Number) as [
 		number,
 		number,
 		number,
 	];
-	return new Date(Date.UTC(year, month - 1, day + 1))
+	return new Date(Date.UTC(year, month - 1, day + days))
 		.toISOString()
 		.slice(0, 10);
 }
+
+const nextDate = (date: string) => shiftDate(date, 1);
+const previousDate = (date: string) => shiftDate(date, -1);
 
 function weekday(date: string) {
 	const [year, month, day] = date.split("-").map(Number) as [
@@ -192,19 +201,20 @@ export async function elapsedWorkingMs(
 	if (to <= from) return 0;
 	const calendar = await load(calendarId);
 	validate(calendar);
+	const end = new Date(
+		Math.min(to.getTime(), from.getTime() + MAX_TRAVERSAL_MS),
+	);
 	let total = 0;
-	let days = 0;
 	for (
 		let date = dateKey(from, calendar.timezone),
-			last = dateKey(to, calendar.timezone);
+			last = dateKey(end, calendar.timezone);
 		date <= last;
 		date = nextDate(date)
 	) {
-		if (++days > 366) throw new RangeError("Calendar range exceeds 366 days");
 		for (const interval of intervals(date, calendar))
 			total += Math.max(
 				0,
-				Math.min(to.getTime(), interval.end.getTime()) -
+				Math.min(end.getTime(), interval.end.getTime()) -
 					Math.max(from.getTime(), interval.start.getTime()),
 			);
 	}
@@ -222,12 +232,15 @@ export async function addWorkingMs(
 	if (ms === 0) return new Date(from);
 	const calendar = await load(calendarId);
 	validate(calendar);
+	const limit = new Date(from.getTime() + MAX_TRAVERSAL_MS);
 	let remaining = ms;
 	let cursor = new Date(from);
-	let days = 0;
-	for (let date = dateKey(from, calendar.timezone); ; date = nextDate(date)) {
-		if (++days > 366)
-			throw new RangeError("Calendar duration exceeds 366 days");
+	for (
+		let date = dateKey(from, calendar.timezone),
+			last = dateKey(limit, calendar.timezone);
+		date <= last;
+		date = nextDate(date)
+	) {
 		for (const interval of intervals(date, calendar)) {
 			const start = new Date(
 				Math.max(cursor.getTime(), interval.start.getTime()),
@@ -239,4 +252,38 @@ export async function addWorkingMs(
 		}
 		cursor = zonedDate(nextDate(date), "00:00:00", calendar.timezone);
 	}
+	return limit;
+}
+
+/** The mirror of `addWorkingMs`, used to place a deadline a watch already passed. */
+export async function subtractWorkingMs(
+	from: Date,
+	ms: number,
+	calendarId: string,
+	load: CalendarLoader = loadCalendar,
+) {
+	if (!Number.isFinite(ms) || ms < 0)
+		throw new Error("Working duration must be non-negative");
+	if (ms === 0) return new Date(from);
+	const calendar = await load(calendarId);
+	validate(calendar);
+	const limit = new Date(from.getTime() - MAX_TRAVERSAL_MS);
+	let remaining = ms;
+	let cursor = new Date(from);
+	for (
+		let date = dateKey(from, calendar.timezone),
+			first = dateKey(limit, calendar.timezone);
+		date >= first;
+		date = previousDate(date)
+	) {
+		for (const interval of intervals(date, calendar).reverse()) {
+			const end = new Date(Math.min(cursor.getTime(), interval.end.getTime()));
+			if (end <= interval.start) continue;
+			const available = end.getTime() - interval.start.getTime();
+			if (remaining <= available) return new Date(end.getTime() - remaining);
+			remaining -= available;
+		}
+		cursor = zonedDate(date, "00:00:00", calendar.timezone);
+	}
+	return limit;
 }

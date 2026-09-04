@@ -140,6 +140,7 @@ Copy `examples/values-minimal.yaml` and fill in the things that have no default:
 | `api.config.betterAuthUrl` | Better Auth validates callbacks against it. A value that does not match the origin the browser used fails authentication silently. |
 | `api.config.corsOrigin` | Comma-separated exact origins for the portal and dashboard. Both send credentialed requests, so an origin missing here makes sign-in fail with nothing in the console to explain it. |
 | `agent.model.name`, `agent.model.apiBase`, `secrets.llmKey` | The chat provider. A default would send tickets to a vendor nobody chose. Set `agent.enabled: false` to install without Axel instead. |
+| `secrets.agentToken` | Shared secret proving an `AgentChannel` stream is a worker you deployed. The gateway port is reachable by every enrolled laptop and the channel carries ticket text, reporter identity and tool execution, so a worker id alone is not an identity — with this unset the gateway refuses every agent connection. The chart injects the same value into the API and the agent. |
 | `api.config.llm.apiBase`, `api.config.llm.embeddingModel` | The embeddings provider. Leave all three of these and the keys empty to install with knowledge retrieval lexical. |
 | `api.config.intake.model` | The model the AI intake composer names on the embeddings endpoint. The chart leaves it empty, which delegates to the model compiled into the API (`gpt-5.6-terra`), and that model only exists on the provider the API was built against. Once `api.config.llm.apiBase` points at your own endpoint, set this to a model that endpoint serves, or intake fails its first call with an opaque gateway 400. |
 
@@ -171,18 +172,29 @@ nobody can administer.
 ## Model providers
 
 Two provider slots, configured independently. They may be the same vendor or
-different ones, and each has its own credential. The second slot now has two
-consumers: the API's embedding calls and the AI intake composer share a single
-endpoint and a single credential, and differ only in the model they name.
+different ones, and each has its own credential. Embeddings may also be split
+off onto a third provider, which is often necessary: a gateway credential is
+commonly scoped to a list of chat models and answers `/embeddings` with a 403.
+Setting `api.config.llm.embeddingApiBase` moves only the embedding call, and it
+requires `secrets.embeddingKey` — the chart refuses to render otherwise, rather
+than sending the chat credential to a provider that will not recognise it.
 
 | | Chat | Embeddings | Intake |
 | --- | --- | --- | --- |
 | Called by | the agent, through LiteLLM | the API, with a plain `fetch` | the API, with a plain `fetch` |
-| Endpoint | `agent.model.apiBase` | `api.config.llm.apiBase` | `api.config.llm.apiBase` |
+| Endpoint | `agent.model.apiBase` | `api.config.llm.embeddingApiBase`, falling back to `api.config.llm.apiBase` | `api.config.llm.apiBase` |
 | Model | `agent.model.name` | `api.config.llm.embeddingModel` | `api.config.intake.model`, empty falling back to `gpt-5.6-terra` |
-| Credential | `secrets.llmKey` | `secrets.embeddingKey`, falling back to `secrets.llmKey` | `secrets.embeddingKey`, falling back to `secrets.llmKey` |
+| Credential | `secrets.llmKey` | `secrets.embeddingKey`, falling back to `secrets.llmKey` | `secrets.llmKey`, falling back to `secrets.embeddingKey` when that is the only credential set |
 | Carries | ticket text, message bodies, observed system state | knowledge and ticket text | the whole employee conversation, plus screenshot pixels when `api.config.intake.vision` is on |
 | If unset | Axel cannot run; set `agent.enabled: false` | retrieval stays lexical, which is a supported state | the AI composer at `/tickets/new` is switched off and employees file on the plain form |
+
+The embedding model must return **exactly 1536** values: `search_documents.embedding`
+is `vector(1536)` and its HNSW index is built for that width, so a vector of any
+other size is discarded and the article never becomes searchable by meaning. A
+model that is natively wider but implements Matryoshka truncation can be pinned
+with `api.config.llm.embeddingDimensions` — Google's `gemini-embedding-001` is
+natively 3072 and honours it. `openai/text-embedding-3-small` is natively 1536
+and needs no such setting.
 
 Both slots expect an **OpenAI-compatible** endpoint. For chat that is a property
 of the client rather than a preference: `agent/axel/model.py` always sends
@@ -467,6 +479,45 @@ agent channels share one gRPC port, exposed as the `axioma-api-grpc` Service.
 - **Devices** need it reachable from where the laptops are. That means
   `api.grpcService.type: LoadBalancer` or `NodePort`, or `grpcIngress.enabled`.
 
+### Keeping it inside a network you control
+
+Publishing the Service is what makes the gateway reachable; it is not what
+decides who reaches it. Both knobs below are off by default, and neither is
+implied by the other:
+
+```yaml
+api:
+  grpcService:
+    type: LoadBalancer
+    # Honoured by the cloud load balancer. Left empty, the provider default is
+    # every address on the internet.
+    loadBalancerSourceRanges:
+      - 203.0.113.0/24
+  networkPolicy:
+    # Enforced by the CNI, on the pod, whatever the Service type is.
+    enabled: true
+    grpcSourceRanges:
+      - 203.0.113.0/24
+```
+
+`loadBalancerSourceRanges` is a request to the provider. Most cloud providers
+implement it; some ignore it, and it does nothing at all for a `NodePort`, which
+answers on every node's address regardless. Use it when you have a
+`LoadBalancer` and treat it as the outer layer, not the only one.
+
+`api.networkPolicy` is the inner layer: a NetworkPolicy on the API pods
+admitting the gRPC port from `grpcSourceRanges` and from Axel, and from nothing
+else. It leaves the HTTP port open to every source on purpose — the ingress
+controller, the frontends' server-side calls and the kubelet's probes all arrive
+there from addresses the chart cannot name, and narrowing it would take the
+portal down without closing the gateway. Enabling it with `grpcSourceRanges`
+empty is a real configuration, not a mistake: Axel keeps its stream and no
+device outside the cluster can connect.
+
+Enforcement is the CNI's, not Kubernetes'. A cluster whose CNI does not
+implement NetworkPolicy accepts the object and enforces nothing, so confirm
+yours does rather than reading the applied resource as proof.
+
 gRPC ingress is not HTTP ingress, and three things about it are easy to get
 wrong:
 
@@ -544,7 +595,8 @@ That is device channel authentication landing under its own phase, not
 something this chart provides. Deploy against the tree you have rather than
 against this paragraph: if the API in your image predates it, the gateway is
 plaintext with a client-asserted device identity and must not leave a network
-you control.
+you control. `api.networkPolicy` and `api.grpcService.loadBalancerSourceRanges`
+above are how you hold it there.
 
 ## Limits of this deployment
 

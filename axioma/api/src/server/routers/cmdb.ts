@@ -65,11 +65,27 @@ export const cmdbRouter = {
 	updateCmdbClass: capabilityProcedure(
 		"admin.settings",
 	).updateCmdbClass.handler(async ({ input }) => {
-		const [row] = await db
-			.update(cmdbClasses)
-			.set({ label: input.label, parentClassId: input.parentClassId })
-			.where(eq(cmdbClasses.id, input.id))
-			.returning();
+		// A null parentClassId detaches the class, so only an absent key means
+		// "leave alone". cmdb_classes carries no updatedAt to stamp, so an id-only
+		// patch — which the contract permits — is answered with the row as it
+		// stands rather than an empty update drizzle refuses to build.
+		const patch = {
+			...(input.label === undefined ? {} : { label: input.label }),
+			...(input.parentClassId === undefined
+				? {}
+				: { parentClassId: input.parentClassId }),
+		};
+		const [row] = Object.keys(patch).length
+			? await db
+					.update(cmdbClasses)
+					.set(patch)
+					.where(eq(cmdbClasses.id, input.id))
+					.returning()
+			: await db
+					.select()
+					.from(cmdbClasses)
+					.where(eq(cmdbClasses.id, input.id))
+					.limit(1);
 		if (!row) throw new ORPCError("NOT_FOUND");
 		return row;
 	}),

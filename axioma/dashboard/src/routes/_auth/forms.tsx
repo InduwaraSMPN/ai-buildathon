@@ -14,6 +14,8 @@ import {
 	DialogTrigger,
 } from "@/components/ui/dialog";
 import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
 	Item,
 	ItemActions,
@@ -21,8 +23,6 @@ import {
 	ItemGroup,
 	ItemTitle,
 } from "@/components/ui/item";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
 	NativeSelect,
 	NativeSelectOption,
@@ -120,8 +120,8 @@ function FormsRoute() {
 							<DialogHeader>
 								<DialogTitle>New request form</DialogTitle>
 								<DialogDescription>
-									Creates a draft with a single Details field. Publish it once the
-									fields are right.
+									Creates a draft with a single Details field. Publish it once
+									the fields are right.
 								</DialogDescription>
 							</DialogHeader>
 							<FieldGroup className="py-4">

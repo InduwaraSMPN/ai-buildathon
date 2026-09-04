@@ -95,6 +95,7 @@ export function MailLogPage({
 					filterPlaceholder="Filter recipient, subject, or subsystem…"
 					emptyTitle="No mail attempts"
 					emptyDescription="No delivery attempts have been recorded."
+					getRowId={(entry) => entry.id}
 				/>
 			</section>
 			<section className="mt-6 flex flex-col gap-2">
@@ -106,6 +107,7 @@ export function MailLogPage({
 					filterPlaceholder="Filter mailbox, decision, or reason…"
 					emptyTitle="No inbound activity"
 					emptyDescription="No inbound activity has been recorded."
+					getRowId={(entry) => entry.id}
 				/>
 			</section>
 		</PageContainer>

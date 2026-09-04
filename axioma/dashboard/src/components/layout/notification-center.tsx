@@ -51,8 +51,10 @@ export function NotificationCenter() {
 			>
 				<Bell />
 				{unread ? (
-					<Badge variant="destructive"
-						className="pointer-events-none absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full border-0 bg-destructive px-1 font-medium text-white text-xs leading-none tabular-nums">
+					<Badge
+						variant="destructive"
+						className="pointer-events-none absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full border-0 bg-destructive px-1 font-medium text-white text-xs tabular-nums leading-none"
+					>
 						{unread > 99 ? "99+" : unread}
 					</Badge>
 				) : null}

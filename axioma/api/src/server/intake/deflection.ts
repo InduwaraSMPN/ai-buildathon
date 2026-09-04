@@ -1,7 +1,10 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { knowledgeArticles } from "@/db/schema";
+import { knowledgeArticles, searchDocuments } from "@/db/schema";
+import { env } from "@/env";
 import { type SearchAuthorizationScope, search } from "../search";
+import { createEmbedding } from "../search/embeddings";
+import { reciprocalRankFusion } from "../tools/knowledge";
 
 export interface DeflectionArticle {
 	id: string;
@@ -19,11 +22,6 @@ const portalKnowledgeScope: SearchAuthorizationScope = (document) =>
 		and ${document.metadata} ->> 'audience' = 'public'
 		and ${document.metadata} ->> 'isRestricted' = 'false'`;
 
-/**
- * Full-text retrieval over the shared search index. The previous unescaped
- * `ILIKE '%' || message || '%'` matched every article for any message
- * containing `%`, which trapped the employee in an endless deflection.
- */
 /**
  * Full-text fallback straight against the source table, for when the search
  * index holds no `knowledge_article` rows. `reconcileCoreSearchDocuments` is
@@ -53,6 +51,9 @@ const MIN_RANK = 0.02;
  * so a hit also has to be at least this good compared with the best hit —
  * §2.2 wants the article that answers the question, not three near-misses. */
 const MIN_RANK_RATIO = 0.5;
+/** Cosine floor for the vector branch. Below this the nearest neighbour is
+ * simply the least-unrelated article, which is not an answer. */
+const MIN_SIMILARITY = 0.25;
 
 export function deflectionTerms(query: string): string[] {
 	return [
@@ -105,21 +106,72 @@ async function deflectByFullText(
 		.map(({ id, title, summary }) => ({ id, title, summary }));
 }
 
+/**
+ * Nearest neighbours over the same projection the lexical path reads, scoped
+ * identically. `server/search`'s `search()` selects the embedding column but
+ * never uses it — it is lexical only — so semantic recall has to be asked for
+ * here. Rows are gated on the embedding having been produced by the *current*
+ * model, because a vector from a different model is not comparable.
+ */
+async function deflectBySimilarity(
+	query: string,
+	limit: number,
+): Promise<string[]> {
+	const queryEmbedding = await createEmbedding(query);
+	if (!queryEmbedding) return [];
+	const literal = sql`${JSON.stringify(queryEmbedding)}::vector`;
+	const rows = await db
+		.select({ objectId: searchDocuments.objectId })
+		.from(searchDocuments)
+		.where(
+			and(
+				portalKnowledgeScope(searchDocuments),
+				isNotNull(searchDocuments.embedding),
+				eq(searchDocuments.embeddingModel, env.AXIOMA_EMBEDDING_MODEL),
+				sql`1 - (${searchDocuments.embedding} <=> ${literal}) >= ${MIN_SIMILARITY}`,
+			),
+		)
+		.orderBy(sql`${searchDocuments.embedding} <=> ${literal}`)
+		.limit(limit);
+	return rows.map((row) => row.objectId);
+}
+
 export async function deflectKnowledge(
 	query: string,
 	limit = 3,
 ): Promise<DeflectionArticle[]> {
 	if (!query?.trim()) return [];
-	const hits = await search(
-		db,
-		{ query, objectTypes: ["knowledge_article"], limit },
-		portalKnowledgeScope,
+	// Hybrid, on the pattern `server/tools/knowledge.ts` already uses for the
+	// agent: lexical catches the exact words, the vector catches an employee who
+	// describes the problem without using any of them, and reciprocal rank
+	// fusion merges the two orderings without tuning a weight.
+	const [lexicalHits, semanticIds] = await Promise.all([
+		search(
+			db,
+			{ query, objectTypes: ["knowledge_article"], limit },
+			portalKnowledgeScope,
+		),
+		deflectBySimilarity(query, limit),
+	]);
+	const ranked = reciprocalRankFusion(
+		lexicalHits.map((hit, index) => ({
+			source: "article",
+			id: hit.objectId,
+			rank: lexicalHits.length - index,
+		})),
+		semanticIds.map((id, index) => ({
+			source: "article",
+			id,
+			rank: semanticIds.length - index,
+		})),
 	);
-	if (!hits.length) return deflectByFullText(query, limit);
+	// Nothing indexed at all — a fresh install whose projection watermark ran
+	// past the seed. Fall back to the source table so the stage still works.
+	if (!ranked.length) return deflectByFullText(query, limit);
 
 	// The index can lag an unpublish, so visibility is re-read from the source
 	// of truth before anything is shown to the employee.
-	const ids = hits.map((hit) => hit.objectId);
+	const ids = ranked.slice(0, limit).map((hit) => hit.id);
 	const visible = await db
 		.select({
 			id: knowledgeArticles.id,

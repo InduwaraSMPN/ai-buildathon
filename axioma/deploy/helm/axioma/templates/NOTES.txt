@@ -77,9 +77,11 @@ to anything that dials the gateway:
   kubectl -n {{ .Release.Namespace }} get secret {{ include "axioma.api.grpcTlsSecretName" . }} -o jsonpath='{.data.tls\.crt}' | base64 -d
 
 It is valid for these names only; a client dialling any other name fails the
-handshake, and adding one means api.grpc.tls.extraSans and a new certificate:
+handshake, and adding one means api.grpc.tls.extraSans and a new certificate.
+On an upgrade these are the names the reused certificate was issued with, which
+is not necessarily what api.grpc.tls.extraSans says today:
 
-  {{ include "axioma.api.grpcTlsSans" . | fromYamlArray | join ", " }}
+  {{ include "axioma.api.grpcTlsCertSans" . | fromYamlArray | join ", " }}
 {{- end }}
 
 {{- if or (ne .Values.api.grpcService.type "ClusterIP") .Values.grpcIngress.enabled }}

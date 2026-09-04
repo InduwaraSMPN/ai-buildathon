@@ -1,5 +1,5 @@
 import { ORPCError } from "@orpc/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	deviceCommands,
@@ -7,7 +7,11 @@ import {
 	devices,
 	user,
 } from "@/db/schema";
-import { hashDeviceSecret, issueEnrolmentToken } from "../device-auth";
+import {
+	hashDeviceSecret,
+	issueEnrolmentToken,
+	normaliseClaimCode,
+} from "../device-auth";
 import { grpcGateway } from "../grpc";
 import { capabilityProcedure, reporterProcedure } from "../orpc";
 
@@ -86,6 +90,41 @@ export const devicesRouter = {
 		});
 		return { token, expiresAt };
 	}),
+	/**
+	 * The employee-facing half of enrolment. `registerDevice` in the gateway
+	 * inserts a device with no `owner_id`, because a laptop dialling in cannot
+	 * say who is sitting at it — so until this runs the machine is invisible to
+	 * `listMyDevices`, to the intake composer's device picker, and to the agent's
+	 * owned-device lookup. The code is single-use: it is cleared on success, so a
+	 * screenshot of it in a chat thread is worthless afterwards.
+	 */
+	claimDevice: reporterProcedure.claimDevice.handler(
+		async ({ context, input }) => {
+			const code = normaliseClaimCode(input.code);
+			if (!code) throw new ORPCError("NOT_FOUND");
+			const [claimed] = await db
+				.update(devices)
+				.set({
+					ownerId: context.userId,
+					claimCodeHash: null,
+					claimCodeExpiresAt: null,
+				})
+				.where(
+					and(
+						eq(devices.claimCodeHash, hashDeviceSecret(code)),
+						isNull(devices.ownerId),
+						isNull(devices.revokedAt),
+						gt(devices.claimCodeExpiresAt, new Date()),
+					),
+				)
+				.returning({ id: devices.id, hostname: devices.hostname });
+			if (!claimed)
+				throw new ORPCError("NOT_FOUND", {
+					message: "That code is not valid for a device waiting to be claimed",
+				});
+			return { deviceId: claimed.id, hostname: claimed.hostname };
+		},
+	),
 	rotateDeviceCredential: capabilityProcedure(
 		"device.enroll",
 	).rotateDeviceCredential.handler(async ({ input }) => ({

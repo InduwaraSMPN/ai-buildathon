@@ -146,7 +146,11 @@ export const environmentsRouter = {
 						),
 					);
 
-			const patch: Partial<typeof environments.$inferSelect> = {};
+			// Stamped unconditionally so an id-only patch — which the contract
+			// permits — still leaves drizzle something to set.
+			const patch: Partial<typeof environments.$inferSelect> = {
+				updatedAt: new Date(),
+			};
 			if (input.key !== undefined) patch.key = input.key;
 			if (input.label !== undefined) patch.label = input.label;
 			if (input.connectionType !== undefined)

@@ -30,20 +30,23 @@ const drizzleKitBin = join(
 );
 const drizzle = (args, options = {}) =>
 	run(process.execPath, [drizzleKitBin, ...args], options);
-const psql = (sql) =>
-	run("docker", [
-		"exec",
-		"axioma-postgres",
-		"psql",
-		"-v",
-		"ON_ERROR_STOP=1",
-		"-U",
-		"postgres",
-		"-d",
-		"postgres",
-		"-c",
-		sql,
-	]);
+// The scratch database is created and dropped on the same server everything
+// else here connects to. Shelling out to a named Compose container created it
+// in one server and connected to it in another the moment DATABASE_URL pointed
+// anywhere but the local container — a CI service container, for one. `postgres`
+// is the maintenance database: CREATE DATABASE cannot run from inside the
+// database it is creating a sibling of.
+const maintenanceUrl = new URL(serverUrl);
+maintenanceUrl.pathname = "/postgres";
+const maintenance = async (sql) => {
+	const client = new pg.Client({ connectionString: maintenanceUrl.href });
+	await client.connect();
+	try {
+		await client.query(sql);
+	} finally {
+		await client.end();
+	}
+};
 
 const migrationsUrl = new URL("../src/db/migrations/", import.meta.url);
 const hashOf = (tag) =>
@@ -180,8 +183,13 @@ try {
 }
 
 try {
-	psql(`CREATE DATABASE ${database}`);
-	drizzle(["migrate"], { env: { ...process.env, DATABASE_URL: url.href } });
+	await maintenance(`CREATE DATABASE ${database}`);
+	// cwd, like the generate call above: drizzle-kit resolves drizzle.config.ts
+	// from the working directory, so without it this only runs from api/.
+	drizzle(["migrate"], {
+		cwd: apiDir,
+		env: { ...process.env, DATABASE_URL: url.href },
+	});
 	const client = new pg.Client({ connectionString: url.href });
 	await client.connect();
 	try {
@@ -233,5 +241,5 @@ try {
 		`Clean ${journal.entries.length}-migration snapshot baseline is valid.`,
 	);
 } finally {
-	psql(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
+	await maintenance(`DROP DATABASE IF EXISTS ${database} WITH (FORCE)`);
 }

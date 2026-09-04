@@ -33,6 +33,7 @@ export function DataTable<TRow>({
 	pageSize = 10,
 	onRowClick,
 	rowLabel,
+	getRowId,
 }: {
 	data: readonly TRow[];
 	// biome-ignore lint/suspicious/noExplicitAny: column defs are heterogeneous by design; TRow still pins the row type.
@@ -44,6 +45,12 @@ export function DataTable<TRow>({
 	pageSize?: number;
 	onRowClick?: (row: TRow) => void;
 	rowLabel?: (row: TRow) => string;
+	/**
+	 * A stable row identity. Without it rows are keyed by array index, so a
+	 * polling table can swap the focused row out from under the operator and
+	 * Enter opens whatever slid into that position.
+	 */
+	getRowId?: (row: TRow) => string;
 }) {
 	const filterId = useId();
 	const [filter, setFilter] = useState("");
@@ -51,6 +58,7 @@ export function DataTable<TRow>({
 	const table = useReactTable({
 		data: data as TRow[],
 		columns,
+		getRowId,
 		state: { globalFilter: filter, sorting },
 		onGlobalFilterChange: setFilter,
 		onSortingChange: setSorting,

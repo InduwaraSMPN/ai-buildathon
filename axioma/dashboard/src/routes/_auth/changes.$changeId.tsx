@@ -20,6 +20,7 @@ export const Route = createFileRoute("/_auth/changes/$changeId")({
 });
 function ChangeRoute() {
 	const { changeId } = Route.useParams();
+	const { session } = Route.useRouteContext();
 	const client = useQueryClient();
 	const query = useQuery(
 		orpc.getChange.queryOptions({ input: { id: changeId } }),
@@ -71,6 +72,7 @@ function ChangeRoute() {
 	return (
 		<ChangeDetailPage
 			change={query.data}
+			currentUserId={session.data?.user.id}
 			pending={vote.isPending || update.isPending}
 			onVote={(value) => vote.mutate({ changeId, vote: value })}
 			onUpdate={(value) => update.mutate({ id: changeId, ...value })}

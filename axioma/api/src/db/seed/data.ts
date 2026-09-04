@@ -641,37 +641,90 @@ export const SUPPLIERS = [
 	},
 ] as const;
 
+/**
+ * Licensable products. `installedName`/`installedPublisher` are the name and
+ * publisher the agent actually reports for the application the licence covers,
+ * and must match an INSTALLED_SOFTWARE entry exactly: the compliance join is on
+ * softwareIdentityKey(name, publisher), so a product described by its
+ * commercial name alone matches no install at all.
+ */
 export const SOFTWARE_PRODUCTS = [
 	{
 		id: "demo-sw-01",
 		name: "Microsoft 365 E5",
 		publisher: "Microsoft",
-		identityKey: "microsoft365-e5",
+		installedName: "Microsoft 365 Apps for enterprise",
+		installedPublisher: "Microsoft Corporation",
 	},
 	{
 		id: "demo-sw-02",
 		name: "Adobe Creative Cloud",
 		publisher: "Adobe",
-		identityKey: "adobe-cc",
+		installedName: "Adobe Acrobat Reader",
+		installedPublisher: "Adobe Inc.",
 	},
 	{
 		id: "demo-sw-03",
 		name: "Slack Enterprise Grid",
 		publisher: "Salesforce",
-		identityKey: "slack-enterprise",
+		installedName: "Slack",
+		installedPublisher: "Slack Technologies",
 	},
 	{
 		id: "demo-sw-04",
 		name: "JetBrains All Products Pack",
 		publisher: "JetBrains",
-		identityKey: "jetbrains-all-products",
+		installedName: "JetBrains Rider",
+		installedPublisher: "JetBrains s.r.o.",
 	},
 	{
 		id: "demo-sw-05",
 		name: "CrowdStrike Falcon",
 		publisher: "CrowdStrike",
-		identityKey: "crowdstrike-falcon",
+		installedName: "CrowdStrike Falcon Sensor",
+		installedPublisher: "CrowdStrike, Inc.",
 	},
+] as const;
+
+/**
+ * What the device agent reports as installed. The first five entries are the
+ * applications SOFTWARE_PRODUCTS licences; the rest are deliberately
+ * unlicensed, so the compliance dashboard has both states to show.
+ */
+export const INSTALLED_SOFTWARE = [
+	{
+		name: "Microsoft 365 Apps for enterprise",
+		version: "16.92.24101",
+		publisher: "Microsoft Corporation",
+	},
+	{
+		name: "Adobe Acrobat Reader",
+		version: "24.5.20320",
+		publisher: "Adobe Inc.",
+	},
+	{ name: "Slack", version: "4.42.115", publisher: "Slack Technologies" },
+	{
+		name: "JetBrains Rider",
+		version: "2024.3.2",
+		publisher: "JetBrains s.r.o.",
+	},
+	{
+		name: "CrowdStrike Falcon Sensor",
+		version: "7.18.18604",
+		publisher: "CrowdStrike, Inc.",
+	},
+	{ name: "Google Chrome", version: "141.0.7390.54", publisher: "Google LLC" },
+	{
+		name: "Visual Studio Code",
+		version: "1.96.2",
+		publisher: "Microsoft Corporation",
+	},
+	{
+		name: "Zoom Workplace",
+		version: "6.2.11",
+		publisher: "Zoom Communications",
+	},
+	{ name: "1Password", version: "8.10.48", publisher: "AgileBits Inc." },
 ] as const;
 
 // ---------------------------------------------------------------------------

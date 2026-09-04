@@ -135,13 +135,37 @@ export async function processReceivedEmail(
 					}
 				}
 
+				const recordActivity = async (activity: InboundActivity) => {
+					await tx.insert(mailboxActivityLog).values({
+						id: crypto.randomUUID(),
+						mailboxId: input.mailbox.id,
+						inboundEmailId,
+						...activity,
+					});
+				};
+
 				if (input.attachments?.length && !attachmentStore)
 					throw new Error("Inbound attachments require an attachment store");
 				for (const attachment of input.attachments ?? []) {
-					const prepared = prepareFileDocument(
-						attachment.filename,
-						attachment.content,
-					);
+					let prepared: ReturnType<typeof prepareFileDocument>;
+					try {
+						prepared = prepareFileDocument(
+							attachment.filename,
+							attachment.content,
+						);
+					} catch (error) {
+						// An unsupported attachment must not cost the message. `.p7s`
+						// rides along with every S/MIME-signed reply, and `.ics`, `.zip`
+						// and `winmail.dat` are just as ordinary — failing the whole
+						// ingest discarded the body with them after three attempts.
+						await recordActivity({
+							decision: "rejected",
+							reason: `attachment ${attachment.filename} was not stored: ${
+								error instanceof Error ? error.message : String(error)
+							}`,
+						});
+						continue;
+					}
 					await attachmentStore?.put(
 						prepared.storageKey,
 						prepared.storedFilename,
@@ -157,20 +181,41 @@ export async function processReceivedEmail(
 					});
 				}
 
+				const senderAddress = input.message.from.trim().toLowerCase();
+				const [sender] = await tx
+					.select({ id: user.id })
+					.from(user)
+					.where(sql`lower(${user.email}) = ${senderAddress}`)
+					.limit(1);
+
 				const content =
 					`${input.message.subject}\n${input.message.text ?? ""}`.toUpperCase();
 				const tokens = [...content.matchAll(/\b[A-Z]{2,8}-\d{3,}\b/g)].map(
 					([token]) => token,
 				);
-				const references: TicketReference[] = tokens.length
+				const matched = tokens.length
 					? await tx
 							.select({
 								reference: ticketNumberHistory.number,
 								ticketId: ticketNumberHistory.ticketId,
+								reporterId: tickets.reporterId,
 							})
 							.from(ticketNumberHistory)
+							.innerJoin(tickets, eq(tickets.id, ticketNumberHistory.ticketId))
 							.where(inArray(ticketNumberHistory.number, tokens))
 					: [];
+				// Ticket numbers are sequential and are quoted in every outbound
+				// notification, so the token alone identifies nothing. Threading is
+				// therefore offered only for tickets the sender actually reported;
+				// anyone else quoting the same number gets their own ticket.
+				const authorized = (row: { reporterId: string }) =>
+					sender !== undefined && row.reporterId === sender.id;
+				const references: TicketReference[] = matched
+					.filter(authorized)
+					.map(({ reference, ticketId }) => ({ reference, ticketId }));
+				const unauthorizedReferences: TicketReference[] = matched
+					.filter((row) => !authorized(row))
+					.map(({ reference, ticketId }) => ({ reference, ticketId }));
 				const [recentReply] = await tx
 					.select({ id: emailSendLog.id })
 					.from(emailSendLog)
@@ -185,16 +230,9 @@ export async function processReceivedEmail(
 				const plan = planInboundMessage({
 					message: input.message,
 					references,
+					unauthorizedReferences,
 					recentlyAutoReplied: Boolean(recentReply),
 				});
-				const recordActivity = async (activity: InboundActivity) => {
-					await tx.insert(mailboxActivityLog).values({
-						id: crypto.randomUUID(),
-						mailboxId: input.mailbox.id,
-						inboundEmailId,
-						...activity,
-					});
-				};
 				const ticketId = await applyInboundPlan({
 					message: input.message,
 					mailbox: input.mailbox,
@@ -208,10 +246,18 @@ export async function processReceivedEmail(
 								.limit(1);
 							if (!ticket)
 								throw new Error(`Referenced ticket ${id} was not found`);
+							// The plan is only ever handed a ticket the sender reported,
+							// but the comment is signed with the sender's own account
+							// rather than the ticket's reporter, so no future planner
+							// change can make an inbound message speak for someone else.
+							if (!sender || ticket.reporterId !== sender.id)
+								throw new Error(
+									`Sender is not entitled to comment on ticket ${id}`,
+								);
 							await tx.insert(ticketMessages).values({
 								id: crypto.randomUUID(),
 								ticketId: id,
-								authorId: ticket.reporterId,
+								authorId: sender.id,
 								authorType: "reporter",
 								body: message.text?.trim() || message.subject,
 								visibility: "public",

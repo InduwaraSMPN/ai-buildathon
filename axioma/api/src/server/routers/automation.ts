@@ -96,6 +96,9 @@ export const automationRouter = {
 				...patch,
 				criteria: patch.criteria as RuleCriterion[] | undefined,
 				actions: patch.actions as RuleAction[] | undefined,
+				// The contract permits an id-only patch, which would otherwise
+				// leave drizzle with nothing to set.
+				updatedAt: new Date(),
 			})
 			.where(eq(ticketRules.id, id))
 			.returning();
@@ -140,6 +143,9 @@ export const automationRouter = {
 					actions: patch.actions
 						? assertWorkflowActions(patch.actions)
 						: undefined,
+					// The contract permits an id-only patch, which would otherwise
+					// leave drizzle with nothing to set.
+					updatedAt: new Date(),
 				})
 				.where(eq(workflows.id, id))
 				.returning();
@@ -242,7 +248,9 @@ export const automationRouter = {
 			throw new ORPCError("NOT_FOUND");
 		const [row] = await db
 			.update(savedViews)
-			.set(patch)
+			// The contract permits an id-only patch, which would otherwise leave
+			// drizzle with nothing to set.
+			.set({ ...patch, updatedAt: new Date() })
 			.where(eq(savedViews.id, id))
 			.returning();
 		if (!row) throw new ORPCError("NOT_FOUND");
@@ -335,11 +343,14 @@ export const automationRouter = {
 					message: error instanceof Error ? error.message : String(error),
 				});
 			}
-			const [row] = await db
-				.update(apiKeys)
-				.set({ ...patch, capabilities })
-				.where(and(eq(apiKeys.id, id), eq(apiKeys.userId, context.userId)))
-				.returning();
+			// api_keys carries no updatedAt to stamp, so an id-only patch — which
+			// the contract permits — has nothing to write and is answered with the
+			// row as it stands.
+			const owned = and(eq(apiKeys.id, id), eq(apiKeys.userId, context.userId));
+			const changes = { ...patch, capabilities };
+			const [row] = Object.values(changes).some((value) => value !== undefined)
+				? await db.update(apiKeys).set(changes).where(owned).returning()
+				: await db.select().from(apiKeys).where(owned).limit(1);
 			if (!row) throw new ORPCError("NOT_FOUND");
 			const { secretHash: _secretHash, ...safe } = row;
 			return safe;

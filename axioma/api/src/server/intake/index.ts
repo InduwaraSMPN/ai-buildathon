@@ -1,8 +1,13 @@
 import { ORPCError } from "@orpc/server";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
-import { forms, serviceSubcategories, ticketDrafts } from "@/db/schema";
+import {
+	devices,
+	forms,
+	serviceSubcategories,
+	ticketDrafts,
+} from "@/db/schema";
 import { env } from "@/env";
 import type { IncidentDraftOutput } from "./schema";
 import { removeOrphanedIntakeBlobs } from "./vision";
@@ -70,15 +75,21 @@ export function repairDraftOutput<T>(raw: unknown, schema: z.ZodType<T>): T {
  * Calls the model, and on a parse failure calls it once more (§9). A blind
  * re-issue of the same prompt tends to reproduce the same malformed output, so
  * the retry carries what went wrong.
+ *
+ * Only the parse is retried. The call itself sits outside the guard because a
+ * transport failure is not repair-eligible: a 429 or a 5xx has just asked us to
+ * back off, and re-issuing it immediately doubled the load on an endpoint that
+ * was already refusing — twice over, once per model call in the turn.
  */
 export async function draftWithRepair<T, R extends { content: string }>(
 	call: (repairNote?: string) => Promise<R>,
 	parse: (content: string) => T,
 ): Promise<{ parsed: T; result: R }> {
+	const first = await call();
 	try {
-		const result = await call();
-		return { parsed: parse(result.content), result };
+		return { parsed: parse(first.content), result: first };
 	} catch (error) {
+		if (error instanceof ORPCError) throw error;
 		const result = await call(
 			`Your previous reply could not be parsed (${
 				error instanceof Error ? error.message : "invalid output"
@@ -223,6 +234,50 @@ export async function appendMessage(
 }
 
 /**
+ * Appends a user turn only while the draft is still under the turn cap, and
+ * returns the resulting transcript. The count and the append are one statement
+ * because they used to be two: concurrent `sendIntakeMessage` calls all read
+ * the same count, all found it under the cap, and all appended — so the cap
+ * bounded nothing an impatient client could not step around. `null` means the
+ * row no longer qualifies, which the caller reports as the cap being reached.
+ */
+export async function appendUserTurn(
+	draftId: string,
+	reporterId: string,
+	body: string,
+	maxUserTurns: number,
+): Promise<DraftSummary["transcript"] | null> {
+	const entry = JSON.stringify([
+		{ role: "user", body, createdAt: new Date().toISOString() },
+	]);
+	const row = (
+		await db
+			.update(ticketDrafts)
+			.set({
+				transcript: sql`${ticketDrafts.transcript} || ${entry}::jsonb`,
+				updatedAt: new Date(),
+			})
+			.where(
+				and(
+					eq(ticketDrafts.id, draftId),
+					eq(ticketDrafts.reporterId, reporterId),
+					eq(ticketDrafts.status, "open"),
+					// Only user turns are counted: the transcript holds both roles, so
+					// its length would let the cap drift with the assistant's replies.
+					sql`(
+						select count(*)
+						from jsonb_array_elements(${ticketDrafts.transcript}) as turn
+						where turn ->> 'role' = 'user'
+					) < ${maxUserTurns}`,
+				),
+			)
+			.returning({ transcript: ticketDrafts.transcript })
+	)[0];
+	if (!row) return null;
+	return (row.transcript ?? []) as DraftSummary["transcript"];
+}
+
+/**
  * Folds a user edit into the stored draft. Every supplied key is written, so
  * `values` holds the effective post-edit values §3.5 diffs against; only the
  * provenance label is guarded, because an `ai` label must never demote a field
@@ -284,6 +339,7 @@ export async function patchDraft(
 		subcategoryId === draft.subcategoryId ? null : subcategoryId,
 		formId === draft.formId ? null : formId,
 	);
+	await assertDeviceOwned(asId(values.deviceId), reporterId);
 	const row = (
 		await db
 			.update(ticketDrafts)
@@ -328,6 +384,28 @@ async function assertRoutingExists(
 				message: `Unknown form ${formId}`,
 			});
 	}
+}
+
+/**
+ * `tickets.device_id` is the sole authorization anchor for every device tool
+ * call in `server/grpc.ts`, and submit copies it straight off the draft — so an
+ * employee who names a colleague's laptop here would have the agent running
+ * commands on it. The draft may only carry a machine the reporter owns.
+ */
+async function assertDeviceOwned(
+	deviceId: string | null,
+	reporterId: string,
+): Promise<void> {
+	if (!deviceId) return;
+	const [found] = await db
+		.select({ id: devices.id })
+		.from(devices)
+		.where(and(eq(devices.id, deviceId), eq(devices.ownerId, reporterId)))
+		.limit(1);
+	if (!found)
+		throw new ORPCError("BAD_REQUEST", {
+			message: `Unknown device ${deviceId}`,
+		});
 }
 
 /** Discards an owned draft, clearing its status without deleting links immediately. */

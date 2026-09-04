@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"math/rand/v2"
 	"os"
 	"time"
@@ -23,18 +24,25 @@ const (
 	heartbeatInterval     = 20 * time.Second
 	inventoryInterval     = 24 * time.Hour
 	livenessTimeout       = 60 * time.Second
+	sendTimeout           = 30 * time.Second
 	stablePeriod          = 30 * time.Second
 	baseBackoff           = time.Second
 	maxBackoff            = 30 * time.Second
+	maxAuthBackoff        = 15 * time.Minute
 	defaultCommandTimeout = 30 * time.Second
 	maxCommandTimeout     = 5 * time.Minute
 	maxPendingCommands    = 100
+	outboundBuffer        = 32
+	inventoryRetryDelay   = 5 * time.Minute
+	credentialWriteTries  = 5
+	credentialWriteDelay  = 100 * time.Millisecond
 )
 
 type daemonTimings struct {
 	heartbeat time.Duration
 	inventory time.Duration
 	liveness  time.Duration
+	send      time.Duration
 	stable    time.Duration
 }
 
@@ -42,10 +50,15 @@ var productionTimings = daemonTimings{
 	heartbeat: heartbeatInterval,
 	inventory: inventoryInterval,
 	liveness:  livenessTimeout,
+	send:      sendTimeout,
 	stable:    stablePeriod,
 }
 
-var saveDaemonState = SaveDaemonState
+var (
+	saveDaemonState = SaveDaemonState
+	loadDaemonState = LoadDaemonState
+	saveCredentials = SaveCredentials
+)
 
 type deviceStream interface {
 	Send(*pb.DeviceMessage) error
@@ -58,20 +71,29 @@ type terminalError struct{ error }
 // failures are retried; local errors that would make execution unsafe are
 // returned. Context cancellation is a clean shutdown and returns nil.
 func RunDaemon(ctx context.Context, config Config, version string) error {
+	// A daemon with no gateway used to dial localhost and report itself
+	// healthy forever. There is nothing for it to do without one, and the
+	// installer is what writes the file, so say which file is missing.
+	if config.GRPCHost == "" {
+		path, pathErr := ConfigPath()
+		if pathErr != nil {
+			return fmt.Errorf("no gateway is configured: %w", pathErr)
+		}
+		return fmt.Errorf("no gateway is configured; %s is missing or has no grpcHost", path)
+	}
 	id, err := Load(version)
 	if err != nil {
 		return err
 	}
 	backoff := baseBackoff
+	authRefusals := 0
 	for {
 		if ctx.Err() != nil {
 			return nil
 		}
 		started := time.Now()
 		err = connect(ctx, config, &id, productionTimings)
-		if stateErr := saveDaemonState(DaemonState{GRPCHost: config.GRPCHost, LastSeenSequence: id.LastSeenSequence, LastError: errorString(err)}); stateErr != nil {
-			return fmt.Errorf("save daemon state: %w", stateErr)
-		}
+		recordDaemonState(DaemonState{GRPCHost: config.GRPCHost, LastSeenSequence: id.LastSeenSequence, LastError: errorString(err)})
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -83,7 +105,21 @@ func RunDaemon(ctx context.Context, config Config, version string) error {
 		if connectedFor >= productionTimings.stable {
 			backoff = baseBackoff
 		}
-		delay := backoff + time.Duration(rand.Int64N(int64(backoff/2)+1))
+		delay := backoff
+		// A transport-level refusal is not proof that this device is unwanted.
+		// The gateway wraps its enrolment transaction in a catch that reports
+		// any failure as UNAUTHENTICATED, so a database failover refuses every
+		// device that happens to reconnect during it. Backing off for a long
+		// time costs one device a slow recovery; exiting costs the fleet every
+		// device until its user logs on again.
+		if isAuthRefusal(err) {
+			authRefusals++
+			delay = authBackoff(authRefusals)
+			log.Printf("axel-cli: gateway refused authentication (%d in a row); retrying in %s", authRefusals, delay)
+		} else {
+			authRefusals = 0
+		}
+		delay += time.Duration(rand.Int64N(int64(delay/2) + 1))
 		timer := time.NewTimer(delay)
 		select {
 		case <-ctx.Done():
@@ -106,6 +142,20 @@ func nextBackoff(current, connectedFor, stable time.Duration) time.Duration {
 		return maxBackoff
 	}
 	return current
+}
+
+// authBackoff spaces out reconnection after consecutive authentication
+// refusals. A credential that really is dead must not make the agent spin, and
+// a fleet waiting out a gateway outage must not stampede when it returns.
+func authBackoff(refusals int) time.Duration {
+	delay := maxBackoff
+	for range refusals - 1 {
+		delay *= 2
+		if delay >= maxAuthBackoff {
+			return maxAuthBackoff
+		}
+	}
+	return delay
 }
 
 func connect(ctx context.Context, config Config, id *Identity, timings daemonTimings) error {
@@ -187,10 +237,26 @@ func transportCredentials(config Config) (credentials.TransportCredentials, erro
 }
 
 func authError(operation string, err error) error {
-	if code := status.Code(err); code == codes.Unauthenticated || code == codes.PermissionDenied {
-		return terminalError{fmt.Errorf("%s: authentication refused: %w", operation, err)}
-	}
 	return fmt.Errorf("%s: %w", operation, err)
+}
+
+// isAuthRefusal reports a transport-level authentication rejection. It is
+// deliberately not terminal: the gateway sends the same code when it cannot
+// check a credential as when it refuses one, so the only refusals the device
+// trusts as final are the in-band enrolment signals.
+func isAuthRefusal(err error) bool {
+	code := status.Code(err)
+	return code == codes.Unauthenticated || code == codes.PermissionDenied
+}
+
+// recordDaemonState writes the snapshot `status` reads. It is cosmetic, and on
+// Windows the write fails routinely — writeJSON ends in os.Rename, which a
+// real-time scanner holding the destination open turns into a sharing
+// violation — so the failure is reported and the agent carries on.
+func recordDaemonState(state DaemonState) {
+	if err := saveDaemonState(state); err != nil {
+		log.Printf("axel-cli: save daemon state: %v", err)
+	}
 }
 
 func serveConnection(ctx context.Context, cancel context.CancelFunc, stream deviceStream, host string, id *Identity, timings daemonTimings, saveSequence func(Identity, uint64) error, executeCommand func(context.Context, *pb.DeviceCommand) *pb.CommandResult, collectors ...func(context.Context) Inventory) error {
@@ -202,16 +268,58 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 	if timings.inventory <= 0 {
 		timings.inventory = inventoryInterval
 	}
-	if err := stream.Send(&pb.DeviceMessage{Payload: &pb.DeviceMessage_Hello{Hello: &pb.DeviceHello{
+	if timings.send <= 0 {
+		timings.send = sendTimeout
+	}
+	state := DaemonState{Connected: true, GRPCHost: host, LastSeenSequence: id.LastSeenSequence}
+	stored, storedErr := loadDaemonState()
+	if storedErr == nil {
+		state.LastInventoryAt = stored.LastInventoryAt
+	}
+
+	// grpc permits one sender and one receiver, and SendMsg parks until the
+	// stream context is cancelled once the flow-control window fills — a
+	// gateway that accepts the stream and stops draining it is enough, and one
+	// inventory report is half that window. Sending from the loop that owns the
+	// liveness watchdog would leave nothing able to notice, so the sender lives
+	// on its own goroutine and a send that overruns cancels the connection
+	// rather than wedging the process until the next logon.
+	outbound := make(chan *pb.DeviceMessage, outboundBuffer)
+	sendErr := make(chan error, 1)
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case message := <-outbound:
+				stalled := time.AfterFunc(timings.send, func() {
+					reportSendFailure(sendErr, fmt.Errorf("send device message: gateway stopped reading for %s", timings.send))
+					cancel()
+				})
+				err := stream.Send(message)
+				stalled.Stop()
+				if err != nil {
+					reportSendFailure(sendErr, authError("send device message", err))
+					return
+				}
+			}
+		}
+	}()
+	send := func(message *pb.DeviceMessage) bool {
+		select {
+		case outbound <- message:
+			return true
+		case <-ctx.Done():
+			return false
+		}
+	}
+
+	send(&pb.DeviceMessage{Payload: &pb.DeviceMessage_Hello{Hello: &pb.DeviceHello{
 		DeviceId: id.DeviceID, Hostname: id.Hostname, Username: id.Username,
 		Platform: id.Platform, Release: id.Release, AgentVersion: id.AgentVersion,
 		LastSeenSequence: id.LastSeenSequence, EnrolmentToken: id.EnrolmentToken, Credential: id.Credential,
-	}}}); err != nil {
-		return authError("send device hello", err)
-	}
-	if err := saveDaemonState(DaemonState{Connected: true, GRPCHost: host, LastSeenSequence: id.LastSeenSequence}); err != nil {
-		return terminalError{fmt.Errorf("save daemon state: %w", err)}
-	}
+	}}})
+	recordDaemonState(state)
 
 	incoming := make(chan *pb.GatewayMessage)
 	recvErr := make(chan error, 1)
@@ -255,6 +363,7 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 
 	inventoryJobs := make(chan struct{})
 	inventoryReports := make(chan *pb.InventoryReport)
+	inventoryRetry := make(chan struct{}, 1)
 	go func() {
 		for {
 			select {
@@ -266,18 +375,27 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 				inventory := collectInventory(inventoryCtx)
 				cancel()
 				payload, err := json.Marshal(inventory)
-				if err != nil {
-					continue
+				if err == nil {
+					var reportID string
+					if reportID, err = newID(); err == nil {
+						select {
+						case inventoryReports <- &pb.InventoryReport{ReportId: reportID, CollectedUnixMs: collectedAt.UnixMilli(), InventoryJson: string(payload)}:
+						case <-ctx.Done():
+							return
+						}
+						continue
+					}
 				}
-				reportID, err := newID()
-				if err != nil {
-					continue
-				}
-				select {
-				case inventoryReports <- &pb.InventoryReport{ReportId: reportID, CollectedUnixMs: collectedAt.UnixMilli(), InventoryJson: string(payload)}:
-				case <-ctx.Done():
-					return
-				}
+				// The pending flag was already cleared to take this job, so
+				// without re-arming nothing would report inventory again for
+				// the life of the connection and nothing would say why.
+				log.Printf("axel-cli: collect inventory: %v; retrying in %s", err, inventoryRetryDelay)
+				time.AfterFunc(inventoryRetryDelay, func() {
+					select {
+					case inventoryRetry <- struct{}{}:
+					default:
+					}
+				})
 			}
 		}
 	}()
@@ -289,48 +407,93 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 	liveness := time.NewTimer(timings.liveness)
 	defer liveness.Stop()
 	var pending []*pb.DeviceCommand
-	inventoryPending := true
+	accepted := id.LastSeenSequence
+	// The inventory schedule belongs to the clock rather than to the
+	// connection. Collecting on every connect turns a gateway that accepts the
+	// stream and goes silent — one reconnect a minute — into three PowerShell
+	// sweeps a minute on every device in the fleet.
+	inventoryPending := storedErr != nil || time.Since(state.LastInventoryAt) >= timings.inventory
 	for {
 		var jobOut chan *pb.DeviceCommand
 		var next *pb.DeviceCommand
 		if len(pending) > 0 {
+			// Persistence is the at-most-once boundary, and it belongs to the
+			// moment a command is dequeued rather than the moment it is
+			// accepted: the gateway replays only past the sequence the device
+			// reported, so anything still queued when the stream drops has to
+			// remain replayable.
+			if pending[0].Sequence > id.LastSeenSequence {
+				if err := saveSequence(*id, pending[0].Sequence); err != nil {
+					return terminalError{fmt.Errorf("persist sequence %d: %w", pending[0].Sequence, err)}
+				}
+				id.LastSeenSequence = pending[0].Sequence
+				state.LastSeenSequence = id.LastSeenSequence
+				recordDaemonState(state)
+			}
 			jobOut, next = jobs, pending[0]
 		}
 		var inventoryOut chan struct{}
 		if inventoryPending {
 			inventoryOut = inventoryJobs
 		}
-		var outbound *pb.DeviceMessage
+		var message *pb.DeviceMessage
 		select {
 		case <-ctx.Done():
+			select {
+			case err := <-sendErr:
+				return err
+			default:
+			}
 			return ctx.Err()
+		case err := <-sendErr:
+			return err
 		case err := <-recvErr:
 			return authError("receive gateway message", err)
 		case <-liveness.C:
 			return fmt.Errorf("gateway silent for %s", timings.liveness)
 		case <-heartbeats.C:
-			outbound = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Heartbeat{Heartbeat: &pb.Heartbeat{UnixMs: time.Now().UnixMilli()}}}
+			message = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Heartbeat{Heartbeat: &pb.Heartbeat{UnixMs: time.Now().UnixMilli()}}}
 		case <-inventories.C:
+			inventoryPending = true
+			continue
+		case <-inventoryRetry:
 			inventoryPending = true
 			continue
 		case inventoryOut <- struct{}{}:
 			inventoryPending = false
 			continue
 		case report := <-inventoryReports:
-			outbound = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Inventory{Inventory: report}}
+			state.LastInventoryAt = time.UnixMilli(report.CollectedUnixMs)
+			recordDaemonState(state)
+			message = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Inventory{Inventory: report}}
 		case jobOut <- next:
 			pending = pending[1:]
 			continue
 		case result := <-results:
-			outbound = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Result{Result: result}}
+			message = &pb.DeviceMessage{Payload: &pb.DeviceMessage_Result{Result: result}}
 		case msg := <-incoming:
 			resetTimer(liveness, timings.liveness)
 			if enrollment := msg.GetEnrollment(); enrollment != nil {
 				if enrollment.Credential != "" {
-					if err := SaveCredentials(*id, "", enrollment.Credential); err != nil {
+					// The gateway consumes the single-use token before this
+					// write, and the token is only cleared by the same atomic
+					// write that stores the credential, so a transient failure
+					// here must be retried rather than left as a device that
+					// can never enrol again.
+					if err := storeCredential(*id, enrollment.Credential); err != nil {
 						return terminalError{fmt.Errorf("persist device credential: %w", err)}
 					}
 					id.EnrolmentToken, id.Credential = "", enrollment.Credential
+					// Enrolment binds this machine to the gateway; it does not
+					// say whose machine it is. The employee types this code into
+					// the portal to claim it, and `axel-cli status` is where they
+					// read it, so it is persisted with the rest of the snapshot.
+					if enrollment.ClaimCode != "" {
+						state.ClaimCode = enrollment.ClaimCode
+						state.UpdatedAt = time.Now()
+						recordDaemonState(state)
+						log.Printf("axel-cli: enrolled. Claim code: %s — enter it in the portal to link this computer to your account.", enrollment.ClaimCode)
+					}
 				} else if enrollment.CodeExpired {
 					return terminalError{fmt.Errorf("enrolment token was refused or expired; run axel-cli enroll again")}
 				} else if !enrollment.AuthValid && id.Credential != "" {
@@ -342,31 +505,44 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 			if command == nil {
 				continue
 			}
-			if command.Sequence <= id.LastSeenSequence {
-				outbound = duplicateAck(command)
+			if command.Sequence <= accepted {
+				message = duplicateAck(command)
 				break
 			}
 			if len(pending) >= maxPendingCommands {
-				outbound = rejectedCommand(command, "device command queue is full; command was not accepted")
+				message = rejectedCommand(command, "device command queue is full; command was not accepted")
 				break
 			}
-			// Persistence is the at-most-once boundary: never execute unless the
-			// sequence is durable first.
-			if err := saveSequence(*id, command.Sequence); err != nil {
-				return terminalError{fmt.Errorf("persist sequence %d: %w", command.Sequence, err)}
-			}
-			id.LastSeenSequence = command.Sequence
-			if err := saveDaemonState(DaemonState{Connected: true, GRPCHost: host, LastSeenSequence: id.LastSeenSequence}); err != nil {
-				return terminalError{fmt.Errorf("save daemon state: %w", err)}
-			}
+			accepted = command.Sequence
 			pending = append(pending, command)
 			continue
 		}
-		// This loop is the stream's only sender; grpc permits one sender and one receiver.
-		if err := stream.Send(outbound); err != nil {
-			return fmt.Errorf("send device message: %w", err)
+		send(message)
+	}
+}
+
+func reportSendFailure(sendErr chan error, err error) {
+	select {
+	case sendErr <- err:
+	default:
+	}
+}
+
+// storeCredential writes the issued credential, retrying the transient local
+// failures that are routine on Windows. The enrolment token it replaces has
+// already been spent at the gateway, so giving up on the first sharing
+// violation costs an operator a new token and the employee another visit.
+func storeCredential(id Identity, credential string) error {
+	var err error
+	for attempt := range credentialWriteTries {
+		if attempt > 0 {
+			time.Sleep(credentialWriteDelay << (attempt - 1))
+		}
+		if err = saveCredentials(id, "", credential); err == nil {
+			return nil
 		}
 	}
+	return err
 }
 
 // duplicateAck answers a replayed sequence without re-running the command. The

@@ -43,6 +43,14 @@ spec:
   {{- if and (eq .Values.api.grpcService.type "LoadBalancer") .Values.api.grpcService.loadBalancerIP }}
   loadBalancerIP: {{ .Values.api.grpcService.loadBalancerIP }}
   {{- end }}
+  {{- if eq .Values.api.grpcService.type "LoadBalancer" }}
+  {{- with .Values.api.grpcService.loadBalancerSourceRanges }}
+  # Who the load balancer accepts connections from. Left off, the provider
+  # default is every address there is.
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
   ports:
     - name: grpc
       port: {{ .Values.api.grpcService.port }}
@@ -154,7 +162,7 @@ spec:
           ports:
             # 3000 is hard-coded in api/src/index.ts; there is no PORT variable.
             - name: http
-              containerPort: 3000
+              containerPort: {{ .Values.api.config.port }}
               protocol: TCP
             - name: grpc
               containerPort: {{ $grpcPort }}

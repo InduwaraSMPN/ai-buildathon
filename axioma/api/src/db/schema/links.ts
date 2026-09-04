@@ -47,12 +47,15 @@ export const ticketMerges = pgTable(
 	"ticket_merges",
 	{
 		id: text("id").primaryKey(),
+		// Both cascade for the same reason `ticket_number_history` does: RESTRICT
+		// under a cascading parent is not a guard, it is a wall that makes the
+		// parent undeletable.
 		sourceTicketId: text("source_ticket_id")
 			.notNull()
-			.references(() => tickets.id, { onDelete: "restrict" }),
+			.references(() => tickets.id, { onDelete: "cascade" }),
 		targetTicketId: text("target_ticket_id")
 			.notNull()
-			.references(() => tickets.id, { onDelete: "restrict" }),
+			.references(() => tickets.id, { onDelete: "cascade" }),
 		sourcePreviousStatus: text("source_previous_status").notNull(),
 		mergedBy: text("merged_by").notNull(),
 		mergedAt: timestamp("merged_at").defaultNow().notNull(),

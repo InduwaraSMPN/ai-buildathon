@@ -1,4 +1,5 @@
-import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull } from "drizzle-orm";
+import type { PgColumn } from "drizzle-orm/pg-core";
 import type { createDb } from "@/db";
 import {
 	agentRuns,
@@ -17,6 +18,9 @@ import {
 import {
 	reconcileSearchDocuments,
 	type SearchDocumentInput,
+	type SearchReconciliationBatch,
+	type SearchReconciliationBatchOptions,
+	type SearchReconciliationSource,
 	upsertSearchDocument,
 } from "./index";
 
@@ -310,6 +314,31 @@ async function assetFields(db: Db, assetId: string) {
 	return Object.fromEntries(rows.map((row) => [row.key, row.value]));
 }
 
+/**
+ * Custom fields for a whole page of assets in one query. Asking per asset was
+ * an N+1 fired as a single unbounded `Promise.all`, which put one query per
+ * changed asset into a ten-connection pool at once.
+ */
+async function assetFieldsByAsset(db: Db, assetIds: readonly string[]) {
+	const grouped = new Map<string, Record<string, unknown>>();
+	if (!assetIds.length) return grouped;
+	const rows = await db
+		.select({
+			objectId: dynamicFieldValues.objectId,
+			key: dynamicFields.key,
+			value: dynamicFieldValues.value,
+		})
+		.from(dynamicFieldValues)
+		.innerJoin(dynamicFields, eq(dynamicFieldValues.fieldId, dynamicFields.id))
+		.where(inArray(dynamicFieldValues.objectId, [...assetIds]));
+	for (const row of rows) {
+		const fields = grouped.get(row.objectId) ?? {};
+		fields[row.key] = row.value;
+		grouped.set(row.objectId, fields);
+	}
+	return grouped;
+}
+
 export async function indexAsset(db: Db, id: string): Promise<boolean> {
 	const [asset] = await db
 		.select()
@@ -350,143 +379,229 @@ export async function indexCmdbObject(db: Db, id: string): Promise<boolean> {
 	return true;
 }
 
+/**
+ * Keyset boundary for a loader page. Every loader orders by its source table's
+ * primary key and projects that key as the object id, so the last document of a
+ * page is the exclusive lower bound of the next one.
+ */
+const afterId = (column: PgColumn, cursor: string) =>
+	cursor ? gt(column, cursor) : undefined;
+
+const coreSources = (db: Db): readonly SearchReconciliationSource[] => [
+	{
+		objectType: "ticket",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select()
+					.from(tickets)
+					.where(
+						and(
+							gte(tickets.updatedAt, changedSince),
+							afterId(tickets.id, after),
+						),
+					)
+					.orderBy(asc(tickets.id))
+					.limit(limit)
+			).map(ticketDocument),
+	},
+	{
+		objectType: "cmdb_object",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select({ object: cmdbObjects, classKey: cmdbClasses.key })
+					.from(cmdbObjects)
+					.innerJoin(cmdbClasses, eq(cmdbObjects.classId, cmdbClasses.id))
+					.where(
+						and(
+							gte(cmdbObjects.observedAt, changedSince),
+							afterId(cmdbObjects.id, after),
+						),
+					)
+					.orderBy(asc(cmdbObjects.id))
+					.limit(limit)
+			).map(({ object, classKey }) => cmdbDocument(object, classKey)),
+	},
+	{
+		objectType: "asset",
+		loadChanged: async (changedSince, limit, after) => {
+			const page = await db
+				.select()
+				.from(assets)
+				.where(
+					and(gte(assets.updatedAt, changedSince), afterId(assets.id, after)),
+				)
+				.orderBy(asc(assets.id))
+				.limit(limit);
+			const fields = await assetFieldsByAsset(
+				db,
+				page.map((asset) => asset.id),
+			);
+			return page.map((asset) =>
+				assetDocument(asset, fields.get(asset.id) ?? {}),
+			);
+		},
+	},
+	{
+		objectType: "problem",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select()
+					.from(problems)
+					.where(
+						and(
+							gte(problems.updatedAt, changedSince),
+							afterId(problems.id, after),
+						),
+					)
+					.orderBy(asc(problems.id))
+					.limit(limit)
+			).map(problemDocument),
+	},
+	{
+		objectType: "change",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select()
+					.from(changes)
+					.where(
+						and(
+							gte(changes.updatedAt, changedSince),
+							afterId(changes.id, after),
+						),
+					)
+					.orderBy(asc(changes.id))
+					.limit(limit)
+			).map(changeDocument),
+	},
+	{
+		objectType: "knowledge_article",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select()
+					.from(knowledgeArticles)
+					.where(
+						and(
+							gte(knowledgeArticles.updatedAt, changedSince),
+							afterId(knowledgeArticles.id, after),
+						),
+					)
+					.orderBy(asc(knowledgeArticles.id))
+					.limit(limit)
+			).map(knowledgeArticleDocument),
+	},
+	{
+		objectType: "known_error",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select()
+					.from(problems)
+					.where(
+						and(
+							gte(problems.updatedAt, changedSince),
+							eq(problems.isKnownError, true),
+							isNotNull(problems.workaround),
+							afterId(problems.id, after),
+						),
+					)
+					.orderBy(asc(problems.id))
+					.limit(limit)
+			).map(knownErrorDocument),
+	},
+	{
+		objectType: "resolved_ticket",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select({ ticket: tickets })
+					.from(tickets)
+					.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
+					.where(
+						and(
+							gte(tickets.updatedAt, changedSince),
+							eq(ticketStatuses.isClosed, true),
+							isNotNull(tickets.resolution),
+							afterId(tickets.id, after),
+						),
+					)
+					.orderBy(asc(tickets.id))
+					.limit(limit)
+			).map(({ ticket }) => resolvedTicketDocument(ticket)),
+	},
+	{
+		objectType: "agent_run",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select()
+					.from(agentRuns)
+					.where(
+						and(
+							gte(agentRuns.endedAt, changedSince),
+							inArray(agentRuns.status, [
+								"resolved",
+								"escalated",
+								"failed",
+								"exhausted",
+							]),
+							isNotNull(agentRuns.outcome),
+							afterId(agentRuns.id, after),
+						),
+					)
+					.orderBy(asc(agentRuns.id))
+					.limit(limit)
+			).map(agentRunDocument),
+	},
+	{
+		objectType: "document",
+		loadChanged: async (changedSince, limit, after) =>
+			(
+				await db
+					.select()
+					.from(documents)
+					.where(
+						and(
+							gte(documents.createdAt, changedSince),
+							afterId(documents.id, after),
+						),
+					)
+					.orderBy(asc(documents.id))
+					.limit(limit)
+			).map(linkedDocument),
+	},
+];
+
 export function reconcileCoreSearchDocuments(
 	db: Db,
 	since: Date,
-): Promise<number> {
-	return reconcileSearchDocuments(
+): Promise<number>;
+export function reconcileCoreSearchDocuments(
+	db: Db,
+	since: Date,
+	batch: SearchReconciliationBatchOptions,
+): Promise<SearchReconciliationBatch>;
+/**
+ * Loaders page in either mode, so no call loads a whole table. Passing a batch
+ * bound additionally caps how much one call indexes and hands back the cursor
+ * to resume from — the sweep is otherwise serial in the embedding provider, one
+ * request per embeddable row. Omitting the bound keeps the drain-everything
+ * semantics the scheduled sweep relies on to advance its watermark safely.
+ */
+export async function reconcileCoreSearchDocuments(
+	db: Db,
+	since: Date,
+	batch?: SearchReconciliationBatchOptions,
+): Promise<number | SearchReconciliationBatch> {
+	const result = await reconcileSearchDocuments(
 		db,
-		[
-			{
-				objectType: "ticket",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select()
-							.from(tickets)
-							.where(gte(tickets.updatedAt, changedSince))
-					).map(ticketDocument),
-			},
-			{
-				objectType: "cmdb_object",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select({ object: cmdbObjects, classKey: cmdbClasses.key })
-							.from(cmdbObjects)
-							.innerJoin(cmdbClasses, eq(cmdbObjects.classId, cmdbClasses.id))
-							.where(gte(cmdbObjects.observedAt, changedSince))
-					).map(({ object, classKey }) => cmdbDocument(object, classKey)),
-			},
-			{
-				objectType: "asset",
-				loadChanged: async (changedSince) =>
-					Promise.all(
-						(
-							await db
-								.select()
-								.from(assets)
-								.where(gte(assets.updatedAt, changedSince))
-						).map(async (asset) =>
-							assetDocument(asset, await assetFields(db, asset.id)),
-						),
-					),
-			},
-			{
-				objectType: "problem",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select()
-							.from(problems)
-							.where(gte(problems.updatedAt, changedSince))
-					).map(problemDocument),
-			},
-			{
-				objectType: "change",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select()
-							.from(changes)
-							.where(gte(changes.updatedAt, changedSince))
-					).map(changeDocument),
-			},
-			{
-				objectType: "knowledge_article",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select()
-							.from(knowledgeArticles)
-							.where(gte(knowledgeArticles.updatedAt, changedSince))
-					).map(knowledgeArticleDocument),
-			},
-			{
-				objectType: "known_error",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select()
-							.from(problems)
-							.where(
-								and(
-									gte(problems.updatedAt, changedSince),
-									eq(problems.isKnownError, true),
-									isNotNull(problems.workaround),
-								),
-							)
-					).map(knownErrorDocument),
-			},
-			{
-				objectType: "resolved_ticket",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select({ ticket: tickets })
-							.from(tickets)
-							.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
-							.where(
-								and(
-									gte(tickets.updatedAt, changedSince),
-									eq(ticketStatuses.isClosed, true),
-									isNotNull(tickets.resolution),
-								),
-							)
-					).map(({ ticket }) => resolvedTicketDocument(ticket)),
-			},
-			{
-				objectType: "agent_run",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select()
-							.from(agentRuns)
-							.where(
-								and(
-									gte(agentRuns.endedAt, changedSince),
-									inArray(agentRuns.status, [
-										"resolved",
-										"escalated",
-										"failed",
-										"exhausted",
-									]),
-									isNotNull(agentRuns.outcome),
-								),
-							)
-					).map(agentRunDocument),
-			},
-			{
-				objectType: "document",
-				loadChanged: async (changedSince) =>
-					(
-						await db
-							.select()
-							.from(documents)
-							.where(gte(documents.createdAt, changedSince))
-					).map(linkedDocument),
-			},
-		],
+		coreSources(db),
 		since,
+		batch ?? {},
 	);
+	return batch ? result : result.indexed;
 }

@@ -4,6 +4,7 @@
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { CAPABILITIES } from "../shared";
 import { capability } from "./shared";
 
 const directoryPerson = z.object({
@@ -105,7 +106,9 @@ export const identityContract = {
 		.input(
 			z.object({
 				roleId: z.string().min(1),
-				capabilities: z.array(capability),
+				// The handler de-duplicates, so no honest payload can be longer
+				// than the set of capabilities that exist.
+				capabilities: z.array(capability).max(CAPABILITIES.length),
 			}),
 		)
 		.output(role),

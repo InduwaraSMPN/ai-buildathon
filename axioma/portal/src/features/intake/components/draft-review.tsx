@@ -363,7 +363,7 @@ export function DraftReview({
 						</FieldProvenance>
 						<Select
 							name="deviceId"
-							value={state.values.deviceId ?? null}
+							value={state.values.deviceId || null}
 							onValueChange={(value) => onFieldChange("deviceId", value ?? "")}
 						>
 							<SelectTrigger id="intake-device" className="w-full">
@@ -371,6 +371,10 @@ export function DraftReview({
 							</SelectTrigger>
 							<SelectContent>
 								<SelectGroup>
+									{/* Without an empty option a device the model chose could
+									    only be swapped, never taken off, and the request was
+									    filed against the wrong computer. */}
+									<SelectItem value={null}>{intakeCopy.noDevice}</SelectItem>
 									{devices.data.map((device) => (
 										<SelectItem key={device.id} value={device.id}>
 											{device.hostname}, {requestFormCopy.lastSeen}{" "}

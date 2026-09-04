@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -17,13 +18,30 @@ const inbound = z.object({
 	receivedAt: z.coerce.date().default(() => new Date()),
 });
 
+/**
+ * `!==` on a secret returns as soon as two bytes differ, which leaks the shared
+ * token one character at a time to anyone who can time the endpoint.
+ * `timingSafeEqual` throws on a length mismatch, so the length — which is not
+ * itself a secret — is compared first.
+ */
+function authorizationMatches(supplied: string | undefined, token: string) {
+	const expected = Buffer.from(`Bearer ${token}`);
+	const offered = Buffer.from(supplied ?? "");
+	return (
+		offered.length === expected.length && timingSafeEqual(offered, expected)
+	);
+}
+
 export const mailHttp = new Hono();
 
 mailHttp.post("/mail/inbound", async (c) => {
 	if (!env.AXIOMA_MAIL_INBOUND_TOKEN)
 		return c.json({ error: "Not configured" }, 404);
 	if (
-		c.req.header("authorization") !== `Bearer ${env.AXIOMA_MAIL_INBOUND_TOKEN}`
+		!authorizationMatches(
+			c.req.header("authorization"),
+			env.AXIOMA_MAIL_INBOUND_TOKEN,
+		)
 	)
 		return c.json({ error: "Unauthorized" }, 401);
 	const parsed = inbound.safeParse(await c.req.json().catch(() => undefined));

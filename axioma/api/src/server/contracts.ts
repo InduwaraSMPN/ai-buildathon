@@ -22,9 +22,13 @@ export function resolveContractSla(
 	if (Number.isNaN(at.getTime()))
 		throw new RangeError("at must be a valid date");
 
+	// Validation runs after the service match, not before it: validating every
+	// candidate meant one malformed window — an overnight 22:00–06:00 entry, say
+	// — threw for every ticket on every service, not only for the contract that
+	// carried it.
 	const matches = coverage.filter((candidate) => {
-		validateCoverage(candidate);
 		if (!candidate.active || candidate.serviceId !== serviceId) return false;
+		validateCoverage(candidate);
 		const local = localDateTime(at, candidate.timezone);
 		return (
 			local.date >= candidate.startsOn &&

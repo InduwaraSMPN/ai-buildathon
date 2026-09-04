@@ -65,7 +65,6 @@ import {
 } from "../orpc";
 import { nextPendingFollowupAt } from "../pending";
 import { listLinkedPublishedWorkarounds } from "../problems";
-import { measureTokensPerTicket } from "../rules";
 import { indexTicket } from "../search/projections";
 import { listTicketSla, slaAttainment } from "../sla/read";
 import { transitionTicketStopwatches } from "../sla/runtime";
@@ -337,8 +336,12 @@ export const ticketsRouter = {
 					)
 				: undefined,
 			input.deviceId ? eq(tickets.deviceId, input.deviceId) : undefined,
+			// Parenthesised: `and()` concatenates its operands verbatim, so a bare
+			// top-level `or` here would bind looser than the surrounding `and`s and
+			// silently drop every other filter from one half of the predicate —
+			// including the reporter scope.
 			input.unassigned
-				? sql`${tickets.route} is null or ${tickets.route} = 'unassigned'`
+				? or(sql`${tickets.route} is null`, eq(tickets.route, "unassigned"))
 				: undefined,
 			input.escalatedSince
 				? sql`exists (
@@ -730,28 +733,33 @@ export const ticketsRouter = {
 	).addMyTicketMessage.handler(async ({ context, input }) => {
 		const ticket = await findTicket(input.ticketId, context.userId);
 		if (!ticket) throw new ORPCError("NOT_FOUND");
-		const [message] = await db
-			.insert(ticketMessages)
-			.values({
-				id: crypto.randomUUID(),
-				ticketId: input.ticketId,
-				authorId: context.userId,
-				authorType: "reporter",
-				body: input.body,
-				visibility: "public",
-			})
-			.returning();
-		if (!message) throw new ORPCError("INTERNAL_SERVER_ERROR");
-		if (ticket.statusStateType === "pending") {
-			const nextStatus = await resolveTicketStatus(ticket.status, "unpend");
-			const changed = await db
+		const unpendStatus =
+			ticket.statusStateType === "pending"
+				? await resolveTicketStatus(ticket.status, "unpend")
+				: null;
+		const message = await db.transaction(async (tx) => {
+			const [message] = await tx
+				.insert(ticketMessages)
+				.values({
+					id: crypto.randomUUID(),
+					ticketId: input.ticketId,
+					authorId: context.userId,
+					authorType: "reporter",
+					body: input.body,
+					visibility: "public",
+				})
+				.returning();
+			if (!message) throw new ORPCError("INTERNAL_SERVER_ERROR");
+			if (!unpendStatus) return message;
+			const now = new Date();
+			const changed = await tx
 				.update(tickets)
 				.set({
-					status: nextStatus,
+					status: unpendStatus,
 					pendingReasonId: null,
 					pendingUntil: null,
 					lastPendingAt: null,
-					updatedAt: new Date(),
+					updatedAt: now,
 				})
 				.where(
 					and(
@@ -760,9 +768,22 @@ export const ticketsRouter = {
 					),
 				)
 				.returning({ id: tickets.id });
-			if (changed[0])
-				await transitionTicketStopwatches(input.ticketId, nextStatus);
-		}
+			if (!changed[0]) return message;
+			await tx.insert(ticketTransitions).values({
+				id: crypto.randomUUID(),
+				ticketId: input.ticketId,
+				fromStatus: ticket.status,
+				toStatus: unpendStatus,
+				action: "unpend",
+				// The reporter drove this, not a person working the queue: recorded as
+				// `agent` so it is not counted as human handling until the column's
+				// enum admits `reporter`.
+				actorType: "agent",
+				actorId: context.userId,
+			});
+			await transitionTicketStopwatches(input.ticketId, unpendStatus, now, tx);
+			return message;
+		});
 		const [portalMessage] = toPortalMessages([message]);
 		if (!portalMessage) throw new ORPCError("INTERNAL_SERVER_ERROR");
 		return portalMessage;
@@ -1251,7 +1272,18 @@ export const ticketsRouter = {
 				.where(
 					and(eq(tickets.id, input.id), eq(tickets.status, current.status)),
 				)
-				.returning({ id: tickets.id });
+				.returning({
+					recordType: tickets.recordType,
+					impact: tickets.impact,
+					urgency: tickets.urgency,
+					priority: tickets.priority,
+					serviceId: tickets.serviceId,
+					serviceSubcategoryId: tickets.serviceSubcategoryId,
+					route: tickets.route,
+					assigneeId: tickets.assigneeId,
+					ownerId: tickets.ownerId,
+					teamId: tickets.teamId,
+				});
 			if (!changed[0])
 				throw new ORPCError("CONFLICT", {
 					message: "Ticket changed while it was being updated",
@@ -1286,7 +1318,32 @@ export const ticketsRouter = {
 					actorType: "human",
 					actorId: context.userId,
 				});
-			return changed;
+			// Audited from the returned row inside the same transaction: written on
+			// the pool afterwards, the trail could be lost while the change stood.
+			const auditRows = auditChanges(
+				{
+					recordType: current.recordType,
+					impact: current.impact,
+					urgency: current.urgency,
+					priority: current.priority,
+					serviceId: current.serviceId,
+					serviceSubcategoryId: current.serviceSubcategoryId,
+					route: current.route,
+					assigneeId: current.assigneeId,
+					ownerId: current.ownerId,
+					teamId: current.teamId,
+				},
+				changed[0],
+			);
+			if (auditRows.length)
+				await tx.insert(ticketAudit).values(
+					auditRows.map((change) => ({
+						id: crypto.randomUUID(),
+						ticketId: input.id,
+						actorId: context.userId,
+						...change,
+					})),
+				);
 		});
 		const updated = await findTicket(input.id);
 		if (!updated) throw new ORPCError("NOT_FOUND");
@@ -1309,41 +1366,6 @@ export const ticketsRouter = {
 		}).catch((error) =>
 			console.error("[tickets] workflow dispatch failed", error),
 		);
-		const changes = auditChanges(
-			{
-				recordType: current.recordType,
-				impact: current.impact,
-				urgency: current.urgency,
-				priority: current.priority,
-				serviceId: current.serviceId,
-				serviceSubcategoryId: current.serviceSubcategoryId,
-				route: current.route,
-				assigneeId: current.assigneeId,
-				ownerId: current.ownerId,
-				teamId: current.teamId,
-			},
-			{
-				recordType: updated.recordType,
-				impact: updated.impact,
-				urgency: updated.urgency,
-				priority: updated.priority,
-				serviceId: updated.serviceId,
-				serviceSubcategoryId: updated.serviceSubcategoryId,
-				route: updated.route,
-				assigneeId: updated.assigneeId,
-				ownerId: updated.ownerId,
-				teamId: updated.teamId,
-			},
-		);
-		if (changes.length)
-			await db.insert(ticketAudit).values(
-				changes.map((change) => ({
-					id: crypto.randomUUID(),
-					ticketId: input.id,
-					actorId: context.userId,
-					...change,
-				})),
-			);
 		return updated;
 	}),
 	ticketStats: capabilityProcedure("stats.read").ticketStats.handler(
@@ -1351,6 +1373,8 @@ export const ticketsRouter = {
 			const since = new Date(Date.now() - (input.days - 1) * 86_400_000);
 			since.setUTCHours(0, 0, 0, 0);
 			const escalatedSince = new Date(Date.now() - 86_400_000);
+			const modelSettled = sql`exists (select 1 from ${agentRuns} where ${agentRuns.ticketId} = ${tickets.id})`;
+			const ruleSettled = sql`exists (select 1 from ${ticketRuleFirings} where ${ticketRuleFirings.ticketId} = ${tickets.id})`;
 			const [
 				statusDefinitions,
 				statuses,
@@ -1362,9 +1386,8 @@ export const ticketsRouter = {
 				outcomeDaily,
 				resolutionRows,
 				escalatedRows,
-				closedTickets,
-				ruleSettledRows,
-				tokenRuns,
+				settledRows,
+				tokenRows,
 				csatRows,
 				attainment,
 			] = await Promise.all([
@@ -1450,14 +1473,17 @@ export const ticketsRouter = {
 					),
 				db
 					.select({
-						duration:
-							sql<number>`extract(epoch from (${tickets.resolvedAt} - ${tickets.createdAt})) * 1000`.mapWith(
-								Number,
-							),
+						median: sql<
+							number | null
+						>`percentile_cont(0.5) within group (order by extract(epoch from (${tickets.resolvedAt} - ${tickets.createdAt})) * 1000)`,
 					})
 					.from(tickets)
-					.where(sql`${tickets.resolvedAt} is not null`)
-					.orderBy(sql`${tickets.resolvedAt} - ${tickets.createdAt}`),
+					.where(
+						and(
+							sql`${tickets.resolvedAt} is not null`,
+							gte(tickets.resolvedAt, since),
+						),
+					),
 				db
 					.select({ count: countDistinct(ticketTransitions.ticketId) })
 					.from(ticketTransitions)
@@ -1471,59 +1497,74 @@ export const ticketsRouter = {
 							gte(ticketTransitions.createdAt, escalatedSince),
 						),
 					),
-				db
-					.select({ id: tickets.id })
-					.from(tickets)
-					.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
-					.where(eq(ticketStatuses.isClosed, true)),
-				db
-					.selectDistinct({ ticketId: ticketRuleFirings.ticketId })
-					.from(ticketRuleFirings),
+				// The settled cohort is counted in the database: read back as rows it
+				// was every closed ticket, every rule firing and every agent run.
 				db
 					.select({
-						ticketId: agentRuns.ticketId,
-						promptTokens: agentRuns.promptTokens,
-						completionTokens: agentRuns.completionTokens,
+						closed: count(),
+						model: sql<number>`count(*) filter (where ${modelSettled})`.mapWith(
+							Number,
+						),
+						rule: sql<number>`count(*) filter (where not ${modelSettled} and ${ruleSettled})`.mapWith(
+							Number,
+						),
 					})
-					.from(agentRuns),
+					.from(tickets)
+					.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
+					.where(
+						and(
+							eq(ticketStatuses.isClosed, true),
+							gte(tickets.closedAt, since),
+						),
+					),
+				db
+					.select({
+						promptTokens:
+							sql<number>`coalesce(sum(${agentRuns.promptTokens}), 0)`.mapWith(
+								Number,
+							),
+						completionTokens:
+							sql<number>`coalesce(sum(${agentRuns.completionTokens}), 0)`.mapWith(
+								Number,
+							),
+					})
+					.from(agentRuns)
+					.innerJoin(tickets, eq(agentRuns.ticketId, tickets.id))
+					.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
+					.where(
+						and(
+							eq(ticketStatuses.isClosed, true),
+							gte(tickets.closedAt, since),
+						),
+					),
 				db
 					.select({ rating: ticketCsatResponses.rating, count: count() })
 					.from(ticketCsatResponses)
 					.where(sql`${ticketCsatResponses.rating} is not null`)
 					.groupBy(ticketCsatResponses.rating),
-				slaAttainment(),
+				slaAttainment(since),
 			]);
 			const dates = Array.from({ length: input.days }, (_, index) =>
 				new Date(since.getTime() + index * 86_400_000)
 					.toISOString()
 					.slice(0, 10),
 			);
-			const middle = Math.floor(resolutionRows.length / 2);
-			const median = !resolutionRows.length
-				? null
-				: resolutionRows.length % 2
-					? (resolutionRows[middle]?.duration ?? 0)
-					: ((resolutionRows[middle - 1]?.duration ?? 0) +
-							(resolutionRows[middle]?.duration ?? 0)) /
-						2;
-			const closedTicketIds = closedTickets.map(({ id }) => id);
-			const closedSet = new Set(closedTicketIds);
-			const modelSettledIds = new Set(
-				tokenRuns
-					.filter(({ ticketId }) => closedSet.has(ticketId))
-					.map(({ ticketId }) => ticketId),
-			);
-			const modelSettled = modelSettledIds.size;
-			const ruleSettled = ruleSettledRows.filter(
-				({ ticketId }) =>
-					closedSet.has(ticketId) && !modelSettledIds.has(ticketId),
-			).length;
-			const autonomousClosed = ruleSettled + modelSettled;
-			const closedTotal = closedTicketIds.length;
-			const tokensPerTicket = measureTokensPerTicket(
-				closedTicketIds,
-				tokenRuns,
-			);
+			const median = resolutionRows[0]?.median ?? null;
+			const settled = settledRows[0];
+			const modelSettledCount = settled?.model ?? 0;
+			const ruleSettledCount = settled?.rule ?? 0;
+			const autonomousClosed = ruleSettledCount + modelSettledCount;
+			const closedTotal = settled?.closed ?? 0;
+			const promptTokens = tokenRows[0]?.promptTokens ?? 0;
+			const completionTokens = tokenRows[0]?.completionTokens ?? 0;
+			const totalTokens = promptTokens + completionTokens;
+			const tokensPerTicket = {
+				ticketCount: closedTotal,
+				promptTokens,
+				completionTokens,
+				totalTokens,
+				tokensPerTicket: closedTotal ? totalTokens / closedTotal : null,
+			};
 			const csatResponses = csatRows.reduce((sum, row) => sum + row.count, 0);
 			const csatTotal = csatRows.reduce(
 				(sum, row) => sum + (row.rating ?? 0) * row.count,
@@ -1576,7 +1617,7 @@ export const ticketsRouter = {
 				autonomousResolutionRate: closedTotal
 					? autonomousClosed / closedTotal
 					: null,
-				settledBy: { rule: ruleSettled, model: modelSettled },
+				settledBy: { rule: ruleSettledCount, model: modelSettledCount },
 				tokensPerTicket,
 				attainment,
 				csat: {

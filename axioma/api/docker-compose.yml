@@ -9,7 +9,10 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
     ports:
-      - "5432:5432"
+      # Loopback only. Two scripts hardcode this DSN as their fallback, so the
+      # weak development password is load-bearing; published on all interfaces
+      # it made the database reachable from the rest of the network.
+      - "127.0.0.1:5432:5432"
     volumes:
       - axioma_postgres_data:/var/lib/postgresql
     healthcheck:

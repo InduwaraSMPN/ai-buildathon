@@ -139,6 +139,17 @@ export function ConnectorDetail({ connectorId }: { connectorId: string }) {
 				description="Reading connector configuration."
 			/>
 		);
+	// A failed list is not a missing connector — reporting it as deleted sends the
+	// operator looking for a record that is still there.
+	if (connectors.isError)
+		return (
+			<PageState
+				kind="error"
+				title="Connector unavailable"
+				description={connectors.error.message}
+				onRetry={() => connectors.refetch()}
+			/>
+		);
 	const connector = (connectors.data ?? []).find(
 		(candidate) => candidate.id === connectorId,
 	);

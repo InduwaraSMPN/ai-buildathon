@@ -1,7 +1,9 @@
 import { RiRobot2Line } from "@remixicon/react";
 import type { ReactNode } from "react";
 import { useMemo } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Bubble, BubbleContent, BubbleGroup } from "@/components/ui/bubble";
+import { Button } from "@/components/ui/button";
 import {
 	Message,
 	MessageAvatar,
@@ -16,7 +18,7 @@ import {
 } from "@/components/ui/message-scroller";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDebouncedAnnouncement } from "@/features/intake/announce";
-import { intakeCopy } from "@/features/intake/copy";
+import { intakeCopy, intakeErrorCopy } from "@/features/intake/copy";
 import type { IntakeStage, TranscriptEntry } from "@/features/intake/types";
 
 function StatusLine({ text }: { text: string }) {
@@ -60,8 +62,10 @@ export function IntakeConversation({
 	assistantMessage,
 	articleCount,
 	stage,
+	error,
 	onDeflectionSolved,
 	onDeflectionContinue,
+	onManual,
 	renderDeflection,
 }: {
 	transcript: TranscriptEntry[];
@@ -75,8 +79,11 @@ export function IntakeConversation({
 	assistantMessage: string;
 	articleCount: number;
 	stage: IntakeStage;
+	/** The reducer's failed turn. Nothing used to render it, so a failure was silent. */
+	error: { code: string; message: string } | null;
 	onDeflectionSolved: () => void;
 	onDeflectionContinue: () => void;
+	onManual: () => void;
 	renderDeflection?: (args: {
 		onSolved: () => void;
 		onContinue: () => void;
@@ -113,58 +120,84 @@ export function IntakeConversation({
 			>
 				{announcement}
 			</div>
-			<MessageScroller>
-				<MessageScrollerViewport>
-					<MessageScrollerContent className="px-4 py-4">
-						<MessageGroup>
-							{transcript.map((entry, index) =>
-								entry.role === "assistant" ? (
-									// biome-ignore lint/suspicious/noArrayIndexKey: transcript is append-only and has no stable id
-									<MessageScrollerItem key={`${entry.role}-${index}`}>
-										<AssistantBubble>{entry.body}</AssistantBubble>
-									</MessageScrollerItem>
-								) : (
-									// biome-ignore lint/suspicious/noArrayIndexKey: transcript is append-only and has no stable id
-									<MessageScrollerItem key={`${entry.role}-${index}`}>
-										<Message align="end">
-											<MessageContent>
-												<BubbleGroup>
-													<Bubble align="end">
-														<BubbleContent>{entry.body}</BubbleContent>
-													</Bubble>
-												</BubbleGroup>
-											</MessageContent>
-										</Message>
-									</MessageScrollerItem>
-								),
-							)}
-						</MessageGroup>
+			<div className="min-h-0 flex-1">
+				<MessageScroller>
+					<MessageScrollerViewport>
+						<MessageScrollerContent className="px-4 py-4">
+							<MessageGroup>
+								{transcript.map((entry, index) =>
+									entry.role === "assistant" ? (
+										// biome-ignore lint/suspicious/noArrayIndexKey: transcript is append-only and has no stable id
+										<MessageScrollerItem key={`${entry.role}-${index}`}>
+											<AssistantBubble>{entry.body}</AssistantBubble>
+										</MessageScrollerItem>
+									) : (
+										// biome-ignore lint/suspicious/noArrayIndexKey: transcript is append-only and has no stable id
+										<MessageScrollerItem key={`${entry.role}-${index}`}>
+											<Message align="end">
+												<MessageContent>
+													<BubbleGroup>
+														<Bubble align="end">
+															<BubbleContent>{entry.body}</BubbleContent>
+														</Bubble>
+													</BubbleGroup>
+												</MessageContent>
+											</Message>
+										</MessageScrollerItem>
+									),
+								)}
+							</MessageGroup>
 
-						{streaming || stage === "triage" ? (
-							<MessageScrollerItem scrollAnchor>
-								<AssistantBubble>
-									<div className="flex min-w-0 flex-col gap-2">
-										{busyStage ? (
-											<StatusLine text={intakeCopy.statusLabel[busyStage]} />
-										) : null}
-										{assistantMessage ? (
-											<div className="whitespace-pre-wrap">
-												{assistantMessage}
-											</div>
-										) : null}
-										{deflection && renderDeflection
-											? renderDeflection({
-													onSolved: onDeflectionSolved,
-													onContinue: onDeflectionContinue,
-												})
-											: null}
-									</div>
-								</AssistantBubble>
-							</MessageScrollerItem>
+							{streaming || stage === "triage" ? (
+								<MessageScrollerItem scrollAnchor>
+									<AssistantBubble>
+										<div className="flex min-w-0 flex-col gap-2">
+											{busyStage ? (
+												<StatusLine text={intakeCopy.statusLabel[busyStage]} />
+											) : null}
+											{assistantMessage ? (
+												<div className="whitespace-pre-wrap">
+													{assistantMessage}
+												</div>
+											) : null}
+											{deflection && renderDeflection
+												? renderDeflection({
+														onSolved: onDeflectionSolved,
+														onContinue: onDeflectionContinue,
+													})
+												: null}
+										</div>
+									</AssistantBubble>
+								</MessageScrollerItem>
+							) : null}
+						</MessageScrollerContent>
+					</MessageScrollerViewport>
+				</MessageScroller>
+			</div>
+			{/* Pinned below the transcript rather than scrolled into it, so the one
+			    thing the employee has to act on sits directly above the composer. */}
+			{error ? (
+				<div className="border-t p-4">
+					<Alert variant="destructive">
+						<AlertTitle>{intakeCopy.errorHeading}</AlertTitle>
+						{/* Never the server's own `message`: it is written for whoever
+						    reads the logs, not for the person who hit the wall. */}
+						<AlertDescription>{intakeErrorCopy(error.code)}</AlertDescription>
+						{/* The turn limit is the one failure retrying cannot clear, so it
+						    is the one that has to hand over the escape hatch. */}
+						{error.code === "MAX_TURNS_EXCEEDED" ? (
+							<Button
+								variant="outline"
+								size="sm"
+								className="mt-2 justify-self-start"
+								onClick={onManual}
+							>
+								{intakeCopy.manualEscape}
+							</Button>
 						) : null}
-					</MessageScrollerContent>
-				</MessageScrollerViewport>
-			</MessageScroller>
+					</Alert>
+				</div>
+			) : null}
 		</div>
 	);
 }

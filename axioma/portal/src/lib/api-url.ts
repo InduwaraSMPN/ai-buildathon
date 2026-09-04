@@ -23,6 +23,7 @@ const apiBase = () =>
 
 export const apiUrl = (path: string) => new URL(path, apiBase()).toString();
 
-const siteBase = () => resolveBase("siteUrl", env.VITE_SITE_URL, "VITE_SITE_URL");
+const siteBase = () =>
+	resolveBase("siteUrl", env.VITE_SITE_URL, "VITE_SITE_URL");
 
 export const siteUrl = (path: string) => new URL(path, siteBase()).toString();

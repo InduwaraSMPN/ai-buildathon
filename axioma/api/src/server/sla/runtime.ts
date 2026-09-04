@@ -134,20 +134,37 @@ export async function transitionTicketStopwatches(
 				? status.stateType === "new"
 				: !["resolved", "closed"].includes(status.stateType));
 		if (watch.running === nextRunning) continue;
-		const next = transitionStopwatch(
-			watch,
-			nextRunning,
-			at,
-			await elapsedWorkingMs(watch.startedAt, at, policy.calendarId),
+		const checkpoint = async (state: typeof watch) =>
+			database
+				.update(ticketStopwatches)
+				.set(
+					transitionStopwatch(
+						state,
+						nextRunning,
+						at,
+						await elapsedWorkingMs(state.startedAt, at, policy.calendarId),
+					),
+				)
+				.where(
+					and(
+						eq(ticketStopwatches.id, state.id),
+						eq(ticketStopwatches.startedAt, state.startedAt),
+					),
+				)
+				.returning({ id: ticketStopwatches.id });
+		if ((await checkpoint(watch)).length) continue;
+		// Someone checkpointed this watch between the read and the write. Retrying
+		// against the current row keeps the elapsed time rather than dropping it;
+		// throwing is not an option here because callers supply their transaction.
+		const [current] = await database
+			.select()
+			.from(ticketStopwatches)
+			.where(eq(ticketStopwatches.id, watch.id))
+			.limit(1);
+		if (!current || current.running === nextRunning) continue;
+		if (at >= current.startedAt && (await checkpoint(current)).length) continue;
+		console.warn(
+			`[sla] stopwatch ${watch.id} checkpoint lost a concurrent update`,
 		);
-		await database
-			.update(ticketStopwatches)
-			.set(next)
-			.where(
-				and(
-					eq(ticketStopwatches.id, watch.id),
-					eq(ticketStopwatches.startedAt, watch.startedAt),
-				),
-			);
 	}
 }

@@ -20,24 +20,32 @@ import {
 	startRecurrenceSweep,
 } from "@/server/scheduling-runtime";
 
-process.on("unhandledRejection", (reason) =>
-	console.error("[process] unhandled rejection", reason),
-);
+// An unhandled rejection has already skipped whatever it was supposed to do, so
+// the process is in an unknown state; exiting hands recovery to the supervisor
+// rather than leaving a half-initialised pod serving traffic.
+process.on("unhandledRejection", (reason) => {
+	console.error("[process] unhandled rejection", reason);
+	process.exit(1);
+});
 
 if (env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL) {
-	const found = await bootstrapAdministrator(env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL);
+	const outcome = await bootstrapAdministrator(
+		env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL,
+	);
 	console.log(
-		found
+		outcome === "granted"
 			? `[auth] bootstrapped administrator ${env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL}`
-			: `[auth] bootstrap account not found: ${env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL}`,
+			: outcome === "already_administered"
+				? "[auth] bootstrap skipped: an administrator already exists"
+				: `[auth] bootstrap account not found: ${env.AXIOMA_BOOTSTRAP_ADMIN_EMAIL}`,
 	);
 }
 
 const app = createApp();
-serve(
+const server = serve(
 	{
 		fetch: app.fetch,
-		port: 3000,
+		port: env.PORT,
 	},
 	(info) => {
 		console.log(`Server is running on http://localhost:${info.port}`);
@@ -51,7 +59,16 @@ if (env.AXIOMA_MAIL_OUTBOUND_URL)
 			env.AXIOMA_MAIL_OUTBOUND_TOKEN,
 		),
 	});
-await Promise.all([grpcGateway.listen(), startMailRuntime()]);
+// The HTTP port is already bound at this point, so a failure here would
+// otherwise leave the pod answering /health while no device or agent can
+// connect and no sweep is scheduled. Exit instead and let the supervisor retry.
+try {
+	await Promise.all([grpcGateway.listen(), startMailRuntime()]);
+} catch (error) {
+	console.error("[startup] gateway or mail runtime failed to start", error);
+	server.close();
+	process.exit(1);
+}
 startRecurrenceSweep();
 startConnectorSweep();
 let knowledgeGapSweep: NodeJS.Timeout | undefined;
@@ -95,7 +112,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 		if (intakeSweep) clearTimeout(intakeSweep);
 		closeRecurrenceSweep();
 		closeConnectorSweep();
-		void Promise.all([grpcGateway.close(), closeMailRuntime()])
+		// The HTTP listener is closed first and awaited, so requests already in
+		// flight finish instead of being severed mid-response on every rolling
+		// deploy. `close` stops accepting new connections immediately.
+		void new Promise<void>((resolve) => server.close(() => resolve()))
+			.then(() => Promise.all([grpcGateway.close(), closeMailRuntime()]))
 			.catch((error) => console.error("[shutdown] cleanup failed", error))
 			.finally(() => process.exit(0));
 	});

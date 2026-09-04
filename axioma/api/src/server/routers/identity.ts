@@ -150,6 +150,9 @@ export const identityRouter = {
 			await db.select().from(roles).where(eq(roles.id, input.roleId)).limit(1)
 		)[0];
 		if (!role) throw new ORPCError("NOT_FOUND");
+		// role_capabilities is keyed on (role_id, capability), so a repeated entry
+		// would break the insert rather than mean anything.
+		const capabilities = [...new Set(input.capabilities)];
 		try {
 			await db.transaction(async (tx) => {
 				const existing = await tx
@@ -160,22 +163,22 @@ export const identityRouter = {
 				await tx
 					.delete(roleCapabilities)
 					.where(eq(roleCapabilities.roleId, role.id));
-				if (input.capabilities.length)
+				if (capabilities.length)
 					await tx.insert(roleCapabilities).values(
-						input.capabilities.map((capability) => ({
+						capabilities.map((capability) => ({
 							roleId: role.id,
 							capability,
 						})),
 					);
-				const changes = [...new Set([...before, ...input.capabilities])].filter(
+				const changes = [...new Set([...before, ...capabilities])].filter(
 					(capability) =>
-						before.has(capability) !== input.capabilities.includes(capability),
+						before.has(capability) !== capabilities.includes(capability),
 				);
 				if (changes.length)
 					await tx.insert(roleGrants).values(
 						changes.map((capability) => ({
 							id: crypto.randomUUID(),
-							action: input.capabilities.includes(capability)
+							action: capabilities.includes(capability)
 								? ("grant" as const)
 								: ("revoke" as const),
 							roleId: role.id,
@@ -185,16 +188,13 @@ export const identityRouter = {
 							actorId: context.userId,
 						})),
 					);
-				if (
-					before.has("admin.roles") &&
-					!input.capabilities.includes("admin.roles")
-				)
+				if (before.has("admin.roles") && !capabilities.includes("admin.roles"))
 					await assertAdministratorRemains(tx);
 			});
 		} catch (error) {
 			return lastAdminConflict(error);
 		}
-		return { ...role, capabilities: input.capabilities };
+		return { ...role, capabilities };
 	}),
 	assignRole: capabilityProcedure("admin.roles").assignRole.handler(
 		async ({ context, input }) => {
@@ -280,10 +280,18 @@ export const identityRouter = {
 					.returning();
 				if (!created) throw new Error("Department insert returned no row");
 				return created;
-			} catch {
-				throw new ORPCError("CONFLICT", {
-					message: "Department name already exists",
-				});
+			} catch (error) {
+				// Only the name collision is a conflict; a dropped connection
+				// reported as one hides the real failure from every caller.
+				const { code, constraint } = error as {
+					code?: string;
+					constraint?: string;
+				};
+				if (code === "23505" && constraint === "departments_name_unique")
+					throw new ORPCError("CONFLICT", {
+						message: "Department name already exists",
+					});
+				throw error;
 			}
 		},
 	),

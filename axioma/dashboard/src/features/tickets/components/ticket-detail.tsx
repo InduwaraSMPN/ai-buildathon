@@ -148,8 +148,13 @@ function TicketDetail({
 			onError: (error) => toast.error(error.message),
 		}),
 	);
+	// Callers fire this from click handlers and never await it, so the rejection
+	// is swallowed here. `onError` above stays the user-facing report; letting it
+	// through only adds an unhandled rejection to the console.
 	const update = (input: TicketOperatorActionInput) =>
-		mutation.mutateAsync({ id: ticket.id, ...input } as UpdateTicketInput);
+		mutation
+			.mutateAsync({ id: ticket.id, ...input } as UpdateTicketInput)
+			.catch(() => undefined);
 
 	return (
 		<PageContainer

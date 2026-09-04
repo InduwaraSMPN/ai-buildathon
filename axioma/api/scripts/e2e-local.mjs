@@ -4,6 +4,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 import "dotenv/config";
 import pg from "pg";
 
@@ -313,6 +314,14 @@ async function intakeLifecycle() {
 		await writer.query(
 			'insert into "user" (id, name, email) values ($1, $2, $3)',
 			[reporterId, "E2E intake reporter", `${reporterId}@example.test`],
+		);
+		// A real account is given the Employee role at sign-up, and an API key's
+		// capabilities are intersected with what its owner still holds — so a
+		// roleless fixture is refused at the door rather than reaching the
+		// procedure it is meant to exercise.
+		await writer.query(
+			"insert into user_roles (user_id, role_id) values ($1, 'employee')",
+			[reporterId],
 		);
 		// `ticket.create` alone: the document writer treats anyone holding
 		// `ticket.read.all` as an analyst and refuses a draft target.
@@ -840,7 +849,12 @@ const run = {
 	results: completedResults,
 };
 const stamp = generatedAt.replaceAll(":", "-").replace(".", "-");
-const resultsDir = join("..", "..", "temp", "results");
+// Resolved from this file rather than from the working directory: run from
+// anywhere but api/ and a cwd-relative "../../temp/results" lands outside
+// the checkout.
+const resultsDir = fileURLToPath(
+	new URL("../../../temp/results/", import.meta.url),
+);
 await mkdir(resultsDir, { recursive: true });
 const jsonPath = join(resultsDir, `e2e-local-${stamp}.json`);
 const markdownPath = join(resultsDir, `e2e-local-${stamp}.md`);

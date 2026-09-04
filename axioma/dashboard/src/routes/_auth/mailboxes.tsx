@@ -177,7 +177,10 @@ function Mailboxes() {
 						</Button>
 						<Button
 							disabled={
-								!name.trim() || !address.trim() || !ticketOrigin || save.isPending
+								!name.trim() ||
+								!address.trim() ||
+								!ticketOrigin ||
+								save.isPending
 							}
 							onClick={() =>
 								save.mutate({ id, name, address, ticketOrigin, enabled })

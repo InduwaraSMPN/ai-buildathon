@@ -4,7 +4,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { OVERVIEW_WIDGET_KEYS } from "@/contracts/automation";
 import { db } from "@/db";
 import { apiKeys } from "@/db/schema/api-keys";
@@ -25,6 +25,8 @@ import {
 	REAL_REPORTER_EMAIL,
 } from "./data";
 
+const DEMO_ENVIRONMENT_IDS = ["demo-env-production", "demo-env-staging"];
+
 function hashSecret(secret: string): string {
 	// Simple sha256 placeholder for api_keys.secretHash
 	return createHash("sha256").update(secret).digest("hex");
@@ -39,6 +41,18 @@ function encryptSecret(secret: string): string {
 
 export async function seedMisc(ticketIds: string[]): Promise<void> {
 	await db.transaction(async (tx) => {
+		// A demo environment holds a fake credential, so it must never displace an
+		// operator's own default: resolveRunEnvironment falls back to whichever
+		// environment carries isDefault, and demo.ts promises never to modify
+		// existing rows. Read the answer before inserting, since the demo rows
+		// themselves would otherwise count as the pre-existing default.
+		const [existingDefault] = await tx
+			.select({ id: environments.id })
+			.from(environments)
+			.where(eq(environments.isDefault, true))
+			.limit(1);
+		const adoptDemoDefault = existingDefault === undefined;
+
 		// Environments — 2 (Production, Staging) — already may exist from connectors, but ensure
 		await tx
 			.insert(environments)
@@ -50,7 +64,7 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 				contextName: "prod-axioma",
 				credentialEncrypted: encryptSecret("demo-cred-production"),
 				mode: "act",
-				isDefault: true,
+				isDefault: adoptDemoDefault,
 				createdAt: daysFromEpoch(1, 9),
 				updatedAt: daysFromEpoch(1, 9),
 			})
@@ -71,26 +85,34 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 			})
 			.onConflictDoNothing();
 
-		await tx.update(environments).set({ isDefault: false });
-		await tx
-			.update(environments)
-			.set({ isDefault: true })
-			.where(eq(environments.id, "demo-env-production"));
+		// Linking the baseline services to the demo environments widens what
+		// resolveEnvironment will accept for a real ticket, so it is gated on the
+		// same "this database has no operator environments yet" test.
+		if (adoptDemoDefault) {
+			await tx
+				.update(environments)
+				.set({ isDefault: false })
+				.where(inArray(environments.id, DEMO_ENVIRONMENT_IDS));
+			await tx
+				.update(environments)
+				.set({ isDefault: true })
+				.where(eq(environments.id, "demo-env-production"));
 
-		await tx
-			.insert(serviceEnvironments)
-			.values(
-				[
-					"svc-general",
-					"svc-infrastructure",
-					"svc-device",
-					"svc-access",
-				].flatMap((serviceId) => [
-					{ serviceId, environmentId: "demo-env-production" },
-					{ serviceId, environmentId: "demo-env-staging" },
-				]),
-			)
-			.onConflictDoNothing();
+			await tx
+				.insert(serviceEnvironments)
+				.values(
+					[
+						"svc-general",
+						"svc-infrastructure",
+						"svc-device",
+						"svc-access",
+					].flatMap((serviceId) => [
+						{ serviceId, environmentId: "demo-env-production" },
+						{ serviceId, environmentId: "demo-env-staging" },
+					]),
+				)
+				.onConflictDoNothing();
+		}
 		const firstTicketId = ticketIds[0];
 		if (firstTicketId) {
 			await tx

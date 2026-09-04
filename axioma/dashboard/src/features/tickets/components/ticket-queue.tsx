@@ -101,11 +101,23 @@ export function TicketQueue({
 }) {
 	const navigate = useNavigate();
 	const tickets = result?.items ?? [];
-	const [selected, setSelected] = useState(-1);
+	// The queue is server-sorted and refetches every 15 seconds, so a row index
+	// stops pointing at the same ticket the moment the order changes. Selection
+	// is therefore held by ticket id and the index derived from it.
+	const [selectedId, setSelectedId] = useState<string>();
 	const [escalationTicket, setEscalationTicket] = useState<Ticket>();
 	const [escalationReason, setEscalationReason] = useState("");
 	const [query, setQuery] = useState(search.search ?? "");
 	const searchRef = useRef<HTMLInputElement>(null);
+	// Focus follows the selection only when the operator moved it. Without this
+	// a first page arriving would pull focus out of the filter box mid-keystroke.
+	const fromKeyboard = useRef(false);
+	const selected = tickets.findIndex((ticket) => ticket.id === selectedId);
+	const selectedTicket = selected < 0 ? undefined : tickets[selected];
+	const select = (ticket: Ticket | undefined) => {
+		fromKeyboard.current = true;
+		setSelectedId(ticket?.id);
+	};
 	useEffect(() => setQuery(search.search ?? ""), [search.search]);
 	useEffect(() => {
 		const timer = window.setTimeout(() => {
@@ -114,23 +126,16 @@ export function TicketQueue({
 		}, 300);
 		return () => window.clearTimeout(timer);
 	}, [query, search.search, onSearchChange]);
-	useEffect(
-		() =>
-			setSelected((index) =>
-				tickets.length === 0
-					? -1
-					: Math.max(0, Math.min(index, tickets.length - 1)),
-			),
-		[tickets.length],
-	);
 	useEffect(() => {
-		if (selected < 0) return;
+		const requested = fromKeyboard.current;
+		fromKeyboard.current = false;
+		if (!requested || !selectedId) return;
 		const row = document.querySelector<HTMLElement>(
-			`[data-queue-row="${selected}"]`,
+			`[data-queue-row="${CSS.escape(selectedId)}"]`,
 		);
 		row?.scrollIntoView({ block: "nearest" });
 		row?.focus({ preventScroll: true });
-	}, [selected]);
+	}, [selectedId]);
 
 	const open = (
 		ticket: Ticket | undefined,
@@ -144,7 +149,7 @@ export function TicketQueue({
 		});
 	};
 	const shortcutAction = (action: "escalate" | "resolve") => {
-		const ticket = tickets[selected];
+		const ticket = selectedTicket;
 		if (!ticket || !allowedActions(ticket, capabilities).includes(action))
 			return;
 		if (action === "resolve") {
@@ -172,9 +177,9 @@ export function TicketQueue({
 	};
 	const shortcuts = useKeyboardShortcuts({
 		search: () => searchRef.current?.focus(),
-		next: () => setSelected((index) => Math.min(index + 1, tickets.length - 1)),
-		previous: () => setSelected((index) => Math.max(index - 1, 0)),
-		open: () => open(tickets[selected]),
+		next: () => select(tickets[Math.min(selected + 1, tickets.length - 1)]),
+		previous: () => select(tickets[Math.max(selected - 1, 0)]),
+		open: () => open(selectedTicket),
 		escalate: () => shortcutAction("escalate"),
 		resolve: () => shortcutAction("resolve"),
 	});
@@ -194,6 +199,7 @@ export function TicketQueue({
 				),
 			},
 		],
+		getRowId: (row) => row.id,
 		getCoreRowModel: getCoreRowModel(),
 	});
 	const direction = search.sortDirection ?? "asc";
@@ -235,7 +241,7 @@ export function TicketQueue({
 					</Button>
 					<label className="relative min-w-56 flex-1" htmlFor="ticket-search">
 						<span className="sr-only">Search tickets</span>
-						<Search className="-translate-y-1/2 absolute top-1/2 left-2.5 size-3.5 text-muted-foreground" />
+						<Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
 						<Input
 							ref={searchRef}
 							id="ticket-search"
@@ -418,15 +424,15 @@ export function TicketQueue({
 							))}
 						</TableHeader>
 						<TableBody>
-							{table.getRowModel().rows.map((row, index) => (
+							{table.getRowModel().rows.map((row) => (
 								<TableRow
 									key={row.id}
-									data-queue-row={index}
-									tabIndex={index === selected ? 0 : -1}
-									aria-selected={index === selected}
-									data-state={index === selected ? "selected" : undefined}
+									data-queue-row={row.id}
+									tabIndex={row.id === selectedId ? 0 : -1}
+									aria-selected={row.id === selectedId}
+									data-state={row.id === selectedId ? "selected" : undefined}
 									className="border-t outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring data-[state=selected]:bg-muted/70"
-									onClick={() => setSelected(index)}
+									onClick={() => select(row.original)}
 									onDoubleClick={() => open(row.original)}
 									onKeyDown={(event) => {
 										if (

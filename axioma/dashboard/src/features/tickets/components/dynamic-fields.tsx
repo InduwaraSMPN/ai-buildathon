@@ -22,6 +22,7 @@ import {
 	SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { toDateTimeLocal } from "@/lib/datetime-local";
 import type { client } from "@/utils/orpc";
 
 export { serializeDynamicFields } from "./serialize-dynamic-fields";
@@ -117,7 +118,7 @@ export function DynamicFields({
 										value={
 											definition.fieldType === "datetime" &&
 											typeof value === "string"
-												? value.slice(0, 16)
+												? toDateTimeLocal(value)
 												: typeof value === "string"
 													? value
 													: ""

@@ -4,6 +4,7 @@ import {
 	addWorkingMs,
 	type CalendarLoader,
 	elapsedWorkingMs,
+	subtractWorkingMs,
 	type WorkingCalendar,
 } from "./calendar";
 
@@ -87,14 +88,32 @@ test("rejects semantically equal working hours with different precision", async 
 	);
 });
 
-test("caps calendar traversal at 366 days", async () => {
-	await assert.rejects(
-		elapsedWorkingMs(
-			new Date("2025-01-01T00:00:00.000Z"),
+test("caps calendar traversal at 366 days instead of failing", async () => {
+	const from = new Date("2025-01-01T00:00:00.000Z");
+	assert.equal(
+		await elapsedWorkingMs(
+			from,
 			new Date("2027-01-01T00:00:00.000Z"),
 			"test",
 			loader(base),
 		),
-		/exceeds 366 days/,
+		await elapsedWorkingMs(
+			from,
+			new Date("2026-01-02T00:00:00.000Z"),
+			"test",
+			loader(base),
+		),
+	);
+	assert.deepEqual(
+		await addWorkingMs(from, 10_000 * HOUR, "test", loader(base)),
+		new Date("2026-01-02T00:00:00.000Z"),
+	);
+});
+
+test("subtracting working time walks back to the deadline already passed", async () => {
+	const monday = new Date("2026-08-31T14:00:00.000Z");
+	assert.deepEqual(
+		await subtractWorkingMs(monday, 2 * HOUR, "test", loader(base)),
+		new Date("2026-08-28T20:00:00.000Z"),
 	);
 });

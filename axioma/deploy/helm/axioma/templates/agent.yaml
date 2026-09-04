@@ -112,6 +112,14 @@ spec:
               value: {{ .Values.agent.limits.maxConsecutiveFailures | toString | quote }}
             - name: AXIOMA_MAX_CONCURRENT_RUNS
               value: {{ .Values.agent.limits.maxConcurrentRuns | toString | quote }}
+            {{- if or .Values.secrets.existingSecret .Values.secrets.agentToken }}
+            - name: AXIOMA_AGENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "axioma.secretName" . }}
+                  key: AXIOMA_AGENT_TOKEN
+                  optional: true
+            {{- end }}
             {{- if or .Values.secrets.existingSecret .Values.secrets.llmKey }}
             - name: AXIOMA_LLM_KEY
               valueFrom:

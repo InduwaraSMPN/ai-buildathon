@@ -1,5 +1,5 @@
 import { createColumnHelper } from "@tanstack/react-table";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { DataTable } from "@/components/data-table";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
@@ -64,16 +64,23 @@ export function ProblemsPage({
 	);
 }
 
+/**
+ * The dialog is controlled by the caller so it closes on a successful create
+ * and not before — a rejected create must leave the typed values in place.
+ */
 export function ProblemEditor({
+	open,
+	onOpenChange,
 	pending = false,
 	onSubmit,
 }: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
 	pending?: boolean;
 	onSubmit: (value: { title: string; description: string }) => void;
 }) {
-	const [open, setOpen] = useState(false);
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
+		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogTrigger render={<Button size="sm">New problem</Button>} />
 			<DialogContent className="sm:max-w-lg">
 				<form
@@ -84,7 +91,6 @@ export function ProblemEditor({
 							title: String(data.get("title")),
 							description: String(data.get("description")),
 						});
-						setOpen(false);
 					}}
 				>
 					<DialogHeader>
@@ -112,7 +118,7 @@ export function ProblemEditor({
 						<Button
 							type="button"
 							variant="outline"
-							onClick={() => setOpen(false)}
+							onClick={() => onOpenChange(false)}
 						>
 							Cancel
 						</Button>
@@ -139,7 +145,9 @@ const problemColumns = [
 		cell: ({ row }) => (
 			<div>
 				<div className="font-medium">{row.original.title}</div>
-				<div className="text-muted-foreground">{row.original.problemNumber}</div>
+				<div className="text-muted-foreground">
+					{row.original.problemNumber}
+				</div>
 			</div>
 		),
 	}),
@@ -182,6 +190,7 @@ export function ProblemList({
 			filterPlaceholder="Filter title, number, status, or owner…"
 			emptyTitle="No problems found"
 			emptyDescription="No problems have been raised."
+			getRowId={(problem) => problem.id}
 			onRowClick={onSelect}
 			rowLabel={(problem) => `View ${problem.title} problem details`}
 		/>

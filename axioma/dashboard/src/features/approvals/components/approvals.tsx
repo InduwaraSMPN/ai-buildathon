@@ -82,8 +82,7 @@ function approvalColumns(
 				id: "requested",
 				header: "Requested",
 				size: 18,
-				cell: ({ row }) =>
-					new Date(row.original.requestedAt).toLocaleString(),
+				cell: ({ row }) => new Date(row.original.requestedAt).toLocaleString(),
 			},
 		),
 		approvalColumn.display({
@@ -142,6 +141,7 @@ export function ApprovalList({
 			filterPlaceholder="Filter ticket, requester, or status…"
 			emptyTitle="No approvals found"
 			emptyDescription="Approval requests will appear here when they need a decision."
+			getRowId={(approval) => approval.id}
 		/>
 	);
 }

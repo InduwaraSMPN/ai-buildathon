@@ -23,8 +23,8 @@ import {
 } from "@/db/schema";
 import { env } from "@/env";
 import { requireDocumentWriteTarget } from "../documents/access";
-import { deflectKnowledge } from "./deflection";
 import { intakeRouter, loadCatalogueContext } from "../routers/intake";
+import { deflectKnowledge } from "./deflection";
 import {
 	discardDraft,
 	draftWithRepair,
@@ -202,16 +202,15 @@ test("whitelistKeys keeps only keys with an active definition", () => {
 });
 
 test("validateDraftText applies the manual path's bounds and trims", () => {
-	assert.deepEqual(
-		validateDraftText({
-			title: "  Printer jam  ",
-			body: "  The printer on floor three jams on every job.  ",
-		}),
-		{
-			title: "Printer jam",
-			body: "The printer on floor three jams on every job.",
-		},
-	);
+	const parsed = validateDraftText({
+		title: "  Printer jam  ",
+		body: "  The printer on floor three jams on every job.  ",
+		impact: "high",
+	});
+	assert.equal(parsed.title, "Printer jam");
+	assert.equal(parsed.body, "The printer on floor three jams on every job.");
+	assert.equal(parsed.impact, "high");
+	assert.equal(parsed.urgency, undefined);
 	for (const values of [
 		null,
 		{},
@@ -220,6 +219,19 @@ test("validateDraftText applies the manual path's bounds and trims", () => {
 		{ title: "x".repeat(161), body: "a long enough body value" },
 		{ title: "A valid title", body: "x".repeat(10_001) },
 		{ title: 42, body: "a long enough body value" },
+		// Out-of-enum levels are refused here rather than reaching
+		// `derivePriority` inside the submit transaction, where they threw a
+		// TypeError the caller saw as an opaque 500.
+		{
+			title: "A valid title",
+			body: "a long enough body value",
+			impact: "critical",
+		},
+		{
+			title: "A valid title",
+			body: "a long enough body value",
+			urgency: "urgent",
+		},
 	])
 		assert.throws(
 			() => validateDraftText(values),
@@ -792,10 +804,7 @@ test("vision filters by size before capping the image count", async () => {
 		await writeFile(join(directory, key(4)), Buffer.from([1, 2, 3]));
 		// Three oversized blobs ahead of a valid one used to consume the whole
 		// count cap before any of them had been measured.
-		assert.equal(
-			(await readDraftImages([1, 2, 3, 4].map(image))).length,
-			1,
-		);
+		assert.equal((await readDraftImages([1, 2, 3, 4].map(image))).length, 1);
 
 		for (const index of [1, 2, 3])
 			await writeFile(join(directory, key(index)), Buffer.from([index]));
@@ -804,9 +813,7 @@ test("vision filters by size before capping the image count", async () => {
 			MAX_DRAFT_IMAGES,
 		);
 		assert.deepEqual(
-			await readDraftImages([
-				{ sha256: key(4), mediaType: "application/pdf" },
-			]),
+			await readDraftImages([{ sha256: key(4), mediaType: "application/pdf" }]),
 			[],
 		);
 	} finally {

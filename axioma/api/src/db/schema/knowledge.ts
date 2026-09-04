@@ -11,7 +11,6 @@ import {
 	text,
 	timestamp,
 	uniqueIndex,
-	vector,
 } from "drizzle-orm/pg-core";
 
 import { user } from "./auth";
@@ -69,9 +68,6 @@ export const knowledgeArticles = pgTable(
 			.default("employees"),
 		isRestricted: boolean("is_restricted").notNull().default(false),
 		currentVersion: integer("current_version").notNull().default(1),
-		// OpenAI text-embedding-3-small dimensions; lexical search remains usable when null.
-		embedding: vector("embedding", { dimensions: 1536 }),
-		embeddingModel: text("embedding_model"),
 		metadata: jsonb("metadata"),
 		publishedAt: timestamp("published_at"),
 		nextReviewAt: timestamp("next_review_at"),
@@ -84,6 +80,7 @@ export const knowledgeArticles = pgTable(
 	(t) => [
 		index("knowledge_articles_folder_idx").on(t.folderId),
 		index("knowledge_articles_author_id_idx").on(t.authorId),
+		index("knowledge_articles_updated_at_idx").on(t.updatedAt),
 		index("knowledge_articles_publication_idx").on(
 			t.status,
 			t.audience,

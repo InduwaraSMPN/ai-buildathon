@@ -5,7 +5,7 @@
 	"type": "module",
 	"description": "Public website for Axiōma.",
 	"scripts": {
-		"dev": "vite dev --port 3000",
+		"dev": "vite dev --port 3003 --strictPort",
 		"build": "vite build",
 		"start": "node .output/server/index.mjs",
 		"check": "biome check .",

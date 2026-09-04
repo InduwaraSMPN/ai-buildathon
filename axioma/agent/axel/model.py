@@ -13,7 +13,7 @@ import litellm
 
 from axel import tools
 from axel.config import config
-from axel.loop import Decision
+from axel.loop import Decision, classify
 from axel.prompt import SYSTEM_PROMPT
 
 log = logging.getLogger(__name__)
@@ -99,7 +99,6 @@ async def think(
 
     deadline = None if deadline_seconds is None else time.monotonic() + deadline_seconds
     response, retry_events = await _completion(messages, deadline)
-    message = response.choices[0].message
     usage = getattr(response, "usage", None)
     metadata = {
         "prompt_tokens": int(getattr(usage, "prompt_tokens", 0) or 0),
@@ -107,6 +106,14 @@ async def think(
         "model": getattr(response, "model", None) or "",
         "retry_events": retry_events,
     }
+    # A content filter or a gateway can answer 200 with no choices at all. That
+    # is one bad turn, not a dead run, so hand the loop a typed invalid instead
+    # of an IndexError that aborts on turn one.
+    choices = list(getattr(response, "choices", None) or [])
+    if not choices:
+        return Decision(kind="invalid", error="model returned no choices", **metadata)
+
+    message = choices[0].message
     calls = list(getattr(message, "tool_calls", None) or [])
     if len(calls) != 1:
         return Decision(
@@ -133,6 +140,7 @@ async def think(
         tool=decision.tool,
         tool_input=decision.tool_input,
         resolution=decision.resolution,
+        resolution_code=decision.resolution_code,
         reason=decision.reason,
         proposal=decision.proposal,
         call_id=call.id,
@@ -150,6 +158,14 @@ async def _completion(
         remaining = None if deadline is None else deadline - time.monotonic()
         if remaining is not None and remaining <= 0:
             raise TimeoutError("model deadline exceeded")
+        # Bound one attempt, not the whole run: spending the entire remaining
+        # budget on a stalled provider means the retries below never happen. The
+        # same value goes to the HTTP client so it aborts with us.
+        attempt_timeout = (
+            config.model_call_timeout_seconds
+            if remaining is None
+            else min(remaining, config.model_call_timeout_seconds)
+        )
         kwargs: dict[str, Any] = {
             "model": config.model,
             "messages": messages,
@@ -157,6 +173,7 @@ async def _completion(
             "tool_choice": "required",
             "parallel_tool_calls": False,
             "api_base": config.api_base,
+            "timeout": attempt_timeout,
         }
         if config.api_key is not None:
             kwargs["api_key"] = config.api_key.get_secret_value()
@@ -166,10 +183,7 @@ async def _completion(
             kwargs["temperature"] = config.temperature
         try:
             call = litellm.acompletion(**kwargs)
-            return (
-                await call if remaining is None else await asyncio.wait_for(call, remaining),
-                warnings,
-            )
+            return await asyncio.wait_for(call, attempt_timeout), warnings
         except Exception as exc:
             if strict and _strict_rejected(exc):
                 strict = False
@@ -187,7 +201,10 @@ async def _completion(
             remaining = None if deadline is None else deadline - time.monotonic()
             if remaining is not None and delay >= remaining:
                 raise TimeoutError("model retry deadline exceeded") from exc
-            warnings.append(f"transient provider error; retrying in {delay:.2f}s: {exc}")
+            # The notice reaches IT staff and the employee; the raw body carries
+            # api_base, the internal model id, and whatever the upstream echoed.
+            log.warning("transient provider error; retrying in %.2fs: %s", delay, exc)
+            warnings.append(f"transient provider error; retrying in {delay:.2f}s ({classify(exc)})")
             await asyncio.sleep(delay)
 
 

@@ -11,6 +11,10 @@ export const attachmentCopy = {
 	attachFiles: "Attach files",
 	uploaded: "Attachments uploaded",
 	uploadFailed: "We couldn’t upload your attachments. Please try again.",
+	typeRejected: (name: string) =>
+		`${name} isn’t a supported image. Attach a PNG, JPEG, or WebP.`,
+	tooLarge: (name: string) =>
+		`${name} is too large. Attach an image under 2 MB.`,
 } as const;
 
 export const requestFormCopy = {

@@ -44,6 +44,7 @@ export const assets = pgTable(
 		index("assets_serial_idx").on(t.serialNumber),
 		index("assets_status_idx").on(t.statusId),
 		index("assets_custodian_idx").on(t.custodianId),
+		index("assets_updated_at_idx").on(t.updatedAt),
 	],
 );
 

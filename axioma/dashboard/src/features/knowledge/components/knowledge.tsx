@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { PageContainer } from "@/components/layout/page-container";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -246,17 +246,24 @@ export function KnowledgeArticleEditor({
 	);
 }
 
-/** Create flow: the editor lives in a dialog so the list page is not split by a form. */
+/**
+ * Create flow: the editor lives in a dialog so the list page is not split by a
+ * form. The caller controls `open` so the dialog closes on a successful create
+ * and not before — a rejected create must not discard a long article.
+ */
 export function KnowledgeArticleEditorDialog({
+	open,
+	onOpenChange,
 	pending = false,
 	onSubmit,
 }: {
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
 	pending?: boolean;
 	onSubmit: (value: KnowledgeArticleInput) => void;
 }) {
-	const [open, setOpen] = useState(false);
 	return (
-		<Dialog open={open} onOpenChange={setOpen}>
+		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogTrigger render={<Button size="sm">New article</Button>} />
 			<DialogContent className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden sm:max-w-2xl">
 				<DialogHeader>
@@ -268,16 +275,13 @@ export function KnowledgeArticleEditorDialog({
 				<KnowledgeArticleEditor
 					className="min-h-0 flex-1 overflow-y-auto py-1 pr-3 pl-1"
 					pending={pending}
-					onSubmit={(value) => {
-						onSubmit(value);
-						setOpen(false);
-					}}
+					onSubmit={onSubmit}
 					footer={
 						<DialogFooter>
 							<Button
 								type="button"
 								variant="outline"
-								onClick={() => setOpen(false)}
+								onClick={() => onOpenChange(false)}
 							>
 								Cancel
 							</Button>

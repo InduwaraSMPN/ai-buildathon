@@ -72,10 +72,19 @@ export function createMailboxPoller(options: PollerOptions): MailboxPoller {
 		async start() {
 			if (running || timer) return;
 			closed = false;
-			running = poll().finally(() => {
-				running = undefined;
-				schedule();
-			});
+			// `startMailRuntime` is awaited at the top of `src/index.ts`, so an
+			// unhandled first tick — a mailbox that happens to be unreachable at
+			// boot — stopped the whole API from starting. The failure is reported
+			// the same way every later tick's is, and the schedule takes over.
+			running = poll()
+				.catch(
+					options.onError ??
+						((error) => console.error("[mail] poll failed", error)),
+				)
+				.finally(() => {
+					running = undefined;
+					schedule();
+				});
 			await running;
 		},
 		async close() {

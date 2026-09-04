@@ -27,7 +27,8 @@ export type SearchDocumentInput = Omit<
 > &
 	Partial<Pick<SearchDocumentRow, "embedding" | "embeddingModel">>;
 
-export interface SearchResult extends SearchDocumentRow {
+/** The 1536-dimension vector is never read back out of a search; only written. */
+export interface SearchResult extends Omit<SearchDocumentRow, "embedding"> {
 	rank: number;
 }
 
@@ -79,7 +80,9 @@ export function retainAuthorizedResults<
 	);
 }
 
-export function mayEmbed(document: SearchDocumentInput): boolean {
+export function mayEmbed(
+	document: Pick<SearchDocumentInput, "objectType" | "metadata">,
+): boolean {
 	const { metadata } = document;
 	if (typeof metadata.fetchId !== "string" || !metadata.fetchId) return false;
 
@@ -159,7 +162,13 @@ export async function backfillSearchEmbeddings(
 ): Promise<EmbeddingBackfillResult> {
 	const batchSize = Math.min(Math.max(Math.trunc(limit) || 1, 1), 1_000);
 	const stale = await db
-		.select()
+		.select({
+			objectType: searchDocuments.objectType,
+			objectId: searchDocuments.objectId,
+			title: searchDocuments.title,
+			body: searchDocuments.body,
+			metadata: searchDocuments.metadata,
+		})
 		.from(searchDocuments)
 		.where(
 			and(
@@ -241,7 +250,6 @@ export async function search(
 			body: searchDocuments.body,
 			url: searchDocuments.url,
 			metadata: searchDocuments.metadata,
-			embedding: searchDocuments.embedding,
 			embeddingModel: searchDocuments.embeddingModel,
 			sourceUpdatedAt: searchDocuments.sourceUpdatedAt,
 			indexedAt: searchDocuments.indexedAt,
@@ -267,26 +275,85 @@ export async function search(
 
 export interface SearchReconciliationSource {
 	objectType: SearchObjectType;
-	loadChanged(since: Date): Promise<readonly SearchDocumentInput[]>;
+	/**
+	 * At most `limit` documents ordered by object id, resuming after `after`.
+	 * An empty `after` starts the source; the projected object id is the source
+	 * row's own id, so it doubles as the keyset boundary.
+	 */
+	loadChanged(
+		since: Date,
+		limit: number,
+		after: string,
+	): Promise<readonly SearchDocumentInput[]>;
 }
+
+export interface SearchReconciliationCursor {
+	objectType: string;
+	objectId: string;
+}
+
+export interface SearchReconciliationBatchOptions {
+	/** Documents to index before yielding; absent drains every source. */
+	limit?: number;
+	cursor?: SearchReconciliationCursor | null;
+}
+
+export interface SearchReconciliationBatch {
+	indexed: number;
+	hasMore: boolean;
+	nextCursor: SearchReconciliationCursor | null;
+}
+
+/**
+ * Rows a single loader may hold at once. It bounds memory and pool occupancy
+ * even for an unbounded sweep, which is what a `new Date(0)` watermark asks for
+ * on first boot.
+ */
+export const SEARCH_RECONCILIATION_PAGE = 500;
 
 /** Repairs projections missed by write paths; source loaders retain ownership of source queries. */
 export async function reconcileSearchDocuments(
 	db: Db,
 	sources: readonly SearchReconciliationSource[],
 	since: Date,
-): Promise<number> {
+	batch: SearchReconciliationBatchOptions = {},
+): Promise<SearchReconciliationBatch> {
+	const budget =
+		batch.limit === undefined
+			? Number.POSITIVE_INFINITY
+			: Math.max(Math.trunc(batch.limit) || 1, 1);
+	const cursor = batch.cursor ?? null;
+	// A cursor naming a source that no longer exists means the source list changed
+	// under a resuming caller, so the sweep restarts: repeating work is cheaper
+	// than silently skipping every source before the missing one.
+	const resumeAt = cursor
+		? sources.findIndex((source) => source.objectType === cursor.objectType)
+		: 0;
 	let indexed = 0;
-	for (const source of sources) {
-		const changed = await source.loadChanged(since);
-		for (const document of changed) {
-			if (document.objectType !== source.objectType)
-				throw new TypeError(
-					`Expected ${source.objectType}, got ${document.objectType}`,
-				);
-			await upsertSearchDocument(db, document);
-			indexed++;
+	for (const source of sources.slice(Math.max(resumeAt, 0))) {
+		let after =
+			cursor && cursor.objectType === source.objectType ? cursor.objectId : "";
+		for (;;) {
+			const remaining = budget - indexed;
+			if (remaining <= 0)
+				return {
+					indexed,
+					hasMore: true,
+					nextCursor: { objectType: source.objectType, objectId: after },
+				};
+			const page = Math.min(remaining, SEARCH_RECONCILIATION_PAGE);
+			const changed = await source.loadChanged(since, page, after);
+			for (const document of changed) {
+				if (document.objectType !== source.objectType)
+					throw new TypeError(
+						`Expected ${source.objectType}, got ${document.objectType}`,
+					);
+				await upsertSearchDocument(db, document);
+				after = document.objectId;
+				indexed++;
+			}
+			if (changed.length < page) break;
 		}
 	}
-	return indexed;
+	return { indexed, hasMore: false, nextCursor: null };
 }

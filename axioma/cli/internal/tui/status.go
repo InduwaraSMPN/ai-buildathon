@@ -41,10 +41,19 @@ func (m statusModel) View() tea.View {
 		{"sequence", fmt.Sprintf("%d", m.identity.LastSeenSequence)},
 		{"last update", updated},
 	}
+	// Shown until the employee claims the machine. The gateway clears the code on
+	// a successful claim, and the daemon stops reporting it from then on.
+	if m.state.ClaimCode != "" {
+		rows = append(rows, []string{"claim code", m.theme.pass().Render(m.state.ClaimCode)})
+	}
 	if m.state.LastError != "" {
 		rows = append(rows, []string{"last error", m.theme.fail().Render(m.state.LastError)})
 	}
 	t := newTable().StyleFunc(keyValueStyles).Rows(rows...)
 
-	return tea.NewView(m.theme.title().Render("axel-cli status") + "\n\n" + t.Render() + "\n")
+	out := m.theme.title().Render("axel-cli status") + "\n\n" + t.Render() + "\n"
+	if m.state.ClaimCode != "" {
+		out += "\nEnter the claim code in the portal to link this computer to your account.\n"
+	}
+	return tea.NewView(out)
 }

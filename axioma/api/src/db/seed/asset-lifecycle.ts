@@ -6,6 +6,7 @@
  * empty when only the `assets` rows themselves are seeded.
  */
 
+import { inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	assetCheckoutLog,
@@ -14,7 +15,9 @@ import {
 	assetImportProfiles,
 	assetImportRejections,
 	assetImportRuns,
+	assets,
 } from "@/db/schema/assets";
+import { assetIdentityKey } from "@/server/assets/csv";
 import { ASSET_NAMES, DEMO_USERS, daysFromEpoch } from "./data";
 
 const PROFILES = [
@@ -176,17 +179,42 @@ export async function seedAssetLifecycle(): Promise<void> {
 		}
 
 		// Import identities tie imported rows back to the assets they produced,
-		// which is what makes a re-import update rather than duplicate.
-		for (let i = 0; i < ASSET_NAMES.length; i++) {
-			const assetId = `demo-asset-${String(i + 1).padStart(2, "0")}`;
-			const profileId =
-				i < 15 ? "demo-import-profile-01" : "demo-import-profile-02";
+		// which is what makes a re-import update rather than duplicate. The key
+		// has to be byte-identical to the one previewAssetCsv derives from the
+		// same row, so it is built with the importer's own function over the
+		// values the seeded assets actually carry — a key of a different shape
+		// re-inserts the whole fleet and then collides on assets_tag_uidx.
+		const assetIds = ASSET_NAMES.map(
+			(_, i) => `demo-asset-${String(i + 1).padStart(2, "0")}`,
+		);
+		const seeded = await tx
+			.select({
+				id: assets.id,
+				assetTag: assets.assetTag,
+				serialNumber: assets.serialNumber,
+			})
+			.from(assets)
+			.where(inArray(assets.id, assetIds));
+		const csvRowById = new Map(
+			seeded.map((asset) => [
+				asset.id,
+				{
+					asset_tag: asset.assetTag ?? "",
+					serial_number: asset.serialNumber ?? "",
+				},
+			]),
+		);
+		for (let i = 0; i < assetIds.length; i++) {
+			const assetId = assetIds[i]!;
+			const csvRow = csvRowById.get(assetId);
+			if (!csvRow) continue;
+			const profile = i < 15 ? PROFILES[0] : PROFILES[1];
 			await tx
 				.insert(assetImportIdentities)
 				.values({
 					id: `demo-import-identity-${String(i + 1).padStart(2, "0")}`,
-					profileId,
-					identityKey: `SN-${String(i + 1).padStart(6, "0")}`,
+					profileId: profile.id,
+					identityKey: assetIdentityKey(profile.identityColumns, csvRow),
 					assetId,
 				})
 				.onConflictDoNothing();

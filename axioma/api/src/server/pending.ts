@@ -74,15 +74,26 @@ export async function sweepPending(
 			if (resolved) changed++;
 			continue;
 		}
+		// The cadence runs from the slot that came due rather than from the moment
+		// the sweep noticed it, so a late tick cannot push every later follow-up out
+		// by its own lateness. Whole periods are skipped to stay ahead of `now`.
+		let pendingUntil = nextPendingFollowupAt(
+			ticket.pendingUntil ?? now,
+			reason.followupFrequencyMinutes,
+		);
+		if (pendingUntil <= now) {
+			const frequencyMs = reason.followupFrequencyMinutes * 60_000;
+			const missed = Math.ceil(
+				(now.getTime() - pendingUntil.getTime() + 1) / frequencyMs,
+			);
+			pendingUntil = new Date(pendingUntil.getTime() + missed * frequencyMs);
+		}
 		const followedUp = await db.transaction(async (tx) => {
 			const followedUp = await tx
 				.update(tickets)
 				.set({
 					pendingFollowups: sql`${tickets.pendingFollowups} + 1`,
-					pendingUntil: nextPendingFollowupAt(
-						now,
-						reason.followupFrequencyMinutes,
-					),
+					pendingUntil,
 					updatedAt: now,
 				})
 				.where(

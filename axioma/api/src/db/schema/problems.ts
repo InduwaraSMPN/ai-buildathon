@@ -48,6 +48,7 @@ export const problems = pgTable(
 		index("problems_assignee_idx").on(t.assigneeId),
 		index("problems_service_idx").on(t.serviceId),
 		index("problems_known_error_idx").on(t.isKnownError, t.status),
+		index("problems_updated_at_idx").on(t.updatedAt),
 	],
 );
 

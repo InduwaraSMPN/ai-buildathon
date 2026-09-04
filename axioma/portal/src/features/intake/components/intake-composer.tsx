@@ -24,7 +24,7 @@ const FALLBACK_SUGGESTIONS = intakeCopy.fallbackSuggestions.map(
 
 export function IntakeComposer({
 	draftId,
-	busy,
+	streaming,
 	visionEnabled,
 	attachments,
 	onAttachmentsChange,
@@ -32,11 +32,12 @@ export function IntakeComposer({
 	onManual,
 }: {
 	draftId: string | null;
-	busy: boolean;
+	streaming: boolean;
 	visionEnabled: boolean;
 	attachments: DraftAttachment[];
 	onAttachmentsChange: Dispatch<SetStateAction<DraftAttachment[]>>;
-	onSubmit: (text: string) => void;
+	/** Returns whether the message was accepted; a refused one stays in the box. */
+	onSubmit: (text: string) => boolean;
 	onManual: () => void;
 }) {
 	const [text, setText] = useState("");
@@ -62,13 +63,18 @@ export function IntakeComposer({
 			}));
 	}, [catalogue.data]);
 
+	// The draft id is what the handler needs to send anything, so a composer
+	// without one is busy in exactly the way a streaming one is. Leaving it live
+	// meant the first message — typed before `startIntakeDraft` resolved — was
+	// refused by the handler and then cleared from the box anyway.
+	const busy = streaming || draftId === null;
+
 	const canSubmit =
 		text.trim().length > 0 && text.trim().length <= 10_000 && !busy;
 
 	const submit = () => {
 		if (!canSubmit) return;
-		onSubmit(text.trim());
-		setText("");
+		if (onSubmit(text.trim())) setText("");
 	};
 
 	return (

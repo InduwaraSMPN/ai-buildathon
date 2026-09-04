@@ -50,7 +50,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { client } from "@/utils/orpc";
+import { client, orpc } from "@/utils/orpc";
 
 type Environment = Awaited<ReturnType<typeof client.listEnvironments>>[number];
 type EnvironmentInput = Parameters<typeof client.createEnvironment>[0];
@@ -85,12 +85,12 @@ export function EnvironmentsPage() {
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [form, setForm] = useState<FormState>(emptyForm);
 	const [formError, setFormError] = useState<string | null>(null);
-	const environments = useQuery({
-		queryKey: ["admin-environments"],
-		queryFn: () => client.listEnvironments(),
-	});
+	// The shared key, not a private one: the connector and route editors read the
+	// same environments, and a hand-rolled key left their dropdowns offering an
+	// environment this page had just deleted.
+	const environments = useQuery(orpc.listEnvironments.queryOptions({}));
 	const refresh = () =>
-		queryClient.invalidateQueries({ queryKey: ["admin-environments"] });
+		queryClient.invalidateQueries({ queryKey: orpc.listEnvironments.key() });
 
 	const createMutation = useMutation({
 		mutationFn: (input: EnvironmentInput) => client.createEnvironment(input),
@@ -201,79 +201,79 @@ export function EnvironmentsPage() {
 			<Card>
 				<CardContent className="px-0">
 					<Table>
-					<TableHeader>
-						<TableRow>
-							<TableHead>Key</TableHead>
-							<TableHead>Label</TableHead>
-							<TableHead>Connection</TableHead>
-							<TableHead>Mode</TableHead>
-							<TableHead>Default</TableHead>
-							<TableHead>Updated</TableHead>
-							<TableHead aria-label="Actions" />
-						</TableRow>
-					</TableHeader>
-					<TableBody>
-						{rows.map((environment) => (
-							<TableRow key={environment.id}>
-								<TableCell>
-									<span className="font-mono text-xs">{environment.key}</span>
-								</TableCell>
-								<TableCell>
-									{environment.label}
-									{environment.contextName && (
-										<div className="text-muted-foreground text-xs">
-											{environment.contextName}
-										</div>
-									)}
-								</TableCell>
-								<TableCell>
-									<Badge variant="outline">
-										{labelize(environment.connectionType)}
-									</Badge>
-								</TableCell>
-								<TableCell>{labelize(environment.mode)}</TableCell>
-								<TableCell>
-									{environment.isDefault ? (
-										<Badge tone="info">Default</Badge>
-									) : (
-										<span className="text-muted-foreground">—</span>
-									)}
-								</TableCell>
-								<TableCell>
-									<time className="text-xs tabular-nums">
-										{formatDate(environment.updatedAt)}
-									</time>
-								</TableCell>
-								<TableCell>
-									<div className="flex items-center justify-end gap-1">
-										<Button
-											size="sm"
-											variant="ghost"
-											aria-label={`Edit ${environment.key}`}
-											onClick={() => openEdit(environment)}
-										>
-											<Pencil aria-hidden="true" />
-										</Button>
-										<DeleteButton
-											label={environment.label}
-											pending={deleteMutation.isPending}
-											onConfirm={() => deleteMutation.mutate(environment.id)}
-										/>
-									</div>
-								</TableCell>
-							</TableRow>
-						))}
-						{rows.length === 0 && (
+						<TableHeader>
 							<TableRow>
-								<TableCell
-									colSpan={7}
-									className="text-center text-muted-foreground"
-								>
-									No environments defined.
-								</TableCell>
+								<TableHead>Key</TableHead>
+								<TableHead>Label</TableHead>
+								<TableHead>Connection</TableHead>
+								<TableHead>Mode</TableHead>
+								<TableHead>Default</TableHead>
+								<TableHead>Updated</TableHead>
+								<TableHead aria-label="Actions" />
 							</TableRow>
-						)}
-					</TableBody>
+						</TableHeader>
+						<TableBody>
+							{rows.map((environment) => (
+								<TableRow key={environment.id}>
+									<TableCell>
+										<span className="font-mono text-xs">{environment.key}</span>
+									</TableCell>
+									<TableCell>
+										{environment.label}
+										{environment.contextName && (
+											<div className="text-muted-foreground text-xs">
+												{environment.contextName}
+											</div>
+										)}
+									</TableCell>
+									<TableCell>
+										<Badge variant="outline">
+											{labelize(environment.connectionType)}
+										</Badge>
+									</TableCell>
+									<TableCell>{labelize(environment.mode)}</TableCell>
+									<TableCell>
+										{environment.isDefault ? (
+											<Badge tone="info">Default</Badge>
+										) : (
+											<span className="text-muted-foreground">—</span>
+										)}
+									</TableCell>
+									<TableCell>
+										<time className="text-xs tabular-nums">
+											{formatDate(environment.updatedAt)}
+										</time>
+									</TableCell>
+									<TableCell>
+										<div className="flex items-center justify-end gap-1">
+											<Button
+												size="sm"
+												variant="ghost"
+												aria-label={`Edit ${environment.key}`}
+												onClick={() => openEdit(environment)}
+											>
+												<Pencil aria-hidden="true" />
+											</Button>
+											<DeleteButton
+												label={environment.label}
+												pending={deleteMutation.isPending}
+												onConfirm={() => deleteMutation.mutate(environment.id)}
+											/>
+										</div>
+									</TableCell>
+								</TableRow>
+							))}
+							{rows.length === 0 && (
+								<TableRow>
+									<TableCell
+										colSpan={7}
+										className="text-center text-muted-foreground"
+									>
+										No environments defined.
+									</TableCell>
+								</TableRow>
+							)}
+						</TableBody>
 					</Table>
 				</CardContent>
 			</Card>
@@ -322,6 +322,7 @@ export function EnvironmentsPage() {
 										Connection
 									</FieldLabel>
 									<NativeSelect
+										id="environment-connection"
 										value={form.connectionType}
 										onChange={(event) =>
 											setForm({
@@ -341,6 +342,7 @@ export function EnvironmentsPage() {
 								<Field>
 									<FieldLabel htmlFor="environment-mode">Mode</FieldLabel>
 									<NativeSelect
+										id="environment-mode"
 										value={form.mode}
 										onChange={(event) =>
 											setForm({

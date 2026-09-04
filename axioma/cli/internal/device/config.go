@@ -15,12 +15,22 @@ type Config struct {
 	TLSServerName string `json:"tlsServerName,omitempty"`
 }
 
-func LoadConfig() (Config, error) {
+// ConfigPath is where the installer writes the gateway configuration. Named so
+// a daemon that cannot start can say which file the operator has to look at.
+func ConfigPath() (string, error) {
 	dir, err := StateDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.json"), nil
+}
+
+func LoadConfig() (Config, error) {
+	path, err := ConfigPath()
 	if err != nil {
 		return Config{}, err
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "config.json"))
+	raw, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return Config{}, nil
 	}
@@ -41,9 +51,9 @@ func SaveConfig(config Config) error {
 	if config.GRPCHost == "" {
 		return fmt.Errorf("gateway address is required")
 	}
-	dir, err := StateDir()
+	path, err := ConfigPath()
 	if err != nil {
 		return err
 	}
-	return writeJSON(filepath.Join(dir, "config.json"), config)
+	return writeJSON(path, config)
 }

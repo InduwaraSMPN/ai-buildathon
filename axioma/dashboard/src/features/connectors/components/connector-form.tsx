@@ -24,6 +24,17 @@ import {
 } from "@/components/ui/native-select";
 import { orpc } from "@/utils/orpc";
 
+const emptyForm = {
+	key: "",
+	label: "",
+	baseUrl: "",
+	clientId: "",
+	clientSecret: "",
+	recordFilter: "",
+	defaultEnvironmentId: "",
+	fallbackReporterId: "",
+};
+
 /**
  * Creating a connector.
  *
@@ -43,16 +54,7 @@ export function ConnectorForm() {
 	const [open, setOpen] = useState(false);
 	const environments = useQuery(orpc.listEnvironments.queryOptions({}));
 
-	const [form, setForm] = useState({
-		key: "",
-		label: "",
-		baseUrl: "",
-		clientId: "",
-		clientSecret: "",
-		recordFilter: "",
-		defaultEnvironmentId: "",
-		fallbackReporterId: "",
-	});
+	const [form, setForm] = useState(emptyForm);
 
 	const create = useMutation(
 		orpc.createConnector.mutationOptions({
@@ -61,6 +63,9 @@ export function ConnectorForm() {
 					queryKey: orpc.listConnectors.key(),
 				});
 				toast.success("Connector created. Test the credential before syncing.");
+				// Cleared before closing: the dialog is reused for the next connector
+				// and must not carry the previous one's client secret into it.
+				setForm(emptyForm);
 				setOpen(false);
 			},
 			onError: (error) => toast.error(error.message),

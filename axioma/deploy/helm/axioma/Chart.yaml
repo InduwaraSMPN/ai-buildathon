@@ -4,6 +4,10 @@ description: Axiōma — the platform a company installs inside its own infrastr
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
+# The gRPC Service sets `appProtocol`, which is only honoured from 1.23. The
+# `-0` suffix makes the constraint accept pre-release versions, which is what
+# every managed provider's server version looks like.
+kubeVersion: ">=1.23.0-0"
 keywords:
   - itsm
   - agent

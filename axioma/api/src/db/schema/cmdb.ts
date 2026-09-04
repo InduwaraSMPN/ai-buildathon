@@ -76,6 +76,7 @@ export const cmdbObjects = pgTable(
 	},
 	(t) => [
 		index("cmdb_objects_lookup_idx").on(t.classId, t.externalId, t.observedAt),
+		index("cmdb_objects_observed_at_idx").on(t.observedAt),
 		index("cmdb_objects_source_idx").on(t.sourceTicketId),
 		index("cmdb_objects_run_idx").on(t.sourceRunId),
 		index("cmdb_objects_step_idx").on(t.sourceStepId),

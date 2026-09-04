@@ -20,6 +20,7 @@ import {
 	ticketTransitions,
 	user,
 } from "@/db/schema";
+import { env } from "@/env";
 import type { CommandStatus, EvidenceTone, RunStatus } from "@/shared";
 import {
 	EVIDENCE_TONES,
@@ -30,7 +31,10 @@ import {
 import { onRunTerminal } from "./connectors/terminal";
 import {
 	hashDeviceSecret,
+	issueDeviceClaimCode,
 	issueDeviceCredential,
+	normaliseClaimCode,
+	validAgentCredential,
 	validDeviceSecret,
 } from "./device-auth";
 import { loadRunEnvironment } from "./environments/runtime";
@@ -83,6 +87,8 @@ const OUTBOX_LIMIT = 100;
 const HEARTBEAT_MS = 10_000;
 const STALE_MS = 30_000;
 const RUN_LEASE_MS = 45_000;
+/** Long enough for the employee to reach the portal, short enough to expire. */
+const CLAIM_CODE_TTL_MS = 24 * 60 * 60_000;
 const SEARCH_WATERMARK_KEY = "core";
 const sourceProtoPath = fileURLToPath(
 	new URL("../../proto/axioma.proto", import.meta.url),
@@ -550,6 +556,24 @@ export class Gateway {
 			const hello = message.hello as Record<string, unknown>;
 			const workerId = String(hello.workerId ?? "").trim();
 			if (!workerId) throw new Error("agent worker_id is required");
+			// Without this the worker id alone was the identity: anything that could
+			// reach the port could register, be handed a real run with its ticket
+			// text and reporter details, and call tools against it — including the
+			// device tools. Guessing a live worker id also evicted the real worker
+			// and inherited its assignments.
+			if (
+				!validAgentCredential(
+					String(hello.credential ?? ""),
+					env.AXIOMA_AGENT_TOKEN,
+				)
+			) {
+				console.warn(
+					`[grpc] agent authentication refused worker=${workerId || "<missing>"}`,
+				);
+				throw Object.assign(new Error("agent authentication failed"), {
+					code: grpc.status.UNAUTHENTICATED,
+				});
+			}
 			const generation = Symbol(workerId);
 			const old = this.agents.get(workerId);
 			if (old && old.stream !== stream) old.stream.end();
@@ -757,12 +781,17 @@ export class Gateway {
 							eq(agentToolCalls.status, "in_progress"),
 						),
 					);
+			// The full text — driver messages, ticket and run identifiers — is kept
+			// for the operator and for the tool-call record, but what goes back over
+			// the wire and into the employee-visible transcript is the call id, so
+			// the two can still be matched up in the logs.
+			console.error("[grpc] tool call failed", runId, callId, error);
 			stream.write({
 				toolResult: {
 					runId,
 					callId,
 					ok: false,
-					error: message,
+					error: `tool execution failed (call ${callId || "unknown"})`,
 				},
 			});
 		}
@@ -832,6 +861,7 @@ export class Gateway {
 		const credential = String(hello.credential ?? "");
 		const enrolmentToken = String(hello.enrolmentToken ?? "");
 		let issuedCredential = "";
+		let issuedClaimCode = "";
 		const details = {
 			hostname: String(hello.hostname).slice(0, 255),
 			username: String(hello.username).slice(0, 255),
@@ -843,6 +873,7 @@ export class Gateway {
 		};
 		if (enrolmentToken) {
 			issuedCredential = issueDeviceCredential();
+			issuedClaimCode = issueDeviceClaimCode();
 			const enrolled = await db
 				.transaction(async (tx) => {
 					const token = (
@@ -868,10 +899,24 @@ export class Gateway {
 						credentialHash: hashDeviceSecret(issuedCredential),
 						credentialRotatedAt: new Date(),
 						enrolledAt: new Date(),
+						// Enrolment says which gateway this machine belongs to, not
+						// whose machine it is. The employee types this code into the
+						// portal to fill `owner_id`, which is what makes the device
+						// theirs — and what every owner-scoped read depends on.
+						claimCodeHash: hashDeviceSecret(
+							normaliseClaimCode(issuedClaimCode),
+						),
+						claimCodeExpiresAt: new Date(Date.now() + CLAIM_CODE_TTL_MS),
 					});
 					return true;
 				})
-				.catch(() => false);
+				// Without the log a constraint violation or a connection loss was
+				// indistinguishable from a bad token: the operator saw only
+				// "invalid enrolment" while the real cause never reached the logs.
+				.catch((error) => {
+					console.error("[grpc] enrolment transaction failed", deviceId, error);
+					return false;
+				});
 			if (!enrolled) throw this.deviceAuthError(deviceId, "invalid enrolment");
 		} else {
 			const row = (
@@ -907,6 +952,7 @@ export class Gateway {
 				claimed: true,
 				authValid: true,
 				credential: issuedCredential,
+				claimCode: issuedClaimCode,
 			},
 		});
 		const lastSeen = Number(hello.lastSeenSequence ?? 0);
@@ -966,6 +1012,10 @@ export class Gateway {
 			.where(eq(devices.id, deviceId))
 			.returning({ revokedAt: devices.revokedAt });
 		if (!changed[0]) return null;
+		// A revoked device must never be handed its queued work if it somehow
+		// re-registers, so this is the one path that discards the outbox.
+		this.outboxes.delete(deviceId);
+		this.sequences.delete(deviceId);
 		const connection = this.devices.get(deviceId);
 		if (connection) {
 			this.devices.delete(deviceId);
@@ -978,8 +1028,11 @@ export class Gateway {
 		if (!deviceId || this.devices.get(deviceId)?.generation !== generation)
 			return;
 		this.devices.delete(deviceId);
-		this.sequences.delete(deviceId);
-		this.outboxes.delete(deviceId);
+		// The outbox and the sequence are what `registerDevice`'s replay reads, so
+		// clearing them here made the replay dead in the ordinary disconnect path:
+		// a laptop that slept mid-command reconnected to an empty outbox and the
+		// command simply timed out. Only revocation discards them; the outbox is
+		// already bounded by OUTBOX_LIMIT.
 		await db
 			.update(devices)
 			.set({ connected: "offline", lastSeenAt: new Date() })
@@ -1322,8 +1375,18 @@ export class Gateway {
 		else this.outboxes.delete(deviceId);
 	}
 
+	/**
+	 * Reclaims work a previous gateway process was holding when it died. Scoped
+	 * by lease and age rather than by "everything in flight": under a rolling
+	 * update the outgoing pod is still serving while the incoming one starts, and
+	 * an unscoped sweep failed its live runs and timed out its dispatched
+	 * commands underneath a worker that was still executing them. A run held by a
+	 * live gateway has its lease renewed on every heartbeat, so an expired lease
+	 * is the signal that nobody is holding it.
+	 */
 	private async reconcileOrphans() {
 		const now = new Date();
+		const staleBefore = new Date(now.getTime() - RUN_LEASE_MS);
 		await db.transaction(async (tx) => {
 			await tx
 				.update(deviceCommands)
@@ -1332,7 +1395,12 @@ export class Gateway {
 					error: "gateway restarted before dispatch",
 					completedAt: now,
 				})
-				.where(inArray(deviceCommands.status, ["pending", "dispatched"]));
+				.where(
+					and(
+						inArray(deviceCommands.status, ["pending", "dispatched"]),
+						lt(deviceCommands.createdAt, staleBefore),
+					),
+				);
 			const orphanedRuns = await tx
 				.update(agentRuns)
 				.set({
@@ -1341,7 +1409,12 @@ export class Gateway {
 					leaseExpiresAt: null,
 					endedAt: now,
 				})
-				.where(eq(agentRuns.status, "running"))
+				.where(
+					and(
+						eq(agentRuns.status, "running"),
+						sql`(${agentRuns.leaseExpiresAt} is null or ${agentRuns.leaseExpiresAt} < ${now})`,
+					),
+				)
 				.returning({ ticketId: agentRuns.ticketId });
 			if (!orphanedRuns.length) return;
 			const ids = orphanedRuns.map(({ ticketId }) => ticketId);
@@ -1414,8 +1487,16 @@ export class Gateway {
 			.where(
 				and(eq(agentRuns.status, "running"), lt(agentRuns.leaseExpiresAt, now)),
 			);
+		// One run whose ticket has since been deleted makes `cancelRun` throw and
+		// roll back, so without this guard the throw escaped the loop, every later
+		// expired run was skipped, and the same row re-threw on every subsequent
+		// sweep — lease expiry stopped for the whole deployment.
 		for (const { id } of expired)
-			await this.cancelRun(id, "agent run lease expired", now);
+			try {
+				await this.cancelRun(id, "agent run lease expired", now);
+			} catch (error) {
+				console.error("[grpc] run lease expiry failed", id, error);
+			}
 	}
 
 	private async sweep() {

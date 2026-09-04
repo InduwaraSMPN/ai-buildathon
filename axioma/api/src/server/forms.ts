@@ -114,6 +114,36 @@ function optionsFor(field: Pick<FormField, "key" | "options">): unknown[] {
 	});
 }
 
+/**
+ * A field pattern is admin-authored but runs against portal-supplied text, so
+ * both ends are bounded: backtracking cost grows with the subject, and a
+ * pathological pattern needs length to be pathological. The catalogue contract
+ * bounds the pattern too; this is the write boundary every other caller —
+ * inbound mail, the API — reaches instead.
+ */
+const MAX_PATTERN_LENGTH = 200;
+const MAX_PATTERN_SUBJECT_LENGTH = 4_096;
+const MAX_COMPILED_PATTERNS = 500;
+
+const compiledPatterns = new Map<string, RegExp>();
+
+/** Compiles each distinct pattern once; a submission is many values over few patterns. */
+function compilePattern(source: string, key: string): RegExp {
+	const cached = compiledPatterns.get(source);
+	if (cached) return cached;
+	if (source.length > MAX_PATTERN_LENGTH)
+		fail(`pattern for ${key} must be at most ${MAX_PATTERN_LENGTH} characters`);
+	let pattern: RegExp;
+	try {
+		pattern = new RegExp(source);
+	} catch {
+		return fail(`pattern for ${key} is invalid`);
+	}
+	if (compiledPatterns.size >= MAX_COMPILED_PATTERNS) compiledPatterns.clear();
+	compiledPatterns.set(source, pattern);
+	return pattern;
+}
+
 function validDate(value: string) {
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
 	if (!match) return false;
@@ -200,13 +230,11 @@ export function validateFormFieldValue(
 		if (constraints.pattern !== undefined) {
 			if (typeof constraints.pattern !== "string")
 				fail(`pattern for ${field.key} must be a string`);
-			let pattern: RegExp;
-			try {
-				pattern = new RegExp(constraints.pattern);
-			} catch {
-				return fail(`pattern for ${field.key} is invalid`);
-			}
-			if (!pattern.test(value)) return invalid();
+			// Reject an oversized subject before the regex sees it: maxLength only
+			// bounds the value when the field's author set one.
+			if (value.length > MAX_PATTERN_SUBJECT_LENGTH) return invalid();
+			if (!compilePattern(constraints.pattern, field.key).test(value))
+				return invalid();
 		}
 	}
 	if (field.type === "number") {

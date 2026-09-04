@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
 	check,
+	index,
 	integer,
 	pgTable,
 	primaryKey,
@@ -42,5 +43,9 @@ export const apiKeyRateLimits = pgTable(
 	(t) => [
 		primaryKey({ columns: [t.apiKeyId, t.windowStartedAt] }),
 		check("api_key_rate_limits_count_check", sql`${t.requestCount} >= 0`),
+		// One row per key per minute accumulates forever without a sweep, and the
+		// sweep needs this index: the primary key leads on `api_key_id`, so a
+		// window-based delete would seq-scan.
+		index("api_key_rate_limits_window_idx").on(t.windowStartedAt),
 	],
 );

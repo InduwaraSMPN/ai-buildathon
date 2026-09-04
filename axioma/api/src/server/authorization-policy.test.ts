@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createRouterClient, ORPCError } from "@orpc/server";
+import { appContract, portalContract } from "@/contracts";
 import type { Capability } from "@/shared";
 import * as authorizationBuilders from "./orpc";
 import { appRouter } from "./routers";
@@ -13,6 +14,7 @@ const publicProcedures = new Set([
 const authenticatedProcedures = new Set([
 	"privateData",
 	"listMyDevices",
+	"claimDevice",
 	"listPublicKnowledge",
 	"getPublicKnowledgeArticle",
 	"getMyApprovalStatus",
@@ -57,4 +59,25 @@ test("every composed procedure is deny-by-default", async () => {
 test("unscoped procedure builders are not exported", () => {
 	assert.equal("os" in authorizationBuilders, false);
 	assert.equal("authenticatedProcedure" in authorizationBuilders, false);
+});
+
+/**
+ * A procedure can exist in the contract, have a handler, typecheck, and still be
+ * unreachable, because `appRouter` lists its members explicitly. Nothing caught
+ * that: the deny-by-default test above iterates `appRouter`, so a procedure
+ * missing from it is simply never examined, and the first sign is a 404 at
+ * runtime. This closes the gap from the other side.
+ */
+test("every contract procedure is mounted on the router", () => {
+	const missing = Object.keys(appContract).filter(
+		(name) => !(name in appRouter),
+	);
+	assert.deepEqual(missing, []);
+});
+
+test("the portal contract is a subset of the router", () => {
+	const missing = Object.keys(portalContract).filter(
+		(name) => !(name in appRouter),
+	);
+	assert.deepEqual(missing, []);
 });

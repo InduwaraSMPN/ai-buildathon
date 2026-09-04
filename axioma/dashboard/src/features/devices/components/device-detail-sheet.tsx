@@ -3,6 +3,7 @@ import {
 	RiRefreshLine as RefreshCw,
 } from "@remixicon/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { formatDate, PageState } from "@/components/support-ui";
 import {
@@ -262,13 +263,14 @@ function DeviceDetail({ device }: { device: Device }) {
 					) : null}
 				</section>
 
-				<a
-					href={`/tickets/?deviceId=${encodeURIComponent(device.id)}`}
+				<Link
+					to="/tickets"
+					search={{ deviceId: device.id }}
 					className="inline-flex items-center gap-1 font-medium text-primary hover:underline"
 				>
 					View this device in ticket queue
 					<ExternalLink className="size-3" aria-hidden="true" />
-				</a>
+				</Link>
 
 				<section
 					aria-labelledby="device-commands-heading"

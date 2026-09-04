@@ -7,7 +7,8 @@
 // it under that alias reads as though the unreleased name were the current one.
 import { eventIterator, oc } from "@orpc/contract";
 import { z } from "zod";
-import { id } from "./shared";
+import { URGENCY_LEVELS } from "../shared";
+import { id, impact, jsonRecord } from "./shared";
 
 export const drafted = <T extends z.ZodTypeAny>(inner: T) =>
 	z.object({
@@ -26,6 +27,28 @@ export const intakeTranscriptEntry = z.object({
 });
 
 export const intakeStatus = z.enum(["open", "submitted", "discarded"]);
+
+/**
+ * The closed set of keys a draft legitimately carries. This was an open record,
+ * which meant any holder of `ticket.create` could write whatever they liked
+ * onto their own draft — `deviceId` included, and `tickets.device_id` is the
+ * sole authorization anchor for every device tool call, so a borrowed id had
+ * the agent acting on somebody else's laptop. Ownership is still re-checked
+ * server-side; this only stops anything the draft does not own from being
+ * stored in the first place.
+ */
+export const patchableDraftValues = z.strictObject({
+	title: z.string().max(160).optional(),
+	body: z.string().max(10_000).optional(),
+	impact: impact.optional(),
+	urgency: z.enum(URGENCY_LEVELS).optional(),
+	deviceId: id.optional(),
+	subcategoryId: id.optional(),
+	subcategoryConfirmed: z.boolean().optional(),
+	formId: id.optional(),
+	formValues: jsonRecord.optional(),
+	customFields: jsonRecord.optional(),
+});
 
 export const draftSummary = z.object({
 	id: z.string(),
@@ -93,7 +116,9 @@ export const intakeContract = {
 		.input(
 			z.object({
 				draftId: id,
-				values: z.record(z.string(), z.unknown()),
+				values: patchableDraftValues,
+				// Left open: a source is only a provenance label, and the client
+				// records one for nested paths the value schema does not name.
 				sources: z.record(z.string(), z.enum(["ai", "user"])),
 			}),
 		)

@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import random
+import signal
 import time
 import uuid
 from collections import OrderedDict
@@ -19,7 +21,7 @@ import grpc
 
 from axel import __version__, tools
 from axel.config import config
-from axel.loop import RunContext, Step, StepKind, run
+from axel.loop import RunContext, Step, StepKind, classify, run
 from axel.pb import axioma_pb2 as pb
 from axel.pb import axioma_pb2_grpc as pb_grpc
 from axel.prompt import SYSTEM_PROMPT, build_user_prompt
@@ -35,17 +37,38 @@ _RETAINED_TERMINALS: OrderedDict[str, tuple[float, pb.AgentMessage]] = OrderedDi
 
 
 def _worker_id(path: Path | None = None) -> str:
+    """Resolve this replica's worker ID.
+
+    An explicit AXIOMA_WORKER_ID wins over the file. The Dockerfile tells
+    operators to mount a volume over the config directory, so replicas sharing
+    that volume otherwise all read the same ID and collapse into one entry in
+    the API's registry.
+    """
+    if config.worker_id.strip():
+        return config.worker_id.strip()
     path = path or config.config_dir / "worker-id"
     try:
         return str(uuid.UUID(path.read_text(encoding="utf-8").strip()))
     except (OSError, ValueError):
-        worker_id = str(uuid.uuid4())
+        pass
+    worker_id = str(uuid.uuid4())
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # O_EXCL so two replicas cold-starting together converge on one value:
+        # the loser of the race reads the winner's ID rather than overwriting it.
+        descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
         try:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(f"{worker_id}\n", encoding="utf-8")
-        except OSError as exc:
-            raise RuntimeError(f"cannot persist worker ID at {path}: {exc}") from exc
-        return worker_id
+            os.write(descriptor, f"{worker_id}\n".encode())
+        finally:
+            os.close(descriptor)
+    except FileExistsError:
+        try:
+            return str(uuid.UUID(path.read_text(encoding="utf-8").strip()))
+        except (OSError, ValueError):
+            return worker_id
+    except OSError as exc:
+        raise RuntimeError(f"cannot persist worker ID at {path}: {exc}") from exc
+    return worker_id
 
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -84,12 +107,27 @@ class Connection:
             capabilities=sorted(tools.REGISTRY),
         )
         _set_if_present(hello, worker_id=self.worker_id)
+        if config.agent_token is not None:
+            _set_if_present(hello, credential=config.agent_token.get_secret_value())
         yield pb.AgentMessage(hello=hello)
         _prune_retained_terminals()
         for _, message in list(_RETAINED_TERMINALS.values()):
             yield message
         while (message := await self.outbound.get()) is not None:
             yield message
+
+    async def dispatch(self, message: pb.ApiMessage) -> None:
+        """Handle one inbound message without risking the connection.
+
+        Every concurrent run rides on this stream, so only a dead connection may
+        propagate out of the read loop; anything else is this message's problem.
+        """
+        try:
+            await self.handle(message)
+        except ConnectionError:
+            raise
+        except Exception:  # noqa: BLE001
+            LOG.exception("failed to handle %s message", message.WhichOneof("payload"))
 
     async def handle(self, message: pb.ApiMessage) -> None:
         payload = message.WhichOneof("payload")
@@ -100,20 +138,20 @@ class Connection:
                 return
             if len(self.runs) >= config.max_concurrent_runs:
                 LOG.warning("rejecting run %s: concurrent run limit reached", start.run_id)
-                await self._send(
-                    pb.AgentMessage(
-                        run_update=pb.RunUpdate(
-                            run_id=start.run_id,
-                            ordinal=1,
-                            kind=pb.RunUpdate.KIND_TERMINAL,
-                            status="failed",
-                            outcome="agent busy",
-                            error="concurrent run limit reached",
-                        )
-                    )
-                )
+                await self._send(_rejected(start.run_id, "concurrent run limit reached"))
                 return
-            await self._send(pb.AgentMessage(run_accepted=pb.RunAccepted(run_id=start.run_id)))
+            if self.closing:
+                raise ConnectionError("API connection is closing")
+            try:
+                # Never block the read loop on the acknowledgement: a slow send
+                # here delays every unrelated tool result behind it.
+                self.outbound.put_nowait(
+                    pb.AgentMessage(run_accepted=pb.RunAccepted(run_id=start.run_id))
+                )
+            except asyncio.QueueFull:
+                LOG.warning("rejecting run %s: outbound queue full", start.run_id)
+                await self._send(_rejected(start.run_id, "outbound queue full"))
+                return
             task = asyncio.create_task(self.execute(start), name=f"run-{start.run_id}")
             self.runs[start.run_id] = task
             task.add_done_callback(
@@ -209,19 +247,22 @@ class Connection:
                 raise RuntimeError("pending tool call limit reached")
             call_id = uuid.uuid4().hex
             future = asyncio.get_running_loop().create_future()
+            # Registered inside the guard: a send that fails after registering
+            # leaks the entry forever, and enough leaks retire the connection at
+            # max_pending_calls.
             self.pending[call_id] = future
-            await self._send(
-                pb.AgentMessage(
-                    tool_request=pb.ToolRequest(
-                        run_id=start.run_id,
-                        call_id=call_id,
-                        tool_name=name,
-                        input_json=json.dumps(payload, separators=(",", ":")),
-                        source_step_ordinal=source_step_ordinal,
+            try:
+                await self._send(
+                    pb.AgentMessage(
+                        tool_request=pb.ToolRequest(
+                            run_id=start.run_id,
+                            call_id=call_id,
+                            tool_name=name,
+                            input_json=json.dumps(payload, separators=(",", ":")),
+                            source_step_ordinal=source_step_ordinal,
+                        )
                     )
                 )
-            )
-            try:
                 return await future
             finally:
                 self.pending.pop(call_id, None)
@@ -291,8 +332,10 @@ class Connection:
             cancelled = exc
             status, outcome, error = "failed", "run cancelled", str(exc) or "cancelled"
         except Exception as exc:  # noqa: BLE001
+            # The full text stays in the log: RunUpdate.error is read by IT staff
+            # and by the employee, and an internal exception names internals.
             LOG.exception("run %s failed", start.run_id)
-            status, outcome, error = "failed", "agent run failed", str(exc)
+            status, outcome, error = "failed", "agent run failed", classify(exc)
         try:
             ordinal += 1
             update = pb.RunUpdate(
@@ -325,17 +368,34 @@ class Connection:
         await self._send(pb.AgentMessage(heartbeat=pb.Heartbeat(unix_ms=int(time.time() * 1000))))
 
     async def heartbeat(self) -> None:
+        """Beat until a send fails, then end.
+
+        A silently dead heartbeat is a dead worker to the API — it times the
+        worker out and stops dispatching while the stream stays open — so the
+        failure is logged and the task returns for connect_forever to notice.
+        """
         while True:
-            await asyncio.sleep(30)
-            await self.send_heartbeat()
+            await asyncio.sleep(config.heartbeat_interval_seconds)
+            try:
+                await self.send_heartbeat()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                LOG.exception("heartbeat failed; dropping the API connection")
+                return
 
     async def close(self) -> None:
         self.closing = True
-        for task in self.runs.values():
-            task.cancel("connection lost")
+        # Cancelled, not failed: setting an exception on a future whose awaiting
+        # run task is about to be cancelled leaves it unretrieved, and asyncio
+        # logs "Future exception was never retrieved" at ERROR on every
+        # disconnect.
         for future in self.pending.values():
             if not future.done():
-                future.set_exception(ConnectionError("API connection lost"))
+                future.cancel()
+        self.pending.clear()
+        for task in self.runs.values():
+            task.cancel("connection lost")
         if self.runs:
             await asyncio.gather(*self.runs.values(), return_exceptions=True)
         while not self.outbound.empty():
@@ -349,32 +409,99 @@ class Connection:
         self.outbound.put_nowait(None)
 
 
+def _channel_options() -> list[tuple[str, object]]:
+    """Keepalive and message bounds for the API channel.
+
+    Without keepalive a silently half-open connection wedges the worker forever:
+    the read loop never returns, health still answers ok, and no supervisor
+    restarts it. The length bounds make an oversize message fail here, with a
+    clear error, instead of aborting the shared bidi call and taking every
+    concurrent run with it.
+    """
+    options: list[tuple[str, object]] = [
+        ("grpc.keepalive_time_ms", 20000),
+        ("grpc.keepalive_timeout_ms", 10000),
+        ("grpc.keepalive_permit_without_calls", 1),
+        ("grpc.http2.max_pings_without_data", 0),
+        ("grpc.max_send_message_length", config.grpc_max_message_bytes),
+        ("grpc.max_receive_message_length", config.grpc_max_message_bytes),
+    ]
+    if config.api_grpc_server_name:
+        options.append(("grpc.ssl_target_name_override", config.api_grpc_server_name))
+    return options
+
+
+async def _read_stream(
+    connection: Connection,
+    stream: AsyncIterator[pb.ApiMessage],
+    connected: asyncio.Event,
+    inbound: list[float],
+) -> None:
+    """Pump inbound messages, recording when each arrived.
+
+    Health goes green on the first message and not before: a stream the API
+    rejected is established locally but never answers, and reporting that as ok
+    is how a worker stays in the pool while doing nothing.
+    """
+    async for message in stream:
+        inbound[0] = time.monotonic()
+        connected.set()
+        await connection.dispatch(message)
+
+
+async def _stream_watchdog(stream: object, inbound: list[float]) -> None:
+    """Cancel a stream that has gone quiet.
+
+    Keepalive catches a dead transport; this catches a live one that has stopped
+    delivering. The API beats far faster than this, so three heartbeat intervals
+    of silence is a wedged connection, not a lull.
+    """
+    limit = config.heartbeat_interval_seconds * 3
+    while True:
+        await asyncio.sleep(config.heartbeat_interval_seconds)
+        idle = time.monotonic() - inbound[0]
+        if idle >= limit:
+            LOG.warning("no inbound API message in %.0fs; cancelling the stream", idle)
+            cancel = getattr(stream, "cancel", None)
+            if callable(cancel):
+                cancel()
+            return
+
+
 async def connect_forever(connected: asyncio.Event) -> None:
     delay = config.reconnect_base_seconds
     worker_id = _worker_id()
     while True:
         connection = Connection(worker_id)
-        heartbeat: asyncio.Task[None] | None = None
+        tasks: set[asyncio.Task[None]] = set()
         connected_at: float | None = None
         try:
             roots = config.api_grpc_ca_file.read_bytes() if config.api_grpc_ca_file else None
-            options = (
-                (("grpc.ssl_target_name_override", config.api_grpc_server_name),)
-                if config.api_grpc_server_name
-                else None
-            )
             async with grpc.aio.secure_channel(
                 config.api_grpc_host,
                 grpc.ssl_channel_credentials(root_certificates=roots),
-                options=options,
+                options=_channel_options(),
             ) as channel:
                 await asyncio.wait_for(channel.channel_ready(), timeout=10)
                 stream = pb_grpc.AgentChannelStub(channel).Connect(connection.requests())
-                heartbeat = asyncio.create_task(connection.heartbeat())
-                connected.set()
                 connected_at = time.monotonic()
-                async for message in stream:
-                    await connection.handle(message)
+                inbound = [connected_at]
+                tasks = {
+                    asyncio.create_task(
+                        _read_stream(connection, stream, connected, inbound), name="api-read"
+                    ),
+                    asyncio.create_task(connection.heartbeat(), name="api-heartbeat"),
+                    asyncio.create_task(
+                        _stream_watchdog(stream, inbound), name="api-watchdog"
+                    ),
+                }
+                # Raced, not awaited in turn: a dead heartbeat has to tear the
+                # connection down, or the API times the worker out and stops
+                # dispatching while the stream sits there looking healthy.
+                done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+                for task in done:
+                    if not task.cancelled() and (exc := task.exception()) is not None:
+                        raise exc
         except asyncio.CancelledError:
             raise
         except grpc.aio.AioRpcError as exc:
@@ -383,9 +510,10 @@ async def connect_forever(connected: asyncio.Event) -> None:
             LOG.exception("API stream failed")
         finally:
             connected.clear()
-            if heartbeat is not None:
-                heartbeat.cancel()
-                await asyncio.gather(heartbeat, return_exceptions=True)
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
             await connection.close()
         if (
             connected_at is not None
@@ -444,8 +572,40 @@ def _priority(impact: str, urgency: str) -> str:
     }.get(impact, {}).get(urgency, "P3")
 
 
+def _rejected(run_id: str, error: str) -> pb.AgentMessage:
+    return pb.AgentMessage(
+        run_update=pb.RunUpdate(
+            run_id=run_id,
+            ordinal=1,
+            kind=pb.RunUpdate.KIND_TERMINAL,
+            status="failed",
+            outcome="agent busy",
+            error=error,
+        )
+    )
+
+
 def _json(value: object | None) -> str:
-    return "" if value is None else json.dumps(value, default=str, separators=(",", ":"))
+    """Render a payload for the wire, bounded.
+
+    _truncate bounds only the model-context copy, so an unbounded tool result
+    reached the stream at full size: one oversize RunUpdate exceeds the API's
+    gRPC receive limit, aborts the bidi call, and cancels every concurrent run.
+    """
+    if value is None:
+        return ""
+    rendered = json.dumps(value, default=str, separators=(",", ":"))
+    limit = config.wire_output_max_chars
+    if len(rendered) <= limit:
+        return rendered
+    return json.dumps(
+        {
+            "truncated": True,
+            "dropped_characters": len(rendered) - limit,
+            "output": rendered[:limit],
+        },
+        separators=(",", ":"),
+    )
 
 
 def _loads(value: str) -> object:
@@ -471,8 +631,15 @@ async def main() -> None:
     HealthHandler.connected = connected
     health = ThreadingHTTPServer((config.health_host, config.health_port), HealthHandler)
     health_task = asyncio.create_task(asyncio.to_thread(health.serve_forever))
+    worker = asyncio.create_task(connect_forever(connected), name="api-connection")
+    # A rolling restart sends SIGTERM. Unhandled it kills the process outright:
+    # connect_forever's finally and Connection.close() never run, in-flight runs
+    # emit no terminal, and every retained-but-unacked terminal goes with it.
+    with suppress(NotImplementedError):
+        asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, worker.cancel)
     try:
-        await connect_forever(connected)
+        with suppress(asyncio.CancelledError):
+            await worker
     finally:
         health.shutdown()
         await health_task

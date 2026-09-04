@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
 import { PageState } from "@/components/support-ui";
 import {
 	KnowledgeArticleEditorDialog,
@@ -21,12 +22,15 @@ function KnowledgeRoute() {
 	const client = useQueryClient();
 	const query = useQuery(orpc.listKnowledgeArticles.queryOptions());
 	const navigate = useNavigate();
+	const [editorOpen, setEditorOpen] = useState(false);
 	const create = useMutation(
 		orpc.createKnowledgeArticle.mutationOptions({
-			onSuccess: () =>
-				client.invalidateQueries({
+			onSuccess: () => {
+				setEditorOpen(false);
+				return client.invalidateQueries({
 					queryKey: orpc.listKnowledgeArticles.key(),
-				}),
+				});
+			},
 		}),
 	);
 	const state = selectQueryState(query);
@@ -60,6 +64,8 @@ function KnowledgeRoute() {
 			}
 			action={
 				<KnowledgeArticleEditorDialog
+					open={editorOpen}
+					onOpenChange={setEditorOpen}
 					pending={create.isPending}
 					onSubmit={(value) => create.mutate(value)}
 				/>

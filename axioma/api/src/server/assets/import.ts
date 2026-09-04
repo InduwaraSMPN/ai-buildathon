@@ -108,9 +108,65 @@ export function parseImportedDynamicValue(
 	return value;
 }
 
+type FieldDefinition = typeof dynamicFields.$inferSelect;
+type FieldWrite = { fieldId: string; value: unknown };
+
+/**
+ * Converts one row's mapped columns, reporting the first bad cell rather than
+ * throwing. A blank cell is absence, not a value: `Number("")` is 0, so parsing
+ * one would write a silent zero for an integer and reject an optional checkbox
+ * outright.
+ */
+function resolveDynamicValues(
+	mappings: readonly (readonly [string, string])[],
+	definitionsByKey: ReadonlyMap<string, FieldDefinition>,
+	row: CsvRow,
+): { values: FieldWrite[] } | { reason: string } {
+	const values: FieldWrite[] = [];
+	for (const [column, key] of mappings) {
+		const definition = definitionsByKey.get(key);
+		if (!definition) throw new TypeError(`Unknown asset dynamic field ${key}`);
+		const cell = row[column] ?? "";
+		if (cell === "") continue;
+		try {
+			const value = parseImportedDynamicValue(definition.fieldType, cell);
+			validateFieldValue(definition, value);
+			values.push({ fieldId: definition.id, value });
+		} catch (error) {
+			return {
+				reason: `Invalid value for ${key}: ${error instanceof Error ? error.message : String(error)}`,
+			};
+		}
+	}
+	return { values };
+}
+
 /** Preview is deliberately pure: importing is the only path that receives a database. */
 export function previewAssetImport(input: AssetImportInput) {
 	return previewAssetCsv(input.csv, input.identityColumns);
+}
+
+const INDEX_BATCH_SIZE = 25;
+
+/**
+ * Indexing happens after the import has committed, so a failure here must not
+ * reach the caller: the retry it invites would re-process every row. Batched so
+ * a ten-thousand-row import does not open a query per asset at once.
+ */
+async function indexImportedAssets(assetIds: readonly string[]): Promise<void> {
+	for (let start = 0; start < assetIds.length; start += INDEX_BATCH_SIZE) {
+		const batch = assetIds.slice(start, start + INDEX_BATCH_SIZE);
+		const results = await Promise.allSettled(
+			batch.map((id) => indexAsset(db, id)),
+		);
+		results.forEach((result, index) => {
+			if (result.status === "rejected")
+				console.error(
+					`[assets:import] search indexing failed for ${batch[index]}`,
+					result.reason,
+				);
+		});
+	}
 }
 
 export async function importAssetsCsv(
@@ -182,14 +238,36 @@ export async function importAssetsCsv(
 				identities.map(({ identityKey, assetId }) => [identityKey, assetId]),
 			),
 		);
-		const rejected = [...preview.rejected, ...plan.rejected];
+		// A bad cell is one row's problem, not the import's: resolving the dynamic
+		// values up front turns a parse or validation failure into a rejection
+		// alongside the ones previewAssetCsv reports, instead of an exception that
+		// escapes the transaction and rolls every accepted row back.
+		const writes: { operation: AssetImportOperation; values: FieldWrite[] }[] =
+			[];
+		const unparseable: AssetImportRejection[] = [];
+		for (const operation of plan.operations) {
+			const resolved = resolveDynamicValues(
+				mappings,
+				definitionsByKey,
+				operation.values,
+			);
+			if ("reason" in resolved)
+				unparseable.push({
+					rowNumber: operation.rowNumber,
+					reason: resolved.reason,
+					row: operation.values,
+				});
+			else writes.push({ operation, values: resolved.values });
+		}
+
+		const rejected = [...preview.rejected, ...plan.rejected, ...unparseable];
 		rejectedCount = rejected.length;
 		await tx.insert(assetImportRuns).values({
 			id: runId,
 			profileId: input.profileId,
 			fileName: input.fileName,
 			totalRows: preview.accepted.length + preview.rejected.length,
-			acceptedRows: plan.operations.length,
+			acceptedRows: writes.length,
 			rejectedRows: rejected.length,
 		});
 		if (rejected.length > 0)
@@ -201,7 +279,7 @@ export async function importAssetsCsv(
 				})),
 			);
 
-		for (const operation of plan.operations) {
+		for (const { operation, values: fieldValues } of writes) {
 			const values = assetValues(operation.values);
 			let assetId: string;
 			if (operation.kind === "update") {
@@ -237,25 +315,16 @@ export async function importAssetsCsv(
 				changedAssetIds.push(assetId);
 				inserted += 1;
 			}
-			for (const [column, key] of mappings) {
-				const definition = definitionsByKey.get(key);
-				if (!definition)
-					throw new TypeError(`Unknown asset dynamic field ${key}`);
-				const value = parseImportedDynamicValue(
-					definition.fieldType,
-					operation.values[column] ?? "",
-				);
-				validateFieldValue(definition, value);
+			for (const { fieldId, value } of fieldValues)
 				await tx
 					.insert(dynamicFieldValues)
-					.values({ fieldId: definition.id, objectId: assetId, value })
+					.values({ fieldId, objectId: assetId, value })
 					.onConflictDoUpdate({
 						target: [dynamicFieldValues.fieldId, dynamicFieldValues.objectId],
 						set: { value },
 					});
-			}
 		}
 	});
-	await Promise.all(changedAssetIds.map((id) => indexAsset(db, id)));
+	await indexImportedAssets(changedAssetIds);
 	return { runId, inserted, updated, rejected: rejectedCount };
 }

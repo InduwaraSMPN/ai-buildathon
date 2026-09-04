@@ -114,6 +114,8 @@ export const tickets = pgTable(
 		index("tickets_team_id_idx").on(t.teamId),
 		index("tickets_pending_reason_id_idx").on(t.pendingReasonId),
 		index("tickets_merged_into_id_idx").on(t.mergedIntoId),
+		// The search reconciliation sweep filters on this every ten seconds.
+		index("tickets_updated_at_idx").on(t.updatedAt),
 		index("tickets_service_subcategory_id_service_id_idx").on(
 			t.serviceSubcategoryId,
 			t.serviceId,

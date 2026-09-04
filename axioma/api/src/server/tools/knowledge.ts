@@ -45,6 +45,13 @@ const STORED_TEXT_TYPES = new Set([
 	"text/csv",
 	"application/json",
 ]);
+/**
+ * Both the UTF-8 decode and every de-identification pass walk the whole blob,
+ * while `deidentifyKnowledgeText` keeps only its first few thousand characters,
+ * so a larger attachment is refused unread rather than spending the agent's
+ * step on text it will never see.
+ */
+const MAX_STORED_TEXT_BYTES = 512 * 1024;
 
 export function decodeStoredText(
 	mediaType: string | null,
@@ -135,6 +142,14 @@ const accessSql = (ticketId: string) => sql`(
 	))
 )`;
 
+/**
+ * Cosine floor for the vector branch, the same one `intake/deflection.ts`
+ * applies to this query shape. Without it a query with no lexical hits returns
+ * the nearest neighbours whatever their distance, and the agent is handed the
+ * least-unrelated articles in the corpus as if they were evidence.
+ */
+const MIN_SIMILARITY = 0.25;
+
 export async function knowledgeSearch(
 	input: z.infer<typeof knowledgeSearchInput>,
 	ctx: ToolContext,
@@ -166,11 +181,14 @@ export async function knowledgeSearch(
 		.orderBy(sql`ts_rank_cd(${textVector}, ${tsquery}) desc`)
 		.limit(candidates);
 	const queryEmbedding = await embeddingPromise;
-	const semantic = queryEmbedding
+	const literal = queryEmbedding
+		? sql`${JSON.stringify(queryEmbedding)}::vector`
+		: null;
+	const semantic = literal
 		? await dependencies.db
 				.select({
 					...select,
-					rank: sql<number>`1 - (${searchDocuments.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector)`,
+					rank: sql<number>`1 - (${searchDocuments.embedding} <=> ${literal})`,
 				})
 				.from(searchDocuments)
 				.where(
@@ -178,11 +196,12 @@ export async function knowledgeSearch(
 						accessSql(ctx.ticketId),
 						isNotNull(searchDocuments.embedding),
 						eq(searchDocuments.embeddingModel, dependencies.embeddingModel),
+						sql`1 - (${searchDocuments.embedding} <=> ${literal}) >= ${MIN_SIMILARITY}`,
 					),
 				)
-				.orderBy(
-					sql`${searchDocuments.embedding} <=> ${JSON.stringify(queryEmbedding)}::vector`,
-				)
+				// Ordered by raw distance rather than by the similarity expression so
+				// the hnsw index still serves the ordering.
+				.orderBy(sql`${searchDocuments.embedding} <=> ${literal}`)
 				.limit(candidates)
 		: [];
 	const byKey = new Map(
@@ -207,6 +226,8 @@ export async function knowledgeSearch(
 			return publicKnowledgeItem({ ...safe, source, id });
 		});
 	return {
+		// A retrieval whose vector branch cleared nothing is lexical, whether the
+		// provider failed or every neighbour fell below the floor.
 		mode:
 			queryEmbedding && semantic.length
 				? ("hybrid" as const)
@@ -347,14 +368,31 @@ export async function knowledgeFetch(
 			.limit(1)
 	)[0];
 	if (!item) return null;
-	const rawText =
-		item.kind === "file" && item.sha256
-			? decodeStoredText(
-					item.mediaType,
-					await documentStorage.read(item.sha256),
-				)
-			: null;
-	const text = rawText ? deidentifyKnowledgeText(rawText) : null;
 	const { sha256: _, ...result } = item;
-	return { ...result, text };
+	return { ...result, text: await storedDocumentText(item) };
+}
+
+/**
+ * A blob can be deleted while its row survives, and the row carries no size, so
+ * both are settled before the buffer is touched: an oversized or unreadable
+ * attachment yields no text rather than throwing out of `executeTool` and
+ * failing the agent's step.
+ */
+async function storedDocumentText(item: {
+	kind: string;
+	mediaType: string | null;
+	sha256: string | null;
+}) {
+	if (item.kind !== "file" || !item.sha256) return null;
+	const bytes = await documentStorage.size(item.sha256);
+	if (bytes === null || bytes > MAX_STORED_TEXT_BYTES) return null;
+	try {
+		const rawText = decodeStoredText(
+			item.mediaType,
+			await documentStorage.read(item.sha256),
+		);
+		return rawText ? deidentifyKnowledgeText(rawText) : null;
+	} catch {
+		return null;
+	}
 }

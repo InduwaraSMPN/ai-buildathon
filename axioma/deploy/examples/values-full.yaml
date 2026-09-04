@@ -37,6 +37,10 @@ images:
     repository: registry.example.com/axioma/dashboard
     tag: "0.1.0"
     pullPolicy: Always
+  web:
+    repository: registry.example.com/axioma/web
+    tag: "0.1.0"
+    pullPolicy: Always
 
 secrets:
   existingSecret: ""
@@ -115,6 +119,14 @@ api:
     annotations:
       service.beta.kubernetes.io/aws-load-balancer-internal: "true"
     loadBalancerIP: "10.0.0.50"
+    loadBalancerSourceRanges:
+      - 10.0.0.0/8
+  # Belt and braces with the source ranges above: the Service field is the
+  # provider's to honour, this one is the CNI's.
+  networkPolicy:
+    enabled: true
+    grpcSourceRanges:
+      - 10.0.0.0/8
   resources:
     requests:
       cpu: 500m
@@ -328,8 +340,11 @@ serviceAccount:
 rbac:
   create: true
   managedNamespaces:
+    # Both exist before this file is applied: `axioma` is the release namespace,
+    # and `demo` is what api/k8s/namespace.yaml creates. The chart binds Roles
+    # in them, it does not create them.
+    - axioma
     - demo
-    - payments
   clusterWide: false
 
 postgresql:

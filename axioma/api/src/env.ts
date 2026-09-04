@@ -5,6 +5,7 @@ import { z } from "zod";
 export const env = createEnv({
 	server: {
 		DATABASE_URL: z.string().min(1),
+		DATABASE_POOL_MAX: z.coerce.number().int().min(2).max(200).default(20),
 		BETTER_AUTH_SECRET: z.string().min(32),
 		BETTER_AUTH_URL: z.url(),
 		AXIOMA_PROVIDER_ENCRYPTION_KEY: z.string().optional(),
@@ -17,6 +18,11 @@ export const env = createEnv({
 			.enum(["department", "jobTitle"])
 			.default("department"),
 		AXIOMA_DIRECTORY_STAFF_VALUE: z.string().default("IT"),
+		// Proves an AgentChannel stream is a worker the operator deployed. The
+		// gateway refuses every agent connection when this is unset, because the
+		// port is reachable by every enrolled laptop and the channel carries
+		// ticket text, reporter identity and tool execution.
+		AXIOMA_AGENT_TOKEN: z.string().min(16).optional(),
 		AXIOMA_BOOTSTRAP_ADMIN_EMAIL: z
 			.string()
 			.trim()
@@ -24,8 +30,18 @@ export const env = createEnv({
 			.pipe(z.email())
 			.optional(),
 		CORS_ORIGIN: z.string().min(1),
+		PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
 		KUBECONFIG: z.string().optional(),
 		AXIOMA_K8S_CONTEXT: z.string().optional(),
+		// Opt-in for an environment credential that asks to skip TLS verification.
+		// Without it the request is refused and logged rather than honoured.
+		AXIOMA_K8S_ALLOW_INSECURE_TLS: z
+			.enum(["true", "false"])
+			.default("false")
+			.transform((value) => value === "true"),
+		// Namespaces the cluster tools may read or patch. Empty means unrestricted,
+		// which is only correct when the credential itself is namespace-scoped.
+		AXIOMA_K8S_NAMESPACES: z.string().optional(),
 		AXIOMA_AUTO_DISPATCH: z
 			.enum(["true", "false"])
 			.default("true")
@@ -74,3 +90,15 @@ export const env = createEnv({
 	skipValidation: !!process.env.SKIP_ENV_VALIDATION,
 	emptyStringAsUndefined: true,
 });
+
+/**
+ * `CORS_ORIGIN` is a comma-separated list. Trimming matters: both consumers
+ * match an origin by exact equality, so a value written as `a, b` yields
+ * ` b`, which no browser `Origin` header can ever equal — and the failure is
+ * silent, seen only as credentialed requests from that origin being blocked.
+ */
+export const allowedOrigins = (value = env.CORS_ORIGIN): string[] =>
+	value
+		.split(",")
+		.map((origin) => origin.trim())
+		.filter(Boolean);

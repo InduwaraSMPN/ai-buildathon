@@ -14,6 +14,7 @@ import {
 	contracts,
 	suppliers,
 } from "@/db/schema/suppliers";
+import { softwareIdentityKey } from "@/server/inventory";
 import {
 	DEMO_USERS,
 	daysFromEpoch,
@@ -130,7 +131,9 @@ export async function seedSoftwareSuppliers(): Promise<void> {
 				.onConflictDoNothing();
 		}
 
-		// Software products — 5
+		// Software products — 5. The identity key is what the compliance join
+		// matches installs on, so it is derived exactly as ingestInventoryReport
+		// derives it rather than invented here.
 		for (const p of SOFTWARE_PRODUCTS) {
 			await tx
 				.insert(softwareProducts)
@@ -138,7 +141,10 @@ export async function seedSoftwareSuppliers(): Promise<void> {
 					id: p.id,
 					name: p.name,
 					publisher: p.publisher,
-					identityKey: p.identityKey,
+					identityKey: softwareIdentityKey(
+						p.installedName,
+						p.installedPublisher,
+					),
 					createdAt: daysFromEpoch(1, 9),
 				})
 				.onConflictDoNothing();

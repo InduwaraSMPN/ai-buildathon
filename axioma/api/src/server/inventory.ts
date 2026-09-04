@@ -45,14 +45,24 @@ const object = (value: unknown): Record<string, unknown> =>
 	value && typeof value === "object" && !Array.isArray(value)
 		? (value as Record<string, unknown>)
 		: {};
-const identityKey = (app: Record<string, unknown>) =>
-	[app.name, app.version, app.publisher]
+/**
+ * Identity of an installed application, deliberately independent of its
+ * version: a key that embeds the version renames the product on every patch, so
+ * a licence mapped to it stops matching the moment the fleet updates. Exported
+ * because anything writing software_inventory_apps has to agree on the shape —
+ * a product whose key was derived differently joins to nothing.
+ */
+export const softwareIdentityKey = (name: unknown, publisher: unknown) =>
+	[name, publisher]
 		.map((value) =>
 			String(value ?? "")
 				.trim()
 				.toLowerCase(),
 		)
 		.join("\0");
+
+const identityKey = (app: Record<string, unknown>) =>
+	softwareIdentityKey(app.name, app.publisher);
 
 export async function ingestInventoryReport(
 	deviceId: string,

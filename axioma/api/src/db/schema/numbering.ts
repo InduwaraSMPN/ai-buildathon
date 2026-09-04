@@ -22,9 +22,12 @@ export const ticketNumberHistory = pgTable(
 	"ticket_number_history",
 	{
 		number: text("number").primaryKey(),
+		// Cascades with the ticket. RESTRICT here made deleting a user impossible:
+		// `tickets.reporter_id` cascades from `user`, but RESTRICT fires
+		// unconditionally, so the cascade could never reach this row.
 		ticketId: text("ticket_id")
 			.notNull()
-			.references(() => tickets.id, { onDelete: "restrict" }),
+			.references(() => tickets.id, { onDelete: "cascade" }),
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},
 	(t) => [

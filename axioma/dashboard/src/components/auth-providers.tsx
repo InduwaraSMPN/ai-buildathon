@@ -73,13 +73,20 @@ export function AuthProviders({ redirect }: { redirect: string }) {
 
 	async function signIn(providerId: string) {
 		setPending(providerId);
-		const { error } = await authClient.signIn.social({
-			provider: providerId,
-			callbackURL: new URL(redirect, window.location.origin).toString(),
-		});
-		if (error) {
+		try {
+			const { error } = await authClient.signIn.social({
+				provider: providerId,
+				callbackURL: new URL(redirect, window.location.origin).toString(),
+			});
+			if (error) toast.error(error.message || error.statusText);
+		} catch (error) {
+			// A rejection here — an unreachable issuer, say — would otherwise leave
+			// every SSO button disabled for the rest of the page's life.
+			toast.error(
+				error instanceof Error ? error.message : "Sign-in could not start",
+			);
+		} finally {
 			setPending(null);
-			toast.error(error.message || error.statusText);
 		}
 	}
 

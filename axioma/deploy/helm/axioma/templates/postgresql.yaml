@@ -63,6 +63,9 @@ spec:
       {{- end }}
     spec:
       {{- include "axioma.imagePullSecrets" . | nindent 6 }}
+      # A database has no business talking to the Kubernetes API, and the
+      # default ServiceAccount's token would otherwise be mounted into it.
+      automountServiceAccountToken: false
       {{- with .Values.postgresql.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}

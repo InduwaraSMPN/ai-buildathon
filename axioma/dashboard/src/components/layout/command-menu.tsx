@@ -64,7 +64,13 @@ export function CommandMenu({
 	const goUrl = (url: string) => {
 		onOpenChange(false);
 		// Widened on purpose: server-supplied deep links from the API are plain
-		// strings and are deliberately not part of the typed registry.
+		// strings and are deliberately not part of the typed registry. An absolute
+		// one has to leave the router, though — handing `https://…` to `navigate`
+		// resolved it as an internal path and landed on `/https:/…`.
+		if (/^https?:\/\//i.test(url)) {
+			window.open(url, "_blank", "noopener,noreferrer");
+			return;
+		}
 		void navigate({ to: url });
 	};
 	const groups = Object.groupBy(

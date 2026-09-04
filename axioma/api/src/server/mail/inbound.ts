@@ -18,6 +18,8 @@ export interface InboundPlan {
 	reference?: string;
 	autoReply: boolean;
 	autoReplySuppressionReason?: string;
+	/** Set when a reference matched but the sender was not entitled to it. */
+	threadRejectionReason?: string;
 }
 
 const autoResponderHeaders = new Set([
@@ -76,9 +78,18 @@ export function findTicketReference(
 export function planInboundMessage(input: {
 	message: InboundMessage;
 	references: readonly TicketReference[];
+	/**
+	 * References the sender is not entitled to thread onto. Ticket numbers are
+	 * sequential and appear in every outbound notification, so quoting one is no
+	 * evidence of anything; these are carried only to explain the fall-through.
+	 */
+	unauthorizedReferences?: readonly TicketReference[];
 	recentlyAutoReplied: boolean;
 }): InboundPlan {
 	const match = findTicketReference(input.message, input.references);
+	const rejected = match
+		? undefined
+		: findTicketReference(input.message, input.unauthorizedReferences ?? []);
 	const suppression = autoReplySuppressionReason(
 		input.message,
 		input.recentlyAutoReplied,
@@ -89,5 +100,8 @@ export function planInboundMessage(input: {
 		reference: match?.reference,
 		autoReply: suppression === undefined,
 		autoReplySuppressionReason: suppression,
+		threadRejectionReason: rejected
+			? `sender is not the reporter of ${rejected.reference}`
+			: undefined,
 	};
 }

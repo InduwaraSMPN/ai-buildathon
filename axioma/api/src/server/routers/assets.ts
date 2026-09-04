@@ -1,5 +1,5 @@
 import { ORPCError } from "@orpc/server";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
 	assetCheckoutLog,
@@ -30,8 +30,11 @@ export const assetsRouter = {
 	readDeviceInventory: capabilityProcedure(
 		"device.read",
 	).readDeviceInventory.handler(async ({ input }) => {
+		// Every inventory table keys off assetDevices.id, not the asset it points
+		// at; the two only coincide for links ingestInventoryReport created.
 		const [link] = await db
 			.select({
+				id: assetDevices.id,
 				deviceId: assetDevices.deviceId,
 				assetId: assetDevices.assetId,
 				lastReportedAt: assetDevices.lastReportedAt,
@@ -43,7 +46,7 @@ export const assetsRouter = {
 		const [report] = await db
 			.select({ reportedAt: inventoryReports.reportedAt })
 			.from(inventoryReports)
-			.where(eq(inventoryReports.assetDeviceId, link.assetId))
+			.where(eq(inventoryReports.assetDeviceId, link.id))
 			.orderBy(desc(inventoryReports.reportedAt))
 			.limit(1);
 		const [hardware] = await db
@@ -57,7 +60,7 @@ export const assetsRouter = {
 				observedAt: assetHardware.observedAt,
 			})
 			.from(assetHardware)
-			.where(eq(assetHardware.assetDeviceId, link.assetId))
+			.where(eq(assetHardware.assetDeviceId, link.id))
 			.orderBy(desc(assetHardware.observedAt))
 			.limit(1);
 		const [disks, software] = await Promise.all([
@@ -70,7 +73,7 @@ export const assetsRouter = {
 					observedAt: assetDisks.observedAt,
 				})
 				.from(assetDisks)
-				.where(eq(assetDisks.assetDeviceId, link.assetId))
+				.where(eq(assetDisks.assetDeviceId, link.id))
 				.orderBy(asc(assetDisks.deviceKey)),
 			db
 				.select({
@@ -81,7 +84,7 @@ export const assetsRouter = {
 					observedAt: softwareInventoryApps.observedAt,
 				})
 				.from(softwareInventoryApps)
-				.where(eq(softwareInventoryApps.assetDeviceId, link.assetId))
+				.where(eq(softwareInventoryApps.assetDeviceId, link.id))
 				.orderBy(asc(softwareInventoryApps.name)),
 		]);
 		return {
@@ -333,7 +336,37 @@ export const assetsRouter = {
 		"admin.settings",
 	).allocateSoftwareLicence.handler(async ({ input }) => {
 		const id = crypto.randomUUID();
-		await db.insert(softwareLicenceAllocations).values({ id, ...input });
+		// The entitlement is locked, counted and compared before the insert.
+		// Without it an unknown id surfaced as a raw foreign-key 500 rather than a
+		// 404, and an entitlement for five seats accepted five hundred
+		// allocations — over-allocation was only ever *reported* afterwards by the
+		// compliance view, never prevented.
+		await db.transaction(async (tx) => {
+			const [entitlement] = await tx
+				.select({ seatCount: softwareLicenceEntitlements.seatCount })
+				.from(softwareLicenceEntitlements)
+				.where(eq(softwareLicenceEntitlements.id, input.entitlementId))
+				.limit(1)
+				.for("update");
+			if (!entitlement)
+				throw new ORPCError("NOT_FOUND", {
+					message: "Licence entitlement not found",
+				});
+			const [allocated] = await tx
+				.select({ used: count() })
+				.from(softwareLicenceAllocations)
+				.where(
+					and(
+						eq(softwareLicenceAllocations.entitlementId, input.entitlementId),
+						sql`${softwareLicenceAllocations.revokedAt} is null`,
+					),
+				);
+			if ((allocated?.used ?? 0) >= entitlement.seatCount)
+				throw new ORPCError("CONFLICT", {
+					message: `All ${entitlement.seatCount} seats on this entitlement are allocated`,
+				});
+			await tx.insert(softwareLicenceAllocations).values({ id, ...input });
+		});
 		return { id };
 	}),
 	revokeSoftwareAllocation: capabilityProcedure(

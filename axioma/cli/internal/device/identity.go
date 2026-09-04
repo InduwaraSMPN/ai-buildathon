@@ -34,6 +34,14 @@ type DaemonState struct {
 	LastSeenSequence uint64    `json:"lastSeenSequence"`
 	UpdatedAt        time.Time `json:"updatedAt"`
 	LastError        string    `json:"lastError,omitempty"`
+	// When the last inventory sweep succeeded. Persisted so a reconnect does not
+	// re-run three PowerShell WMI queries: a gateway that accepts the stream and
+	// then goes silent reconnects about once a minute, and an unconditional
+	// sweep made that a continuous load on every laptop in the fleet.
+	LastInventoryAt time.Time `json:"lastInventoryAt,omitempty"`
+	// Shown by `axel-cli status` so the employee can type it into the portal and
+	// claim this machine. Enrolment alone leaves the device unowned.
+	ClaimCode string `json:"claimCode,omitempty"`
 }
 
 // StateDir is where the agent keeps its identity and local state.

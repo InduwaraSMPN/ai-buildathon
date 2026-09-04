@@ -200,7 +200,7 @@ export function AttachmentControls({
 	uploading = false,
 }: {
 	attachments: readonly RequestAttachment[];
-	onFiles?: (files: FileList) => void;
+	onFiles?: (files: readonly File[]) => void;
 	onAddLink?: () => void;
 	uploading?: boolean;
 }) {
@@ -219,8 +219,11 @@ export function AttachmentControls({
 						multiple
 						disabled={!onFiles}
 						onChange={(event) => {
-							if (event.target.files) onFiles?.(event.target.files);
+							// `files` is a live list that the reset below empties, so it is
+							// snapshotted first — otherwise only the first file uploads.
+							const files = Array.from(event.target.files ?? []);
 							event.target.value = "";
+							if (files.length) onFiles?.(files);
 						}}
 					/>
 					{uploading ? (

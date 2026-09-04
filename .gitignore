@@ -17,3 +17,9 @@ coverage/
 *.tsbuildinfo
 tmp/
 temp/
+
+# pytest --basetemp targets; on Windows pytest cannot always clean its own
+# default temp directory, so runs are pointed at these instead.
+.pytest-tmp*/
+.pytest_cache/
+.ruff_cache/

@@ -114,6 +114,48 @@ through api.grpc.tls.extraSans or the handshake fails on the name.
 {{- toYaml (uniq $names) -}}
 {{- end -}}
 
+{{/*
+The same list, split the way genSelfSignedCert takes it: `ips` and `dnsNames`.
+An address belongs in the certificate's IP SANs and nowhere else — a client
+dialling a literal address reads only those, so an address emitted as a DNS
+name fails the handshake with "cannot validate certificate for 10.0.0.50
+because it doesn't contain any IP SANs" no matter how the list was written.
+Dotted quads and anything carrying a colon are addresses; everything else is a
+name.
+*/}}
+{{- define "axioma.api.grpcTlsSanSplit" -}}
+{{- $ips := list -}}
+{{- $dnsNames := list -}}
+{{- range include "axioma.api.grpcTlsSans" . | fromYamlArray -}}
+{{- if or (regexMatch `^([0-9]{1,3}\.){3}[0-9]{1,3}$` .) (contains ":" .) -}}
+{{- $ips = append $ips . -}}
+{{- else -}}
+{{- $dnsNames = append $dnsNames . -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml (dict "ips" $ips "dnsNames" $dnsNames) -}}
+{{- end -}}
+
+{{/*
+The names the certificate that is actually written carries. On a first install
+that is the list above. On an upgrade the certificate is reused, so the names
+are the ones recorded when it was issued: current values have no bearing on a
+certificate already in hand, and reading them back would claim names it does
+not carry.
+*/}}
+{{- define "axioma.api.grpcTlsCertSans" -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (printf "%s-grpc-tls" (include "axioma.fullname" .)) -}}
+{{- $recorded := "" -}}
+{{- if and $existing $existing.data (index (default dict $existing.data) "tls.crt") -}}
+{{- $recorded = index (default dict $existing.metadata.annotations) "axioma.io/generated-sans" | default "" -}}
+{{- end -}}
+{{- if $recorded -}}
+{{- toYaml (splitList "," $recorded) -}}
+{{- else -}}
+{{- include "axioma.api.grpcTlsSans" . -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "axioma.agent.fullname" -}}
 {{- printf "%s-agent" (include "axioma.fullname" .) -}}
 {{- end -}}
@@ -212,6 +254,22 @@ never set).
   value: {{ .Values.api.config.corsOrigin | quote }}
 - name: AXIOMA_AUTO_DISPATCH
   value: {{ .Values.api.config.autoDispatch | toString | quote }}
+- name: PORT
+  value: {{ .Values.api.config.port | toString | quote }}
+- name: DATABASE_POOL_MAX
+  value: {{ .Values.api.config.databasePoolMax | toString | quote }}
+{{- if or .Values.secrets.existingSecret .Values.secrets.agentToken }}
+- name: AXIOMA_AGENT_TOKEN
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "axioma.secretName" . }}
+      key: AXIOMA_AGENT_TOKEN
+      optional: true
+{{- end }}
+{{- with .Values.rbac.managedNamespaces }}
+- name: AXIOMA_K8S_NAMESPACES
+  value: {{ join "," . | quote }}
+{{- end }}
 - name: AXIOMA_GRPC_ADDRESS
   value: {{ .Values.api.config.grpcAddress | quote }}
 - name: AXIOMA_DOCUMENT_DIR
@@ -270,7 +328,16 @@ rendered, for the same reason the endpoint check above is.
 {{- if and .Values.api.config.llm.embeddingApiBase (not (or .Values.secrets.embeddingKey .Values.secrets.existingSecret)) }}
 {{- fail "api.config.llm.embeddingApiBase is set but secrets.embeddingKey is empty. A separate embeddings endpoint needs its own credential; set secrets.embeddingKey, or clear embeddingApiBase to use the chat provider for both." }}
 {{- end }}
-{{- if and .Values.api.config.llm.embeddingApiBase (or .Values.secrets.embeddingKey .Values.secrets.existingSecret) }}
+{{/*
+Emitted whenever the credential exists, not only alongside a separate endpoint.
+secrets.embeddingKey is written into the Secret on its own, and gating the
+variable on embeddingApiBase left it there unread: the API fell back to the
+chat key, sent it to the embeddings endpoint, and took a 403 that shows up only
+as retrieval quietly staying lexical. The API's own fallback — embedding key,
+then chat key — is what decides which credential is used, so passing it through
+whenever it is set is both sufficient and the documented behaviour.
+*/}}
+{{- if or .Values.secrets.embeddingKey .Values.secrets.existingSecret }}
 - name: AXIOMA_EMBEDDING_KEY
   valueFrom:
     secretKeyRef:

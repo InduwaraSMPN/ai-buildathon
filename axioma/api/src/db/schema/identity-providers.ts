@@ -47,9 +47,10 @@ export const directoryIdentities = pgTable(
 		providerId: text("provider_id")
 			.notNull()
 			.references(() => authProviders.id, { onDelete: "restrict" }),
+		// A directory identity has no meaning without its user row.
 		userId: text("user_id")
 			.notNull()
-			.references(() => user.id, { onDelete: "restrict" }),
+			.references(() => user.id, { onDelete: "cascade" }),
 		externalId: text("external_id").notNull(),
 		department: text("department"),
 		leaver: boolean("leaver").notNull().default(false),

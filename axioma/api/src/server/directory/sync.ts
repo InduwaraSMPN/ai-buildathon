@@ -41,6 +41,28 @@ export class DirectoryShrinkError extends Error {
 	}
 }
 
+/**
+ * Thrown when the source could not be read to the end.
+ *
+ * A directory read only means anything as a whole: every stored person the
+ * response does not mention is marked a leaver, so a partial read revokes live
+ * employees. The shrink brake below cannot stand in for this — a server-side
+ * page cap that returns most of the directory lands inside the brake's
+ * tolerance and passes — which is why the source refuses before a plan exists
+ * rather than leaving the planner to notice.
+ */
+export class DirectorySourceTruncatedError extends Error {
+	constructor(
+		readonly foundCount: number,
+		readonly detail: string,
+	) {
+		super(
+			`Directory sync refused: the source returned ${foundCount} people and ${detail}. A partial directory would mark everyone missing from it as a leaver, so nothing is planned from it.`,
+		);
+		this.name = "DirectorySourceTruncatedError";
+	}
+}
+
 const normalize = (person: DirectoryPerson): DirectoryPerson => ({
 	...person,
 	email: person.email.trim().toLowerCase(),
@@ -92,6 +114,9 @@ export function calculateDirectorySync(
 			);
 	}
 
+	// A brake on how far the directory may shrink in one pass, not a
+	// completeness check: see DirectorySourceTruncatedError for why a partial
+	// read has to be refused before it reaches here.
 	const foundCount = incoming.length;
 	if (previousCount > 0 && foundCount * 5 <= previousCount * 3)
 		throw new DirectoryShrinkError(previousCount, foundCount);

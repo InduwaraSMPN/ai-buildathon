@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -8,7 +8,7 @@ import {
 	ticketStopwatches,
 	tickets,
 } from "@/db/schema";
-import { addWorkingMs, elapsedWorkingMs } from "./calendar";
+import { addWorkingMs, elapsedWorkingMs, subtractWorkingMs } from "./calendar";
 
 export type TicketSlaTarget = {
 	policyType: "sla" | "ola";
@@ -42,6 +42,7 @@ export async function materializeSlaTarget(
 	now = new Date(),
 	elapsed = elapsedWorkingMs,
 	add = addWorkingMs,
+	subtract = subtractWorkingMs,
 ): Promise<TicketSlaTarget> {
 	const liveMs = watch.running
 		? await elapsed(watch.startedAt, now, policy.calendarId)
@@ -56,6 +57,15 @@ export async function materializeSlaTarget(
 		(watch.targetType === "response"
 			? status.stateType !== "new"
 			: ["resolved", "closed"].includes(status.stateType));
+	// A watch that had already spent its budget when this segment began passed its
+	// deadline before `startedAt`, so the due time is walked backwards from there
+	// rather than clamped to zero remaining, which would report `startedAt` itself.
+	const remainingFromStart = targetMs - watch.accumulatedMs;
+	const dueAt = !watch.running
+		? null
+		: remainingFromStart >= 0
+			? await add(watch.startedAt, remainingFromStart, policy.calendarId)
+			: await subtract(watch.startedAt, -remainingFromStart, policy.calendarId);
 	return {
 		policyType: watch.policyType,
 		policyId: policy.id,
@@ -68,13 +78,7 @@ export async function materializeSlaTarget(
 		running: watch.running,
 		breached: elapsedMs > targetMs,
 		attained: complete ? elapsedMs <= targetMs : null,
-		dueAt: watch.running
-			? await add(
-					watch.startedAt,
-					Math.max(0, targetMs - watch.accumulatedMs),
-					policy.calendarId,
-				)
-			: null,
+		dueAt,
 	};
 }
 
@@ -122,14 +126,56 @@ export async function listTicketSla(
 	);
 }
 
-export async function slaAttainment() {
-	const watches = await db
-		.select({ watch: ticketStopwatches, stateType: ticketStatuses.stateType })
+/**
+ * Counted in the database: the settled cohort is every stopped stopwatch ever
+ * taken, so pulling the rows into Node cost one full scan per dashboard load.
+ */
+export async function slaAttainment(since?: Date) {
+	const targetMs = sql`(case when ${ticketStopwatches.targetType} = 'response'
+		then coalesce(${slas.ttoWorkingMinutes}, ${olas.ttoWorkingMinutes})
+		else coalesce(${slas.ttrWorkingMinutes}, ${olas.ttrWorkingMinutes})
+	end) * 60000`;
+	const rows = await db
+		.select({
+			policyType: ticketStopwatches.policyType,
+			targetType: ticketStopwatches.targetType,
+			met: sql<number>`count(*) filter (where ${ticketStopwatches.accumulatedMs} <= ${targetMs})`.mapWith(
+				Number,
+			),
+			missed:
+				sql<number>`count(*) filter (where ${ticketStopwatches.accumulatedMs} > ${targetMs})`.mapWith(
+					Number,
+				),
+		})
 		.from(ticketStopwatches)
 		.innerJoin(tickets, eq(ticketStopwatches.ticketId, tickets.id))
 		.innerJoin(ticketStatuses, eq(tickets.status, ticketStatuses.key))
-		.where(eq(ticketStopwatches.running, false));
-	const policies = await policiesFor(watches.map(({ watch }) => watch));
+		.leftJoin(
+			slas,
+			and(
+				eq(ticketStopwatches.policyType, "sla"),
+				eq(slas.id, ticketStopwatches.policyId),
+			),
+		)
+		.leftJoin(
+			olas,
+			and(
+				eq(ticketStopwatches.policyType, "ola"),
+				eq(olas.id, ticketStopwatches.policyId),
+			),
+		)
+		.where(
+			and(
+				eq(ticketStopwatches.running, false),
+				sql`coalesce(${slas.id}, ${olas.id}) is not null`,
+				sql`case when ${ticketStopwatches.targetType} = 'response'
+					then ${ticketStatuses.stateType} not in ('new', 'pending')
+					else ${ticketStatuses.stateType} in ('resolved', 'closed')
+				end`,
+				since ? gte(ticketStopwatches.startedAt, since) : undefined,
+			),
+		)
+		.groupBy(ticketStopwatches.policyType, ticketStopwatches.targetType);
 	const result = Object.fromEntries(
 		["sla", "ola"].map((policyType) => [
 			policyType,
@@ -147,20 +193,11 @@ export async function slaAttainment() {
 			{ met: number; missed: number; total: number; rate: number | null }
 		>
 	>;
-	for (const { watch, stateType } of watches) {
-		const complete =
-			watch.targetType === "response"
-				? stateType !== "new" && stateType !== "pending"
-				: ["resolved", "closed"].includes(stateType);
-		const policy = policies.get(`${watch.policyType}:${watch.policyId}`);
-		if (!complete || !policy) continue;
-		const targetMs =
-			(watch.targetType === "response"
-				? policy.ttoWorkingMinutes
-				: policy.ttrWorkingMinutes) * 60_000;
-		const value = result[watch.policyType][watch.targetType];
-		watch.accumulatedMs <= targetMs ? value.met++ : value.missed++;
-		value.total++;
+	for (const row of rows) {
+		const value = result[row.policyType][row.targetType];
+		value.met = row.met;
+		value.missed = row.missed;
+		value.total = row.met + row.missed;
 	}
 	for (const policy of Object.values(result))
 		for (const target of Object.values(policy))

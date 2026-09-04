@@ -15,6 +15,63 @@ export interface FieldDefinitionOption {
 	config?: { options?: string[] } | null;
 }
 
+/**
+ * The prompt is rebuilt from nothing on every turn, so anything unbounded in it
+ * makes turn N cost O(N): the whole transcript and the whole catalogue were
+ * re-serialised each time, and a single message may be 10,000 characters.
+ *
+ * Sixteen entries is eight exchanges, well past the clarifying loop §3.2 asks
+ * for; 1,500 characters keeps an ordinary message whole while capping the worst
+ * case; and forty catalogue lines is a shortlist the model can actually read,
+ * where a large customer's full catalogue is not. Four-letter terms are the
+ * shortest worth matching a category name against — "the" and "and" match
+ * everything and rank nothing.
+ */
+const MAX_TRANSCRIPT_ENTRIES = 16;
+const MAX_TRANSCRIPT_ENTRY_CHARS = 1_500;
+const MAX_CATALOGUE_OPTIONS = 40;
+const MIN_MATCH_TERM_LENGTH = 4;
+
+const truncated = (body: string) =>
+	body.length > MAX_TRANSCRIPT_ENTRY_CHARS
+		? `${body.slice(0, MAX_TRANSCRIPT_ENTRY_CHARS)}… (truncated)`
+		: body;
+
+/**
+ * Narrows a large catalogue to the categories whose name or description shares
+ * a word with what the employee just wrote. The fallback matters as much as the
+ * filter: the model routes from this list and nothing else, so a message that
+ * matches no wording still has to be shown a catalogue.
+ */
+function shortlistCatalogue(
+	catalogue: readonly ServiceOption[],
+	message: string,
+): readonly ServiceOption[] {
+	if (catalogue.length <= MAX_CATALOGUE_OPTIONS) return catalogue;
+	const terms = new Set(
+		message
+			.toLowerCase()
+			.split(/[^\p{L}\p{N}]+/u)
+			.filter((word) => word.length >= MIN_MATCH_TERM_LENGTH),
+	);
+	const scored = terms.size
+		? catalogue
+				.map((option) => {
+					const haystack =
+						`${option.subcategory.name} ${option.subcategory.description ?? ""}`.toLowerCase();
+					let score = 0;
+					for (const term of terms) if (haystack.includes(term)) score += 1;
+					return { option, score };
+				})
+				.filter((entry) => entry.score > 0)
+				// Sorting is stable, so equally-matching categories keep the
+				// alphabetical order the caller queried them in.
+				.sort((first, second) => second.score - first.score)
+				.map((entry) => entry.option)
+		: [];
+	return (scored.length ? scored : catalogue).slice(0, MAX_CATALOGUE_OPTIONS);
+}
+
 export function systemPrompt(): string {
 	return [
 		"You are an AI support intake assistant for an IT service desk.",
@@ -28,14 +85,17 @@ export function systemPrompt(): string {
 	].join("\n");
 }
 
-export function classifyContext(catalogue: readonly ServiceOption[]): string {
+export function classifyContext(
+	catalogue: readonly ServiceOption[],
+	message: string,
+): string {
 	if (!catalogue.length)
 		return "No catalogue categories are available for request routing.";
 	// The id has to be in the prompt: subcategoryId is whitelisted against this
 	// same list server-side, so a reply naming only the category is discarded and
 	// the request never routes. Only id, name and description go out — never the
 	// form's fields, which are fetched separately once a category is chosen.
-	const lines = catalogue.map(
+	const lines = shortlistCatalogue(catalogue, message).map(
 		(option) =>
 			`- id: ${option.subcategory.id} | name: ${option.subcategory.name} | ${
 				option.subcategory.description ?? "no description"
@@ -58,9 +118,10 @@ export function draftContext(input: {
 	fieldDefinitions: readonly FieldDefinitionOption[];
 }): string {
 	const transcriptLines = input.transcript
+		.slice(-MAX_TRANSCRIPT_ENTRIES)
 		.map(
 			({ role, body }) =>
-				`${role === "user" ? "Employee" : "Assistant"}: ${body}`,
+				`${role === "user" ? "Employee" : "Assistant"}: ${truncated(body)}`,
 		)
 		.join("\n");
 	const deviceLines = input.devices.length

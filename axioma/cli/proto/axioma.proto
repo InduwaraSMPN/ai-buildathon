@@ -64,6 +64,11 @@ message AgentHello {
   string model_label = 2;
   repeated string capabilities = 3;
   string worker_id = 4;
+  // Shared secret proving this stream is a worker the operator deployed. The
+  // channel carries ticket text, reporter identity and tool execution, and the
+  // gateway port is reachable by every enrolled laptop, so a worker id alone is
+  // not an identity. Compared against AXIOMA_AGENT_TOKEN on the gateway.
+  string credential = 5;
 }
 
 message StartRun {
@@ -196,6 +201,11 @@ message DeviceEnrollment {
   // Returned once after enrolment, or pushed to an online device during rotation.
   string credential = 3;
   bool auth_valid = 4;
+  // Short code the employee types into the portal to claim this machine as
+  // theirs. Sent once, on the message that completes enrolment; empty on every
+  // later message. Enrolment alone leaves the device unowned, so without this
+  // the device never appears in the employee's own list.
+  string claim_code = 5;
 }
 
 message DeviceHello {

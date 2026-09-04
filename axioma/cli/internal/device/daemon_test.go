@@ -115,16 +115,24 @@ func TestCommandTimeoutSelection(t *testing.T) {
 	}
 }
 
-func TestAuthErrorIsTerminal(t *testing.T) {
+// A transport-level auth rejection must be retriable. The gateway answers
+// UNAUTHENTICATED both when it refuses a credential and when it cannot check one
+// — a database failover does exactly that — and a terminal classification here
+// exited every daemon that happened to reconnect during the outage, with no
+// restart until the employee next logged on.
+func TestAuthRefusalIsRetriable(t *testing.T) {
 	for _, code := range []codes.Code{codes.Unauthenticated, codes.PermissionDenied} {
+		err := authError("connect", status.Error(code, "refused"))
 		var terminal terminalError
-		if err := authError("connect", status.Error(code, "refused")); !errors.As(err, &terminal) {
-			t.Fatalf("%s was retriable: %v", code, err)
+		if errors.As(err, &terminal) {
+			t.Fatalf("%s was terminal: %v", code, err)
+		}
+		if !isAuthRefusal(err) {
+			t.Fatalf("%s was not recognised as an auth refusal", code)
 		}
 	}
-	var terminal terminalError
-	if err := authError("connect", status.Error(codes.Unavailable, "down")); errors.As(err, &terminal) {
-		t.Fatalf("network error was terminal: %v", err)
+	if isAuthRefusal(status.Error(codes.Unavailable, "down")) {
+		t.Fatal("a network error was classified as an auth refusal")
 	}
 }
 
@@ -220,19 +228,47 @@ func TestBackoffResetsOnlyAfterStablePeriod(t *testing.T) {
 	}
 }
 
-func TestServeConnectionSurfacesDaemonStateFailure(t *testing.T) {
+// The daemon-state file is a cosmetic snapshot for `status`, and on Windows the
+// rename behind it fails routinely whenever a real-time scanner holds the
+// destination open. Treating that as terminal killed the agent — and, with no
+// restart policy on the logon task, kept it dead — so the failure is now logged
+// and the connection carries on.
+func TestServeConnectionSurvivesDaemonStateFailure(t *testing.T) {
 	original := saveDaemonState
 	defer func() { saveDaemonState = original }()
-	saveDaemonState = func(DaemonState) error { return errors.New("read only") }
+	var attempts atomic.Int32
+	saveDaemonState = func(DaemonState) error {
+		attempts.Add(1)
+		return errors.New("read only")
+	}
 	stream := newFakeDeviceStream()
 	defer stream.close()
 	ctx, cancel := context.WithCancel(context.Background())
-	err := serveConnection(ctx, cancel, stream, "test", &Identity{DeviceID: "device"},
-		daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
-		func(Identity, uint64) error { return nil }, execute)
-	var terminal terminalError
-	if !errors.As(err, &terminal) || !strings.Contains(err.Error(), "save daemon state") {
-		t.Fatalf("serveConnection returned %v", err)
+	done := make(chan error, 1)
+	go func() {
+		done <- serveConnection(ctx, cancel, stream, "test", &Identity{DeviceID: "device"},
+			daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+			func(Identity, uint64) error { return nil }, execute)
+	}()
+	// The hello write is the first thing serveConnection does, and the state
+	// write follows it, so seeing the hello means the failing write has happened.
+	select {
+	case <-stream.sent:
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveConnection never sent its hello")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		var terminal terminalError
+		if errors.As(err, &terminal) {
+			t.Fatalf("a daemon-state write failure was terminal: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("serveConnection did not return after cancellation")
+	}
+	if attempts.Load() == 0 {
+		t.Fatal("the daemon state was never written")
 	}
 }
 

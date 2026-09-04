@@ -64,5 +64,6 @@ export class FileBlobStore {
  */
 export const documentStore = () =>
 	new FileBlobStore(
-		process.env.AXIOMA_DOCUMENT_DIR ?? join(process.cwd(), ".data", "documents"),
+		process.env.AXIOMA_DOCUMENT_DIR ??
+			join(process.cwd(), ".data", "documents"),
 	);

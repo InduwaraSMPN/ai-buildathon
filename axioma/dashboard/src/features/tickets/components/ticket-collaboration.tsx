@@ -47,6 +47,12 @@ const relations = [
 	"parent_of",
 ] as const;
 
+/** Shared by the submit handler and the button so a click never does nothing. */
+const isLoggableMinutes = (value: string) => {
+	const minutes = Number(value);
+	return value.trim() !== "" && Number.isInteger(minutes) && minutes > 0;
+};
+
 export function TicketConversation({
 	ticket,
 	canAttach,
@@ -78,8 +84,12 @@ export function TicketConversation({
 	);
 
 	useEffect(() => {
+		// Presence is ambient. An expired session must not fill the console with
+		// an unhandled rejection every 30 seconds.
 		const heartbeat = () =>
-			void client.heartbeatTicketPresence({ ticketId: ticket.id });
+			void client
+				.heartbeatTicketPresence({ ticketId: ticket.id })
+				.catch(() => undefined);
 		heartbeat();
 		const timer = window.setInterval(heartbeat, 30_000);
 		return () => window.clearInterval(timer);
@@ -463,7 +473,7 @@ export function TicketActivity({
 						onSubmit={(event) => {
 							event.preventDefault();
 							const value = Number(minutes);
-							if (Number.isInteger(value) && value > 0)
+							if (isLoggableMinutes(minutes))
 								addTime.mutate({
 									ticketId: ticket.id,
 									minutes: value,
@@ -498,7 +508,10 @@ export function TicketActivity({
 									placeholder="Work note (optional)"
 								/>
 							</Field>
-							<Button type="submit" disabled={!minutes || addTime.isPending}>
+							<Button
+								type="submit"
+								disabled={!isLoggableMinutes(minutes) || addTime.isPending}
+							>
 								Log time
 							</Button>
 						</FieldGroup>

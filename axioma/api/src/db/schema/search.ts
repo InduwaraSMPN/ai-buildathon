@@ -14,7 +14,7 @@ export const searchReconciliationState = pgTable(
 	"search_reconciliation_state",
 	{
 		key: text("key").primaryKey(),
-		lastReconciledAt: timestamp("last_reconciled_at").notNull(),
+		lastReconciledAt: timestamp("last_reconciled_at").defaultNow().notNull(),
 	},
 );
 
@@ -46,9 +46,24 @@ export const searchDocuments = pgTable(
 			)`,
 		),
 		index("search_documents_changed_idx").on(t.objectType, t.sourceUpdatedAt),
-		index("search_documents_embedding_idx").using(
-			"hnsw",
-			t.embedding.op("vector_cosine_ops"),
+		// Every vector query carries mandatory non-vector predicates, so a single
+		// unpartitioned HNSW index was either ignored by the planner or
+		// post-filtered: the 40 global nearest neighbours are dominated by
+		// `agent_run` rows, which the portal's deflection never wants. One index
+		// per scope keeps the index aligned with the predicate.
+		index("search_documents_embedding_article_idx")
+			.using("hnsw", t.embedding.op("vector_cosine_ops"))
+			.where(sql`${t.objectType} = 'knowledge_article'`),
+		index("search_documents_embedding_agent_idx")
+			.using("hnsw", t.embedding.op("vector_cosine_ops"))
+			.where(
+				sql`${t.objectType} in ('resolved_ticket', 'agent_run', 'known_error', 'document')`,
+			),
+		// `portalKnowledgeScope` filters on three `->>` extractions and nothing
+		// indexed `metadata` at all.
+		index("search_documents_metadata_idx").using(
+			"gin",
+			sql`${t.metadata} jsonb_path_ops`,
 		),
 	],
 );

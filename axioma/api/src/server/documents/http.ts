@@ -11,6 +11,7 @@ import {
 	canReadDocument,
 	type DocumentTarget,
 	type DocumentViewer,
+	documentMediaType,
 	prepareFileDocument,
 } from ".";
 import { canReadTarget, requireDocumentWriteTarget } from "./access";
@@ -56,7 +57,7 @@ async function uploadDocument(
 					id,
 					kind: "file",
 					displayName: prepared.displayName,
-					mediaType: file.type || "application/octet-stream",
+					mediaType: prepared.mediaType,
 					sha256: prepared.sha256,
 					storedFilename: prepared.storedFilename,
 				})
@@ -185,9 +186,11 @@ documentHttp.get("/documents/:id", async (c) => {
 			return c.text("Not Found", 404);
 		const fallback = document.displayName.replaceAll(/[\r\n"\\]/g, "_");
 		const encoded = encodeURIComponent(document.displayName);
+		// Re-derived rather than echoed, because rows written before uploads stopped
+		// trusting the client still carry whatever type that client declared.
 		return new Response(storage.stream(document.sha256), {
 			headers: {
-				"Content-Type": document.mediaType ?? "application/octet-stream",
+				"Content-Type": documentMediaType(document.displayName),
 				"Content-Disposition": `attachment; filename="${fallback}"; filename*=UTF-8''${encoded}`,
 				"X-Content-Type-Options": "nosniff",
 			},

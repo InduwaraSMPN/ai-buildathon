@@ -20,6 +20,13 @@ const TABLE_PATH = "/api/now/table";
 const REQUEST_TIMEOUT_MS = 30_000;
 /** Keyset pagination beats sysparm_offset on a large table. */
 const PAGE_SIZE = 200;
+/**
+ * Bounds one poll rather than one instance. An instance that keeps answering
+ * with full pages would otherwise hold a tick open indefinitely, and what is
+ * left over is not lost: the watermark only advances through seconds this pass
+ * consumed completely, so the next poll resumes where this one stopped.
+ */
+const MAX_PAGES = 50;
 /** Refresh a little before expiry so a poll never races the boundary. */
 const TOKEN_SKEW_MS = 60_000;
 
@@ -147,40 +154,99 @@ export class ServiceNowClient {
 	}
 
 	/**
-	 * Fetches incidents changed since the watermark, oldest first.
+	 * Fetches incidents changed since the watermark, oldest first, paging until
+	 * the instance runs out of them.
 	 *
 	 * Ordering by `sys_updated_on` and paging on the last value seen is keyset
 	 * pagination: it is stable while records are being written underneath it,
-	 * which `sysparm_offset` is not.
+	 * which `sysparm_offset` is not. The cost is that `sys_updated_on` has
+	 * one-second resolution and is not unique, so every page after the first
+	 * re-opens on `>=` its own last timestamp and the overlap is dropped by
+	 * `sys_id` here. Paging on `>` would step over the remainder of a second
+	 * that a page boundary happened to fall inside, and the caller's watermark
+	 * is the highest timestamp returned — so those records would be skipped for
+	 * good while the run still reported success.
 	 */
 	async fetchChangedIncidents(params: {
 		since: Date | null;
 		filter?: string;
-		limit?: number;
+		pageSize?: number;
+		maxPages?: number;
 	}): Promise<ForeignRecordWithComments[]> {
-		const terms: string[] = [];
-		if (params.since)
-			terms.push(
-				`sys_updated_on>${escapeQueryValue(toServiceNowDateTime(params.since))}`,
-			);
-		if (params.filter?.trim()) terms.push(params.filter.trim());
-		terms.push("ORDERBYsys_updated_on");
+		const pageSize = Math.max(1, params.pageSize ?? PAGE_SIZE);
+		const maxPages = Math.max(1, params.maxPages ?? MAX_PAGES);
+		const records: ForeignRecordWithComments[] = [];
+		const seen = new Set<string>();
+		let cursor = params.since ? toServiceNowDateTime(params.since) : null;
+		let operator = ">";
+		let exhausted = false;
 
-		// Built with encodeURIComponent rather than URLSearchParams: the latter
-		// encodes a space as `+`, which only means space under form-encoding
-		// rules. A date-time in `sysparm_query` read literally would break the
-		// watermark silently — returning everything or nothing — so `%20` is used
-		// because it is unambiguous under both readings.
-		const query = [
-			`sysparm_query=${encodeURIComponent(terms.join("^"))}`,
-			`sysparm_limit=${params.limit ?? PAGE_SIZE}`,
-			"sysparm_display_value=true",
-			"sysparm_exclude_reference_link=true",
-		].join("&");
-		const response = await this.request(`${TABLE_PATH}/incident?${query}`);
-		const payload = (await response.json()) as { result?: unknown };
-		const rows = Array.isArray(payload.result) ? payload.result : [];
-		return rows.map((row) => toForeignRecord(row as Record<string, unknown>));
+		for (let page = 0; page < maxPages; page += 1) {
+			const terms: string[] = [];
+			if (cursor)
+				terms.push(`sys_updated_on${operator}${escapeQueryValue(cursor)}`);
+			if (params.filter?.trim()) terms.push(params.filter.trim());
+			terms.push("ORDERBYsys_updated_on");
+
+			// Built with encodeURIComponent rather than URLSearchParams: the latter
+			// encodes a space as `+`, which only means space under form-encoding
+			// rules. A date-time in `sysparm_query` read literally would break the
+			// watermark silently — returning everything or nothing — so `%20` is
+			// used because it is unambiguous under both readings.
+			const query = [
+				`sysparm_query=${encodeURIComponent(terms.join("^"))}`,
+				`sysparm_limit=${pageSize}`,
+				"sysparm_display_value=true",
+				"sysparm_exclude_reference_link=true",
+			].join("&");
+			const response = await this.request(`${TABLE_PATH}/incident?${query}`);
+			const payload = (await response.json()) as { result?: unknown };
+			const rows = Array.isArray(payload.result) ? payload.result : [];
+
+			let added = 0;
+			for (const row of rows) {
+				const record = toForeignRecord(row as Record<string, unknown>);
+				if (record.externalId === "" || seen.has(record.externalId)) continue;
+				seen.add(record.externalId);
+				records.push(record);
+				added += 1;
+			}
+
+			// A short page is the end of the result set, and only then is every
+			// record up to the newest timestamp held accounted for.
+			if (rows.length < pageSize) {
+				exhausted = true;
+				break;
+			}
+			const lastRow = rows.at(-1) as Record<string, unknown> | undefined;
+			const last = lastRow ? asString(lastRow.sys_updated_on) : null;
+			// Nothing to page from, or a full page that was entirely overlap: in
+			// either case the next request would repeat this one.
+			if (!last || added === 0) break;
+			cursor = last;
+			operator = ">=";
+		}
+
+		if (exhausted || records.length === 0) return records;
+
+		// The pass stopped with records still to come, so the newest timestamp
+		// held may be only partly consumed. Dropping it leaves the watermark on a
+		// second this pass finished, which is what lets the next poll resume on a
+		// strict `>` without losing the remainder.
+		const newest = records.reduce(
+			(latest, record) =>
+				record.updatedAt > latest ? record.updatedAt : latest,
+			"",
+		);
+		const consumed = records.filter((record) => record.updatedAt < newest);
+		// Not a ServiceNowError: nothing about the transport failed. A second
+		// wider than one page cannot be paged past on a one-second key, and
+		// returning the part we hold would advance the watermark over the rest.
+		if (consumed.length === 0)
+			throw new Error(
+				`ServiceNow holds more than ${pageSize} incidents at sys_updated_on ${newest}, which one poll cannot page past. Raise the page size.`,
+			);
+		return consumed;
 	}
 
 	/**

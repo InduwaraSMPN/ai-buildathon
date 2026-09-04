@@ -157,6 +157,7 @@ export function DevicesTable({
 				filterPlaceholder="Filter hostname, user, or platform…"
 				emptyTitle="No devices found"
 				emptyDescription="No devices are enrolled."
+				getRowId={(device) => device.id}
 				onRowClick={(device) => onSelectDevice(device.id)}
 				rowLabel={(device) => `View ${device.hostname} device details`}
 			/>

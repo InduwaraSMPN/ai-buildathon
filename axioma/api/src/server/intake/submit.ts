@@ -15,6 +15,7 @@ import {
 	ticketMessages,
 	user,
 } from "@/db/schema";
+import { IMPACT_LEVELS, URGENCY_LEVELS } from "@/shared";
 import { validateFormSubmission } from "../forms";
 import {
 	type CreatedTicket,
@@ -42,9 +43,19 @@ function formatTranscript(
 
 // The manual path's bounds from `contracts/tickets.ts`. A drafted ticket has to
 // clear the same bar, and it has to clear it before anything is inserted.
+//
+// The levels and the two records are parsed rather than cast because everything
+// below this line runs inside the submit transaction, where a bad value is no
+// longer a request error: `derivePriority` indexes a literal object, so an
+// out-of-enum level threw a TypeError the caller saw as a 500, and the form and
+// dynamic-field writers throw plain Errors on a value that is not a record.
 const draftTicketText = z.object({
 	title: z.string().trim().min(3).max(160),
 	body: z.string().trim().min(10).max(10_000),
+	impact: z.enum(IMPACT_LEVELS).optional(),
+	urgency: z.enum(URGENCY_LEVELS).optional(),
+	formValues: z.record(z.string(), z.unknown()).optional(),
+	customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -69,13 +80,16 @@ export function requireSubcategoryConfirmed(
 	});
 }
 
-export function validateDraftText(values: Record<string, unknown> | null): {
-	title: string;
-	body: string;
-} {
+export function validateDraftText(
+	values: Record<string, unknown> | null,
+): z.infer<typeof draftTicketText> {
 	const parsed = draftTicketText.safeParse({
 		title: values?.title,
 		body: values?.body,
+		impact: values?.impact ?? undefined,
+		urgency: values?.urgency ?? undefined,
+		formValues: values?.formValues ?? undefined,
+		customFields: values?.customFields ?? undefined,
 	});
 	if (!parsed.success)
 		throw new ORPCError("BAD_REQUEST", {
@@ -111,7 +125,7 @@ export async function submitIntake(
 		if (!claimed) return settledSubmit(tx, draftId, reporterId);
 
 		const values = (claimed.values ?? {}) as Record<string, unknown>;
-		const text = validateDraftText(values);
+		const draft = validateDraftText(values);
 		requireSubcategoryConfirmed(
 			values,
 			(claimed.fieldSources ?? {}) as Record<string, unknown>,
@@ -125,13 +139,10 @@ export async function submitIntake(
 			? await createCatalogueTicket(tx, {
 					subcategoryId,
 					formId: typeof values.formId === "string" ? values.formId : null,
-					formValues:
-						values.formValues && typeof values.formValues === "object"
-							? (values.formValues as Record<string, unknown>)
-							: {},
+					formValues: draft.formValues ?? {},
 					reporterId,
-					title: text.title,
-					body: text.body,
+					title: draft.title,
+					body: draft.body,
 					idempotencyKey,
 				})
 			: [
@@ -139,17 +150,14 @@ export async function submitIntake(
 						source: "portal",
 						idempotencyKey,
 						reporterId,
-						title: text.title,
-						body: text.body,
+						title: draft.title,
+						body: draft.body,
 						recordType: "incident",
-						impact: values.impact as "high" | "medium" | "low" | undefined,
-						urgency: values.urgency as "high" | "medium" | "low" | undefined,
+						impact: draft.impact,
+						urgency: draft.urgency,
 						deviceId:
 							typeof values.deviceId === "string" ? values.deviceId : null,
-						customFields:
-							values.customFields && typeof values.customFields === "object"
-								? (values.customFields as Record<string, unknown>)
-								: undefined,
+						customFields: draft.customFields,
 					}),
 					null as { id: string } | null,
 				];
@@ -165,7 +173,9 @@ export async function submitIntake(
 				authorId: reporterId,
 				authorType: "reporter",
 				body: formatTranscript(
-					(claimed.transcript ?? []) as { role: string; body: string }[],
+					Array.isArray(claimed.transcript)
+						? (claimed.transcript as { role: string; body: string }[])
+						: [],
 				),
 				visibility: "public",
 			});
