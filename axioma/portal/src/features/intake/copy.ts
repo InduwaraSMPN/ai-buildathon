@@ -8,19 +8,6 @@ export const intakeCopy = {
 	composerPlaceholder: "Describe what’s getting in the way…",
 	manualEscape: "Fill in the form myself",
 	manualCardTitle: "Request details",
-	submitHint: "Enter to send, Shift + Enter for a new line",
-	/**
-	 * The composer chips are seeded from the request catalogue; these are the
-	 * deliberate hand-written stand-ins for an empty or still-loading catalogue.
-	 */
-	fallbackSuggestions: [
-		"My laptop won’t turn on",
-		"I need to request new software",
-		"I can’t connect to the office Wi-Fi",
-	],
-	visionNotice: "Axel will read your screenshots to fill in the form",
-	privacyDescription:
-		"Don’t include passwords or access codes, even in screenshots.",
 	statusLabel: {
 		retrieving: "Searching help articles…",
 		reading_attachments: "Reading your screenshot…",

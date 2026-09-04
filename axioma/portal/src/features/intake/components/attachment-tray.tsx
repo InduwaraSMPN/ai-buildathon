@@ -1,5 +1,5 @@
 import { RiCloseLine, RiFileLine, RiImage2Line } from "@remixicon/react";
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -35,19 +35,19 @@ import { orpc, queryClient } from "@/utils/orpc";
 
 const MAX_IMAGE_COUNT = 3;
 
-export function AttachmentTray({
+export function useAttachmentTray({
 	draftId,
 	disabled,
 	visionEnabled,
 	attachments,
 	onAttachmentsChange,
 }: {
-	draftId: string;
+	draftId: string | null;
 	disabled: boolean;
 	visionEnabled: boolean;
 	attachments: DraftAttachment[];
 	onAttachmentsChange: Dispatch<SetStateAction<DraftAttachment[]>>;
-}) {
+}): { list: ReactNode; upload: ReactNode } {
 	const [uploading, setUploading] = useState(false);
 	const [removing, setRemoving] = useState<string[]>([]);
 	const inputRef = useRef<HTMLInputElement>(null);
@@ -61,6 +61,7 @@ export function AttachmentTray({
 	 * where the employee can take it back off.
 	 */
 	const reconcile = async () => {
+		if (!draftId) return;
 		const target = { targetType: "draft" as const, targetId: draftId };
 		const documents = await orpc.listDocuments.call(target);
 		const flags = readSavedReadFlags(draftId);
@@ -102,6 +103,7 @@ export function AttachmentTray({
 	};
 
 	const handleFiles = async (files: FileList | File[]) => {
+		if (!draftId) return;
 		const { accepted: valid, rejected } = screenAttachments(files);
 		for (const entry of rejected)
 			toast.error(
@@ -185,7 +187,7 @@ export function AttachmentTray({
 	 */
 	const remove = async (target: DraftAttachment) => {
 		// Nothing reached the server, so there is no link to drop.
-		if (!target.id) {
+		if (!target.id || !draftId) {
 			drop(target.key);
 			return;
 		}
@@ -208,9 +210,8 @@ export function AttachmentTray({
 			),
 		);
 
-	return (
-		<div className="flex min-w-0 flex-col gap-2">
-			{attachments.length > 0 ? (
+	const list =
+		attachments.length > 0 ? (
 				<PromptInputAttachments>
 					<AttachmentGroup>
 						{attachments.map((entry) => {
@@ -267,8 +268,10 @@ export function AttachmentTray({
 						})}
 					</AttachmentGroup>
 				</PromptInputAttachments>
-			) : null}
+		) : null;
 
+	const upload = (
+		<>
 			<input
 				ref={inputRef}
 				className="sr-only"
@@ -293,6 +296,8 @@ export function AttachmentTray({
 			>
 				{uploading ? intakeCopy.attachmentUploading : intakeCopy.attachFiles}
 			</PromptInputUpload>
-		</div>
+		</>
 	);
+
+	return { list, upload };
 }

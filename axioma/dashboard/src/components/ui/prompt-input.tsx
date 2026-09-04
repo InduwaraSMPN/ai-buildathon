@@ -35,13 +35,13 @@ function PromptInputBody({
 	...props
 }: React.ComponentProps<"textarea">) {
 	return (
-		<InputGroup
-			className={cn(
-				"border-0 bg-transparent p-0 shadow-none dark:bg-transparent",
-				className,
-			)}
-		>
-			<InputGroupTextarea rows={rows} placeholder={placeholder} {...props} />
+		<InputGroup className="border-0 bg-transparent p-0 shadow-none has-[[data-slot=input-group-control]:focus-visible]:ring-0! dark:bg-transparent">
+			<InputGroupTextarea
+				rows={rows}
+				placeholder={placeholder}
+				className={cn("min-h-24", className)}
+				{...props}
+			/>
 		</InputGroup>
 	);
 }
@@ -149,7 +149,10 @@ function PromptInputSubmit({
 	);
 }
 
-/** The footer row of the composer: a quiet, full-width way in to file upload. */
+/**
+ * A quiet way in to file upload, sized to sit in the toolbar row beside the
+ * send control rather than in a footer of its own.
+ */
 function PromptInputUpload({
 	className,
 	children,
@@ -158,22 +161,20 @@ function PromptInputUpload({
 	...props
 }: React.ComponentProps<"button">) {
 	return (
-		<div className="-mx-2 mt-0.5 border-border border-t px-3 pt-2">
-			<button
-				type="button"
-				data-slot="prompt-input-upload"
-				disabled={disabled}
-				onClick={onClick}
-				className={cn(
-					"flex items-center gap-2 rounded-md text-muted-foreground text-sm transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
-					className,
-				)}
-				{...props}
-			>
-				<RiAddLine className="size-4" aria-hidden="true" />
-				{children}
-			</button>
-		</div>
+		<button
+			type="button"
+			data-slot="prompt-input-upload"
+			disabled={disabled}
+			onClick={onClick}
+			className={cn(
+				"flex items-center gap-1.5 rounded-md py-1 pr-2 pl-1 text-muted-foreground text-sm transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-50",
+				className,
+			)}
+			{...props}
+		>
+			<RiAddLine className="size-4" aria-hidden="true" />
+			{children}
+		</button>
 	);
 }
 

@@ -348,7 +348,9 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 		return (
 			<PageShell>
 				<BackLink />
-				{composer}
+				<div className="flex min-h-[calc(100vh-12.75rem)] items-center justify-center">
+					{composer}
+				</div>
 			</PageShell>
 		);
 	}
