@@ -31,8 +31,13 @@ const documentSchema = z.discriminatedUnion("kind", [
 	}),
 ]);
 
+// `draft` is here so an intake attachment can be listed back after a reload and
+// unlinked when the employee removes it from the tray. Without it a removed
+// screenshot stayed linked and `submitIntake` re-parented it onto the ticket
+// anyway. Authorisation is unchanged: `canReadTarget` scopes a draft to its
+// owning reporter while the draft is still open.
 const documentTargetSchema = z.object({
-	targetType: z.enum(["ticket", "case_note"]),
+	targetType: z.enum(["ticket", "case_note", "draft"]),
 	targetId: z.string().min(1),
 });
 

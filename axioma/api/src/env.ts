@@ -33,6 +33,39 @@ export const env = createEnv({
 		AXIOMA_LLM_API_BASE: z.url().default("https://llm.marketrix.io/v1"),
 		AXIOMA_LLM_KEY: z.string().optional(),
 		AXIOMA_EMBEDDING_MODEL: z.string().default("text-embedding-3-small"),
+		// Embeddings and chat completions do not have to come from one provider,
+		// and often cannot: a gateway key is frequently scoped to a list of chat
+		// models and rejects `/embeddings` outright. Both of these fall back to
+		// their `AXIOMA_LLM_*` counterpart, so an existing single-provider
+		// deployment keeps working without setting either.
+		AXIOMA_EMBEDDING_API_BASE: z.url().optional(),
+		AXIOMA_EMBEDDING_KEY: z.string().optional(),
+		// Set only when the embedding model's native width is not the 1536 the
+		// `search_documents.embedding vector(1536)` column and its HNSW index are
+		// built for. Providers that implement Matryoshka truncation (Google's
+		// `gemini-embedding-001`, for one) accept this and return 1536; providers
+		// that do not will reject the request rather than silently mis-size.
+		AXIOMA_EMBEDDING_DIMENSIONS: z.coerce.number().int().positive().optional(),
+		// Must name a model the default AXIOMA_LLM_API_BASE actually serves, or
+		// intake fails its first call with an opaque gateway 400. This is the same
+		// model the agent defaults to on the same endpoint, without LiteLLM's
+		// `openai/` routing prefix, which a direct HTTP call does not use.
+		AXIOMA_INTAKE_MODEL: z.string().default("gpt-5.6-terra"),
+		AXIOMA_INTAKE_VISION: z
+			.enum(["true", "false"])
+			.default("false")
+			.transform((v) => v === "true"),
+		AXIOMA_INTAKE_TIMEOUT_MS: z.coerce
+			.number()
+			.int()
+			.positive()
+			.default(45_000),
+		AXIOMA_INTAKE_MAX_TURNS: z.coerce.number().int().positive().default(20),
+		AXIOMA_INTAKE_DRAFT_TTL_HOURS: z.coerce
+			.number()
+			.int()
+			.positive()
+			.default(72),
 		NODE_ENV: z
 			.enum(["development", "production", "test"])
 			.default("development"),

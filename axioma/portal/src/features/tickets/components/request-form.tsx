@@ -4,7 +4,6 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import z from "zod";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -12,12 +11,8 @@ import {
 	FieldError,
 	FieldGroup,
 	FieldLabel,
-	FieldLegend,
-	FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
 	Select,
 	SelectContent,
@@ -29,10 +24,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import { CatalogueField } from "@/features/request-catalogue/components/catalogue-field";
-import type {
-	RequestFormField,
-	RequestFormValues,
-} from "@/features/request-catalogue/types";
+import type { RequestFormValues } from "@/features/request-catalogue/types";
 import {
 	affectedPeopleOptions,
 	affectedPeopleValues,
@@ -42,82 +34,41 @@ import {
 	timingValues,
 } from "@/features/tickets/copy";
 import { orpc, queryClient } from "@/utils/orpc";
+import type { IncidentValues } from "../form-schema";
+import {
+	catalogueFields,
+	incidentSchema,
+	requestDetailsSchema,
+} from "../form-schema";
 import {
 	activeCatalogueFieldKeys,
 	serializeCatalogueValues,
 } from "./catalogue-form-values";
 import { DynamicFields, serializeDynamicFields } from "./dynamic-fields";
+import { Question } from "./question-field";
 
-const requestDetailsSchema = z.object({
-	title: z
-		.string()
-		.trim()
-		.min(3, requestFormCopy.summaryTooShort)
-		.max(160, requestFormCopy.summaryTooLong),
-	body: z
-		.string()
-		.trim()
-		.min(10, requestFormCopy.detailsTooShort)
-		.max(10_000, requestFormCopy.detailsTooLong),
-	selectedId: z.string(),
-	values: z.record(
-		z.string(),
-		z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]),
-	),
-});
+const impactToAffected: Record<string, "me" | "team" | "company"> = {
+	low: "me",
+	medium: "team",
+	high: "company",
+};
+const urgencyToTiming: Record<string, "whenever" | "today" | "blocked"> = {
+	low: "whenever",
+	medium: "today",
+	high: "blocked",
+};
 
-const incidentSchema = requestDetailsSchema
-	.pick({ title: true, body: true })
-	.extend({
-		affectedPeople: z.enum(["me", "team", "company"]),
-		timing: z.enum(["whenever", "today", "blocked"]),
-		deviceId: z.string(),
-		customFields: z.record(z.string(), z.unknown()),
-	});
+export type RequestFormInitialValues = {
+	title?: string;
+	body?: string;
+	impact?: string;
+	urgency?: string;
+	deviceId?: string;
+	customFields?: Record<string, unknown>;
+	subcategoryId?: string;
+	catalogueValues?: Record<string, unknown>;
+};
 
-type IncidentValues = z.input<typeof incidentSchema>;
-type Option = { value: string; label: string };
-type Catalogue = Awaited<ReturnType<typeof orpc.listRequestCatalogue.call>>;
-type CatalogueItem = Catalogue[number];
-
-function Question({
-	legend,
-	name,
-	value,
-	options,
-	onChange,
-}: {
-	legend: string;
-	name: string;
-	value: string;
-	options: readonly Option[];
-	onChange: (value: string) => void;
-}) {
-	return (
-		<FieldSet className="space-y-3">
-			<FieldLegend variant="label">{legend}</FieldLegend>
-			<RadioGroup
-				value={value}
-				onValueChange={onChange}
-				className="gap-3 sm:grid-cols-3"
-			>
-				{options.map((option) => (
-					<Label
-						key={option.value}
-						htmlFor={`${name}-${option.value}`}
-						className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md border p-3 font-normal has-[[data-checked]]:border-primary has-[[data-checked]]:bg-muted/50"
-					>
-						<RadioGroupItem
-							id={`${name}-${option.value}`}
-							value={option.value}
-						/>
-						<span>{option.label}</span>
-					</Label>
-				))}
-			</RadioGroup>
-		</FieldSet>
-	);
-}
 function PrivacyNotice() {
 	return (
 		<Alert className="rounded-md">
@@ -135,7 +86,13 @@ function lastSeen(date: Date) {
 	);
 }
 
-function IncidentRequestForm({ onSetup }: { onSetup: () => void }) {
+function IncidentRequestForm({
+	onSetup,
+	initialValues,
+}: {
+	onSetup: () => void;
+	initialValues?: RequestFormInitialValues;
+}) {
 	const navigate = useNavigate();
 	const idempotencyKey = useRef(crypto.randomUUID());
 	const devices = useQuery(orpc.listMyDevices.queryOptions());
@@ -160,12 +117,19 @@ function IncidentRequestForm({ onSetup }: { onSetup: () => void }) {
 	);
 	const form = useForm({
 		defaultValues: {
-			title: "",
-			body: "",
-			affectedPeople: "me",
-			timing: "today",
-			deviceId: "",
-			customFields: {},
+			title: initialValues?.title ?? "",
+			body: initialValues?.body ?? "",
+			affectedPeople: initialValues?.impact
+				? (impactToAffected[initialValues.impact] ?? "me")
+				: "me",
+			timing: initialValues?.urgency
+				? (urgencyToTiming[initialValues.urgency] ?? "today")
+				: "today",
+			deviceId: initialValues?.deviceId ?? "",
+			customFields: (initialValues?.customFields ?? {}) as Record<
+				string,
+				unknown
+			>,
 		} as IncidentValues,
 		validators: { onSubmit: incidentSchema },
 		onSubmit: ({ value }) =>
@@ -408,52 +372,13 @@ function IncidentRequestForm({ onSetup }: { onSetup: () => void }) {
 	);
 }
 
-function objectValue(value: unknown): Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
-}
-
-function catalogueFields(item: CatalogueItem): RequestFormField[] {
-	return (item.form?.fields ?? [])
-		.filter((field) => !field.isHidden && field.predefinedValue === null)
-		.map((field) => {
-			const validation = objectValue(field.validation);
-			const options = Array.isArray(field.options)
-				? field.options.filter(
-						(option): option is string | { label: string; value: string } =>
-							typeof option === "string" ||
-							(option !== null &&
-								typeof option === "object" &&
-								typeof (option as Record<string, unknown>).label === "string" &&
-								typeof (option as Record<string, unknown>).value === "string"),
-					)
-				: undefined;
-			return {
-				key: field.key,
-				label: field.label,
-				type: field.type,
-				description: field.description,
-				required: field.isMandatory,
-				readOnly: field.isReadonly,
-				condition: field.condition,
-				options,
-				min: typeof validation.min === "number" ? validation.min : undefined,
-				max: typeof validation.max === "number" ? validation.max : undefined,
-				step: validation.integer === true ? 1 : undefined,
-				minLength:
-					typeof validation.minLength === "number"
-						? validation.minLength
-						: undefined,
-				maxLength:
-					typeof validation.maxLength === "number"
-						? validation.maxLength
-						: undefined,
-			} satisfies RequestFormField;
-		});
-}
-
-function CatalogueRequestForm({ onIncident }: { onIncident: () => void }) {
+function CatalogueRequestForm({
+	onIncident,
+	initialValues,
+}: {
+	onIncident: () => void;
+	initialValues?: RequestFormInitialValues;
+}) {
 	const navigate = useNavigate();
 	const idempotencyKey = useRef(crypto.randomUUID());
 	const catalogue = useQuery(orpc.listRequestCatalogue.queryOptions());
@@ -472,10 +397,10 @@ function CatalogueRequestForm({ onIncident }: { onIncident: () => void }) {
 	);
 	const form = useForm({
 		defaultValues: {
-			title: "",
-			body: "",
-			selectedId: "",
-			values: {} as RequestFormValues,
+			title: initialValues?.title ?? "",
+			body: initialValues?.body ?? "",
+			selectedId: initialValues?.subcategoryId ?? "",
+			values: (initialValues?.catalogueValues ?? {}) as RequestFormValues,
 		},
 		validators: {
 			onSubmit: requestDetailsSchema,
@@ -726,13 +651,25 @@ function CatalogueRequestForm({ onIncident }: { onIncident: () => void }) {
 	);
 }
 
-export function RequestForm() {
+export function RequestForm({
+	initialValues,
+}: {
+	initialValues?: RequestFormInitialValues;
+}) {
+	// A draft carried over from the assistant already knows it is a catalogue
+	// request; opening on the incident form would hide everything it filled in.
 	const [requestType, setRequestType] = useState<"not_working" | "setup">(
-		"not_working",
+		initialValues?.subcategoryId ? "setup" : "not_working",
 	);
 	return requestType === "not_working" ? (
-		<IncidentRequestForm onSetup={() => setRequestType("setup")} />
+		<IncidentRequestForm
+			onSetup={() => setRequestType("setup")}
+			initialValues={initialValues}
+		/>
 	) : (
-		<CatalogueRequestForm onIncident={() => setRequestType("not_working")} />
+		<CatalogueRequestForm
+			onIncident={() => setRequestType("not_working")}
+			initialValues={initialValues}
+		/>
 	);
 }

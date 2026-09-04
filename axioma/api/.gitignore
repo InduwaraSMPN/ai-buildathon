@@ -5,3 +5,7 @@ dist/
 .env*.local
 certs/
 *.log
+
+# Local blob store: documents/http.ts defaults AXIOMA_DOCUMENT_DIR here, so any
+# local run or e2e leg writes uploaded files into it.
+.data/

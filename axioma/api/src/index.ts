@@ -7,6 +7,7 @@ import {
 	startConnectorSweep,
 } from "@/server/connectors/runtime";
 import { grpcGateway } from "@/server/grpc";
+import { sweepIntakeDrafts } from "@/server/intake";
 import { sweepKnowledgeGaps } from "@/server/knowledge/gaps";
 import { createHttpMailProvider } from "@/server/mail/http-provider";
 import {
@@ -69,10 +70,29 @@ const scheduleKnowledgeGapSweep = (delay = 0) => {
 };
 scheduleKnowledgeGapSweep();
 
+let intakeSweep: NodeJS.Timeout | undefined;
+let intakeSweepClosed = false;
+const scheduleIntakeSweep = (delay = 0) => {
+	intakeSweep = setTimeout(async () => {
+		try {
+			const { deleted } = await sweepIntakeDrafts();
+			if (deleted) console.log(`[intake] swept ${deleted} expired drafts`);
+		} catch (error) {
+			console.error("[intake] draft sweep failed", error);
+		} finally {
+			if (!intakeSweepClosed) scheduleIntakeSweep(60 * 60_000);
+		}
+	}, delay);
+	intakeSweep.unref();
+};
+scheduleIntakeSweep();
+
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
 	process.once(signal, () => {
 		knowledgeGapSweepClosed = true;
 		if (knowledgeGapSweep) clearTimeout(knowledgeGapSweep);
+		intakeSweepClosed = true;
+		if (intakeSweep) clearTimeout(intakeSweep);
 		closeRecurrenceSweep();
 		closeConnectorSweep();
 		void Promise.all([grpcGateway.close(), closeMailRuntime()])

@@ -7,7 +7,7 @@ import {
 } from "drizzle-orm/pg-core";
 
 export const DOCUMENT_KINDS = ["file", "link"] as const;
-export const DOCUMENT_TARGET_TYPES = ["ticket", "case_note"] as const;
+export const DOCUMENT_TARGET_TYPES = ["ticket", "case_note", "draft"] as const;
 
 export const documents = pgTable(
 	"documents",

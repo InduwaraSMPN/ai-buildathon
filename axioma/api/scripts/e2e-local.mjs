@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import process from "node:process";
@@ -162,6 +163,16 @@ const scenarios = [
 		"Deployment",
 		"Requires a clean kind cluster and deployment credentials",
 	],
+	[
+		"11",
+		"Intake — draft lifecycle",
+		"Requires intake drafts with ticket re-parent and public transcript",
+	],
+	[
+		"11b",
+		"Intake — live draft to ticket",
+		"Requires AXIOMA_LLM_KEY and a running API",
+	],
 	["exit-gates", "Project exit gates", "Run every project gate separately"],
 ];
 
@@ -225,6 +236,267 @@ async function reachable(url, expectJson = false) {
 		if (body?.status !== "ok") throw new Error("health response was not ok");
 	}
 	return `HTTP ${response.status}`;
+}
+
+const connectionString = () =>
+	process.env.DATABASE_URL ??
+	"postgresql://postgres:password@localhost:5432/axioma";
+
+// A 1x1 red PNG, valid and tiny. The blob store is content-addressed, so every
+// run of this leg re-uses the same object rather than growing the store.
+const INTAKE_PNG = Buffer.from(
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+	"base64",
+);
+
+/**
+ * `sendIntakeMessage` answers with an oRPC event iterator, which reaches this
+ * script as a text blob rather than a parsed stream. Every payload line is
+ * tried as JSON so the leg can assert on the terminal `complete` event instead
+ * of only substring-matching the wire. Both handler encodings are accepted:
+ * the OpenAPI handler writes the event itself, the RPC one wraps it as
+ * `{json, meta}`.
+ */
+function parseIntakeEvents(stream) {
+	const events = [];
+	for (const rawLine of stream.split(/\r?\n/)) {
+		const line = rawLine.startsWith("data:")
+			? rawLine.slice(5).trim()
+			: rawLine.trim();
+		if (!line.startsWith("{")) continue;
+		let payload;
+		try {
+			payload = JSON.parse(line);
+		} catch {
+			continue;
+		}
+		const event =
+			payload && typeof payload.type !== "string" && payload.json
+				? payload.json
+				: payload;
+		if (event && typeof event.type === "string") events.push(event);
+	}
+	return events;
+}
+
+/**
+ * The only leg that writes. It drives the deployed API over HTTP with a
+ * short-lived API key holding nothing but `ticket.create`, then verifies the
+ * four things intake is responsible for: a drafted incident, the ticket, the
+ * re-parented attachment, and the transcript. It runs on its own connection,
+ * outside the read-only transaction the rest of the run shares.
+ */
+async function intakeLifecycle() {
+	const scenario = "11b";
+	const name = "Intake live draft to ticket";
+	if (!process.env.AXIOMA_LLM_KEY)
+		return result(
+			scenario,
+			name,
+			"skipped",
+			"Intake drafting needs a live model",
+			"Set AXIOMA_LLM_KEY and re-run",
+		);
+
+	const suffix = randomUUID();
+	const reporterId = `e2e-intake-${suffix}`;
+	const writer = new Client({
+		connectionString: connectionString(),
+		application_name: "axioma-e2e-local-intake",
+	});
+	const ticketIds = [];
+	const documentIds = [];
+	try {
+		await writer.connect();
+		const prefix = randomBytes(9).toString("base64url");
+		const secret = randomBytes(32).toString("base64url");
+		await writer.query(
+			'insert into "user" (id, name, email) values ($1, $2, $3)',
+			[reporterId, "E2E intake reporter", `${reporterId}@example.test`],
+		);
+		// `ticket.create` alone: the document writer treats anyone holding
+		// `ticket.read.all` as an analyst and refuses a draft target.
+		await writer.query(
+			`insert into api_keys (id, user_id, name, prefix, secret_hash, capabilities, expires_at)
+			values ($1, $2, $3, $4, $5, $6::jsonb, now() + interval '1 hour')`,
+			[
+				randomUUID(),
+				reporterId,
+				"e2e intake",
+				prefix,
+				`sha256:${createHash("sha256").update(secret).digest("hex")}`,
+				JSON.stringify(["ticket.create"]),
+			],
+		);
+		const token = `axk_${prefix}.${secret}`;
+
+		const call = async (procedure, body) => {
+			const response = await fetch(`${apiUrl}/api-reference/${procedure}`, {
+				method: "POST",
+				headers: {
+					Authorization: `Bearer ${token}`,
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify(body),
+				signal: AbortSignal.timeout(120_000),
+			});
+			const text = await response.text();
+			if (!response.ok)
+				throw new Error(
+					`${procedure} returned HTTP ${response.status} ${text.slice(0, 200)}`,
+				);
+			return text;
+		};
+
+		const draft = JSON.parse(await call("startIntakeDraft", {}));
+		if (!draft?.id) throw new Error("startIntakeDraft returned no draft id");
+
+		const form = new FormData();
+		form.append("targetType", "draft");
+		form.append("targetId", draft.id);
+		form.append(
+			"file",
+			new File([INTAKE_PNG], "intake-e2e.png", { type: "image/png" }),
+		);
+		const upload = await fetch(`${apiUrl}/api/documents`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${token}` },
+			body: form,
+			signal: AbortSignal.timeout(30_000),
+		});
+		const uploadBody = await upload.text();
+		if (!upload.ok)
+			throw new Error(
+				`document upload returned HTTP ${upload.status} ${uploadBody.slice(0, 200)}`,
+			);
+		const document = JSON.parse(uploadBody);
+		documentIds.push(document.id);
+
+		const stream = await call("sendIntakeMessage", {
+			draftId: draft.id,
+			body: "Outlook will not open on my laptop and reports a broken profile.",
+			excludedAttachments: [],
+		});
+		if (stream.includes('"type":"error"'))
+			throw new Error(`intake stream reported ${stream.slice(0, 200)}`);
+		if (!stream.includes('"type":"complete"'))
+			throw new Error("intake stream ended without a complete event");
+
+		// A stream that merely completes proves transport, not drafting: an empty
+		// or garbage draft would still be overwritten by the patch below and pass.
+		// So the terminal event is parsed and the drafting path asserted first.
+		// Shape and intent only — the model's exact wording is not what this leg
+		// proves, and asserting it would make the leg a model-wording test.
+		const events = parseIntakeEvents(stream);
+		const completed = events.findLast((event) => event.type === "complete");
+		if (!completed)
+			throw new Error(
+				`intake stream carried a complete event but it could not be parsed (${events.length} events read from ${stream.length} bytes). This is a wire-format change in the event iterator, not a model failure`,
+			);
+		const drafted = completed.draft ?? {};
+		const draftedValues = drafted.values ?? {};
+		const draftedSources = drafted.fieldSources ?? {};
+		const draftedTitle =
+			typeof draftedValues.title === "string" ? draftedValues.title.trim() : "";
+		if (drafted.intent !== "incident")
+			throw new Error(
+				`drafting classified intent=${JSON.stringify(drafted.intent)}, expected "incident" — "Outlook will not open" is unambiguously an incident, so either the model regressed or classification is not reaching the draft`,
+			);
+		if (draftedTitle === "")
+			throw new Error(
+				`drafting produced no title: values.title=${JSON.stringify(draftedValues.title)} — either the model returned a low-confidence/blank draft or drafted values are not being persisted`,
+			);
+		if (draftedSources.title !== "ai")
+			throw new Error(
+				`drafted title is attributed to fieldSources.title=${JSON.stringify(draftedSources.title)}, expected "ai" — nothing has edited the draft yet, so this is field-source bookkeeping, not the model`,
+			);
+
+		// The model's wording is not what this leg proves, so the two bounded
+		// fields are set explicitly and the submit path is measured on its own.
+		await call("patchIntakeDraft", {
+			draftId: draft.id,
+			values: {
+				title: "Outlook will not open",
+				body: "Outlook fails to start and reports a broken profile.",
+			},
+			sources: { title: "user", body: "user" },
+		});
+		const submitted = JSON.parse(
+			await call("submitIntakeDraft", {
+				draftId: draft.id,
+				idempotencyKey: randomUUID(),
+			}),
+		);
+		if (!submitted?.ticketId)
+			throw new Error("submitIntakeDraft returned no ticket id");
+		ticketIds.push(submitted.ticketId);
+
+		const r = (
+			await writer.query(
+				`select
+				(select count(*)::int from tickets where id = $1) tickets,
+				(select count(*)::int from document_links where document_id = $2 and target_type = 'ticket' and target_id = $1) reparented,
+				(select count(*)::int from document_links where document_id = $2 and target_type = 'draft') stranded,
+				(select count(*)::int from ticket_messages where ticket_id = $1 and visibility = 'public' and body like 'Employee:%') transcripts,
+				(select count(*)::int from ticket_drafts where id = $3 and status = 'submitted' and ticket_id = $1) submitted_drafts`,
+				[submitted.ticketId, document.id, draft.id],
+			)
+		).rows[0];
+		const ok =
+			r.tickets === 1 &&
+			r.reparented === 1 &&
+			r.stranded === 0 &&
+			r.transcripts === 1 &&
+			r.submitted_drafts === 1;
+		return result(
+			scenario,
+			name,
+			ok ? "ran" : "failed",
+			`drafted_intent=${drafted.intent}, drafted_title_source=${draftedSources.title}, tickets=${r.tickets}, reparented_links=${r.reparented}, stranded_draft_links=${r.stranded}, transcript_messages=${r.transcripts}, submitted_drafts=${r.submitted_drafts}`,
+			ok
+				? null
+				: "Submit did not land the ticket, the re-parented attachment, and one transcript",
+		);
+	} catch (error) {
+		return result(
+			scenario,
+			name,
+			"failed",
+			"Intake lifecycle could not complete",
+			safeError(error),
+		);
+	} finally {
+		try {
+			await writer.query(
+				"delete from ticket_creation_claims where reporter_id = $1",
+				[reporterId],
+			);
+			await writer.query(
+				"delete from workflow_executions where record_id = any($1::text[])",
+				[ticketIds],
+			);
+			await writer.query(
+				"delete from ticket_number_history where ticket_id = any($1::text[])",
+				[ticketIds],
+			);
+			await writer.query("delete from tickets where id = any($1::text[])", [
+				ticketIds,
+			]);
+			// After the tickets, so a projection written by the API's own
+			// fire-and-forget indexing has nothing left to index.
+			await writer.query(
+				"delete from search_documents where object_id = any($1::text[])",
+				[ticketIds],
+			);
+			await writer.query("delete from documents where id = any($1::text[])", [
+				documentIds,
+			]);
+			await writer.query('delete from "user" where id = $1', [reporterId]);
+		} catch (error) {
+			if (!json) console.error(`Intake cleanup failed: ${safeError(error)}`);
+		}
+		await writer.end().catch(() => {});
+	}
 }
 
 async function selfTest() {
@@ -303,9 +575,7 @@ try {
 
 try {
 	client = new Client({
-		connectionString:
-			process.env.DATABASE_URL ??
-			"postgresql://postgres:password@localhost:5432/axioma",
+		connectionString: connectionString(),
 		application_name: "axioma-e2e-local-read-only",
 	});
 	await client.connect();
@@ -526,9 +796,40 @@ if (client) {
 							: "Duplicate ticket/trigger dispatch ledger rows exist",
 					),
 	);
+	await check(
+		"11",
+		"Intake draft lifecycle",
+		`select
+			(select count(*)::int from information_schema.tables where table_schema='public' and table_name='ticket_drafts') has_drafts_table,
+			(select count(*)::int from information_schema.columns where table_schema='public' and table_name='document_links' and column_name='target_type') has_target_type,
+			(select count(*)::int from ticket_drafts) drafts
+		`,
+		(r) => {
+			const ok = r.has_drafts_table === 1 && r.has_target_type === 1;
+			return result(
+				"11",
+				"Intake draft lifecycle",
+				ok ? "ran" : "failed",
+				`has_drafts_table=${r.has_drafts_table}, has_target_type=${r.has_target_type}, drafts=${r.drafts}`,
+				ok ? null : "Intake schema not migrated",
+			);
+		},
+	);
 	await client.query("rollback");
 	await client.end();
 }
+
+results.push(
+	client
+		? await intakeLifecycle()
+		: result(
+				"11b",
+				"Intake live draft to ticket",
+				"skipped",
+				"Database unavailable",
+				"Start the local stack and re-run",
+			),
+);
 
 const completedResults = completeScenarios(results);
 

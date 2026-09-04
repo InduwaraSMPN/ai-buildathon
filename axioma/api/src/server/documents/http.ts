@@ -141,15 +141,17 @@ documentHttp.post("/documents", async (c) => {
 	try {
 		const context = await createContext({ context: c });
 		if (!context.userId) return c.text("Unauthorized", 401);
-		if (!context.capabilities.has("ticket.update"))
-			return c.text("Forbidden", 403);
 		const body = await c.req.parseBody();
+		const targetType = (body.targetType as string | undefined) ?? "";
+		const required = targetType === "draft" ? "ticket.create" : "ticket.update";
+		if (!context.capabilities.has(required)) return c.text("Forbidden", 403);
 		const file = body.file;
-		const targetType = body.targetType;
 		const targetId = body.targetId;
 		if (
 			!(file instanceof File) ||
-			(targetType !== "ticket" && targetType !== "case_note") ||
+			(targetType !== "ticket" &&
+				targetType !== "case_note" &&
+				targetType !== "draft") ||
 			typeof targetId !== "string" ||
 			!targetId
 		)

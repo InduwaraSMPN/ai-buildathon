@@ -1,0 +1,1 @@
+CREATE INDEX "ticket_drafts_status_updated_idx" ON "ticket_drafts" USING btree ("status","updated_at");

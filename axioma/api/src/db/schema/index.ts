@@ -18,6 +18,7 @@ export * from "./dynamic-fields";
 export * from "./environments";
 export * from "./forms";
 export * from "./identity-providers";
+export * from "./intake";
 export * from "./inventory";
 export * from "./journal";
 export * from "./knowledge";

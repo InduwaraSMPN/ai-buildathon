@@ -27,6 +27,10 @@
 		"features/tickets/components/request-form.tsx": {
 			"symbol": "SelectGroup",
 			"count": 1
+		},
+		"features/intake/components/draft-review.tsx": {
+			"symbol": "SelectGroup",
+			"count": 1
 		}
 	},
 	"typeScaleAllowlist": []

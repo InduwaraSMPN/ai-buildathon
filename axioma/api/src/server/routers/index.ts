@@ -11,6 +11,7 @@ import { devicesRouter } from "./devices";
 import { documentsRouter } from "./documents";
 import { environmentsRouter } from "./environments";
 import { identityRouter } from "./identity";
+import { intakeRouter } from "./intake";
 import { knowledgeRouter } from "./knowledge";
 import { mailRouter } from "./mail";
 import { problemsRouter } from "./problems";
@@ -136,6 +137,13 @@ export const appRouter = {
 	listDocuments: documentsRouter.listDocuments,
 	createLinkDocument: documentsRouter.createLinkDocument,
 	unlinkDocument: documentsRouter.unlinkDocument,
+	startIntakeDraft: intakeRouter.startIntakeDraft,
+	sendIntakeMessage: intakeRouter.sendIntakeMessage,
+	getIntakeDraft: intakeRouter.getIntakeDraft,
+	patchIntakeDraft: intakeRouter.patchIntakeDraft,
+	submitIntakeDraft: intakeRouter.submitIntakeDraft,
+	discardIntakeDraft: intakeRouter.discardIntakeDraft,
+	intakeCapabilities: intakeRouter.intakeCapabilities,
 	listSuppliers: suppliersRouter.listSuppliers,
 	listContracts: suppliersRouter.listContracts,
 	listEnvironments: environmentsRouter.listEnvironments,

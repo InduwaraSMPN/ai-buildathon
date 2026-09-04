@@ -10,6 +10,7 @@ import { documentsContract } from "./documents";
 import { environmentsContract } from "./environments";
 import { healthContract } from "./health";
 import { identityContract } from "./identity";
+import { intakeContract } from "./intake";
 import { knowledgeContract } from "./knowledge";
 import { mailContract } from "./mail";
 import { problemsContract } from "./problems";
@@ -137,6 +138,13 @@ export const appContract = {
 	listDocuments: documentsContract.listDocuments,
 	createLinkDocument: documentsContract.createLinkDocument,
 	unlinkDocument: documentsContract.unlinkDocument,
+	startIntakeDraft: intakeContract.startIntakeDraft,
+	sendIntakeMessage: intakeContract.sendIntakeMessage,
+	getIntakeDraft: intakeContract.getIntakeDraft,
+	patchIntakeDraft: intakeContract.patchIntakeDraft,
+	submitIntakeDraft: intakeContract.submitIntakeDraft,
+	discardIntakeDraft: intakeContract.discardIntakeDraft,
+	intakeCapabilities: intakeContract.intakeCapabilities,
 	listSuppliers: suppliersContract.listSuppliers,
 	listContracts: suppliersContract.listContracts,
 	listEnvironments: environmentsContract.listEnvironments,
@@ -237,6 +245,18 @@ export const portalContract = {
 	getMyApprovalStatus: catalogueContract.getMyApprovalStatus,
 	listDocuments: documentsContract.listDocuments,
 	createLinkDocument: documentsContract.createLinkDocument,
+	// The employee has to be able to take a screenshot back off their own draft.
+	// Without this the tray could only forget an attachment locally, and
+	// `submitIntake` re-parented the link onto the ticket regardless.
+	// Authorisation is unchanged: the handler still resolves the target's owner.
+	unlinkDocument: documentsContract.unlinkDocument,
+	startIntakeDraft: intakeContract.startIntakeDraft,
+	sendIntakeMessage: intakeContract.sendIntakeMessage,
+	getIntakeDraft: intakeContract.getIntakeDraft,
+	patchIntakeDraft: intakeContract.patchIntakeDraft,
+	submitIntakeDraft: intakeContract.submitIntakeDraft,
+	discardIntakeDraft: intakeContract.discardIntakeDraft,
+	intakeCapabilities: intakeContract.intakeCapabilities,
 	createTicket: ticketsContract.createTicket,
 	listTickets: ticketsContract.listTickets,
 	getMyTicket: ticketsContract.getMyTicket,

@@ -1,5 +1,5 @@
 import { createReadStream } from "node:fs";
-import { mkdir, open, readFile, rm } from "node:fs/promises";
+import { mkdir, open, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 
@@ -41,9 +41,28 @@ export class FileBlobStore {
 		return readFile(blobPath(this.root, key));
 	}
 
+	/** Byte length without reading the blob; null when it is missing. */
+	async size(key: string): Promise<number | null> {
+		try {
+			return (await stat(blobPath(this.root, key))).size;
+		} catch {
+			return null;
+		}
+	}
+
 	stream(key: string): ReadableStream<Uint8Array> {
 		return Readable.toWeb(
 			createReadStream(blobPath(this.root, key)),
 		) as ReadableStream<Uint8Array>;
 	}
 }
+
+/**
+ * The one place the blob root is resolved. Three call sites used to build this
+ * path independently, so a change to `AXIOMA_DOCUMENT_DIR` handling had to be
+ * made three times to stay consistent.
+ */
+export const documentStore = () =>
+	new FileBlobStore(
+		process.env.AXIOMA_DOCUMENT_DIR ?? join(process.cwd(), ".data", "documents"),
+	);

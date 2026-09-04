@@ -143,8 +143,53 @@ api:
     #   Voyage/Cohere are not OpenAI-shaped and will not work without a proxy.
     # ---------------------------------------------------------------------
     llm:
+      # AXIOMA_LLM_API_BASE — the chat endpoint. Intake sends the employee's
+      # conversation here, and embeddings use it too unless embeddingApiBase
+      # below overrides them.
       apiBase: ""
+      # AXIOMA_EMBEDDING_MODEL
       embeddingModel: ""
+      # AXIOMA_EMBEDDING_API_BASE
+      # Set only when embeddings come from a different provider than chat. This
+      # is common: a gateway credential is often scoped to a list of chat models
+      # and answers /embeddings with a 403. Setting this requires
+      # secrets.embeddingKey; leaving it empty sends embeddings to apiBase.
+      embeddingApiBase: ""
+      # AXIOMA_EMBEDDING_DIMENSIONS
+      # Only for a model whose native width is not 1536 but which implements
+      # Matryoshka truncation (Google's gemini-embedding-001, for example, is
+      # natively 3072 and honours this). The search_documents column and its
+      # HNSW index are vector(1536); a vector of any other width is discarded.
+      # Leave empty for a natively-1536 model such as text-embedding-3-small.
+      embeddingDimensions: ""
+
+    # ---------------------------------------------------------------------
+    # Model intake — the AI ticket composer behind the portal's /tickets/new.
+    #
+    # Uses the same chat provider slot as the embeddings block above (llm.apiBase
+    # and secrets.llmKey): one OpenAI-shaped endpoint serves both. An empty model
+    # falls back to the default compiled into api/src/env.ts (gpt-5.6-terra); the
+    # boolean and the three numbers below are always passed through exactly as
+    # written. Leave vision off until the Phase 0 gateway probe confirms the
+    # endpoint accepts image_url parts.
+    # ---------------------------------------------------------------------
+    intake:
+      # AXIOMA_INTAKE_MODEL
+      # Model that drafts the ticket. Empty uses the API's compiled default.
+      model: ""
+      # AXIOMA_INTAKE_VISION
+      # Allow the intake model to read uploaded screenshots. Off by default:
+      # keep it off until scripts/probe-intake-model.mjs passes its vision check.
+      vision: false
+      # AXIOMA_INTAKE_TIMEOUT_MS
+      # Per model call timeout in milliseconds.
+      timeoutMs: 45000
+      # AXIOMA_INTAKE_MAX_TURNS
+      # Cap on draft-turning conversational turns before forcing a draft.
+      maxTurns: 20
+      # AXIOMA_INTAKE_DRAFT_TTL_HOURS
+      # Hours before an abandoned (status='open') draft is swept.
+      draftTtlHours: 72
 
     mail:
       # AXIOMA_MAIL_OUTBOUND_URL

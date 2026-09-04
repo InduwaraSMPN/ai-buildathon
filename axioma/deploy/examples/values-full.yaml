@@ -63,6 +63,16 @@ api:
     llm:
       apiBase: "https://api.openai.com/v1"
       embeddingModel: "text-embedding-3-small"
+    intake:
+      # The AI ticket composer. Set to non-defaults to exercise the env wiring.
+      # model is different from the rest: the chart default is an empty string,
+      # so naming any model at all exercises the branch, and the name has to be
+      # one the configured gateway actually serves.
+      model: "gpt-5.6-terra"
+      vision: true
+      timeoutMs: 30000
+      maxTurns: 6
+      draftTtlHours: 24
     mail:
       outboundUrl: "https://mail-relay.example.com/send"
       inboundEnabled: true

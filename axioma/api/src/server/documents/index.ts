@@ -59,7 +59,7 @@ export const DEFAULT_DOCUMENT_EXTENSIONS = [
 ] as const;
 
 export type DocumentTarget = {
-	targetType: "ticket" | "case_note";
+	targetType: "ticket" | "case_note" | "draft";
 	targetId: string;
 };
 export type DocumentViewer = { userId: string; role: "reporter" | "analyst" };

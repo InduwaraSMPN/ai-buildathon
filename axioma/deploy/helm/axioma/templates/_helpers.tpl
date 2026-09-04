@@ -246,17 +246,94 @@ empty is a legitimate way to install.
   value: {{ . | quote }}
 {{- end }}
 {{/*
-The API reads AXIOMA_LLM_KEY for embeddings; the agent reads the same variable
-name for chat. They are different processes, so the chart can point them at
-different provider credentials: secrets.embeddingKey when it is set, otherwise
-the one credential in secrets.llmKey.
+Embeddings may come from a different provider than chat, and often must: a
+gateway credential is commonly scoped to a list of chat models and answers
+/embeddings with a 403. Setting embeddingApiBase points only the embedding call
+elsewhere; the API falls back to llm.apiBase when it is empty, so an existing
+single-provider install is unaffected. embeddingDimensions is for models whose
+native width is not the 1536 the search_documents column is built for and which
+implement Matryoshka truncation; leave it empty for a natively-1536 model.
+*/}}
+{{- with .Values.api.config.llm.embeddingApiBase }}
+- name: AXIOMA_EMBEDDING_API_BASE
+  value: {{ . | quote }}
+{{- end }}
+{{- if .Values.api.config.llm.embeddingDimensions }}
+- name: AXIOMA_EMBEDDING_DIMENSIONS
+  value: {{ .Values.api.config.llm.embeddingDimensions | toString | quote }}
+{{- end }}
+{{/*
+A separate embeddings endpoint needs its own credential, otherwise the chat
+key is sent to a provider that will not recognise it. Refused rather than
+rendered, for the same reason the endpoint check above is.
+*/}}
+{{- if and .Values.api.config.llm.embeddingApiBase (not (or .Values.secrets.embeddingKey .Values.secrets.existingSecret)) }}
+{{- fail "api.config.llm.embeddingApiBase is set but secrets.embeddingKey is empty. A separate embeddings endpoint needs its own credential; set secrets.embeddingKey, or clear embeddingApiBase to use the chat provider for both." }}
+{{- end }}
+{{- if and .Values.api.config.llm.embeddingApiBase (or .Values.secrets.embeddingKey .Values.secrets.existingSecret) }}
+- name: AXIOMA_EMBEDDING_KEY
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "axioma.secretName" . }}
+      key: AXIOMA_EMBEDDING_KEY
+      optional: true
+{{- end }}
+{{/*
+The intake composer uses the same chat provider slot (llm.apiBase + the shared
+credential) and the same OpenAI-shaped request format. Each value is optional:
+leaving one unset lets the default compiled into api/src/env.ts take over.
+*/}}
+{{- $intake := .Values.api.config.intake | default dict }}
+{{- with $intake.model }}
+- name: AXIOMA_INTAKE_MODEL
+  value: {{ . | quote }}
+{{- end }}
+{{/*
+AXIOMA_INTAKE_VISION is validated in api/src/env.ts as the literal string "true"
+or "false", so any other spelling crashloops the API on boot with a zod error. A
+values file may reasonably write `yes` or `1`, so collapse whatever was given to
+a real boolean here rather than passing it straight through: everything Helm
+treats as empty (false, 0, "", null) is off, the string "false" is off, and
+every other value is on.
+*/}}
+{{- if hasKey $intake "vision" }}
+{{- $visionOn := and (not (empty $intake.vision)) (ne (lower (toString $intake.vision)) "false") }}
+- name: AXIOMA_INTAKE_VISION
+  value: {{ ternary "true" "false" $visionOn | quote }}
+{{- end }}
+{{/*
+`hasKey` rather than `with` on the three numbers below. `with` is falsy on 0, so
+it would silently drop a 0 an operator set deliberately instead of passing it
+through to the API, which is the same trap the vision block above avoids.
+*/}}
+{{- if hasKey $intake "timeoutMs" }}
+- name: AXIOMA_INTAKE_TIMEOUT_MS
+  value: {{ $intake.timeoutMs | toString | quote }}
+{{- end }}
+{{- if hasKey $intake "maxTurns" }}
+- name: AXIOMA_INTAKE_MAX_TURNS
+  value: {{ $intake.maxTurns | toString | quote }}
+{{- end }}
+{{- if hasKey $intake "draftTtlHours" }}
+- name: AXIOMA_INTAKE_DRAFT_TTL_HOURS
+  value: {{ $intake.draftTtlHours | toString | quote }}
+{{- end }}
+{{/*
+AXIOMA_LLM_KEY is now the API's *chat* credential — intake sends the employee's
+conversation with it — and AXIOMA_EMBEDDING_KEY, emitted above, is the
+embeddings one. Before intake existed the API only ever used this variable for
+embeddings, so the chart mapped it to secrets.embeddingKey when that was set;
+keeping that would now send the embeddings credential to the chat endpoint.
+secrets.llmKey is therefore preferred, and the embeddings credential is only
+used as a fallback when it is the sole credential configured — which is exactly
+the single-provider install the old mapping was written for.
 */}}
 {{- if or .Values.secrets.existingSecret .Values.secrets.embeddingKey .Values.secrets.llmKey }}
 - name: AXIOMA_LLM_KEY
   valueFrom:
     secretKeyRef:
       name: {{ include "axioma.secretName" . }}
-      key: {{ if .Values.secrets.embeddingKey }}AXIOMA_EMBEDDING_KEY{{ else }}AXIOMA_LLM_KEY{{ end }}
+      key: {{ if or .Values.secrets.llmKey .Values.secrets.existingSecret }}AXIOMA_LLM_KEY{{ else }}AXIOMA_EMBEDDING_KEY{{ end }}
       optional: true
 {{- end }}
 {{- if .Values.api.config.bootstrapAdminEmail }}

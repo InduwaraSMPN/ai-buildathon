@@ -4,7 +4,7 @@ import { apiUrl } from "@/lib/api-url";
 import { orpc, queryClient } from "@/utils/orpc";
 
 export type UploadDocumentsInput = {
-	targetType: "ticket" | "case_note";
+	targetType: "ticket" | "case_note" | "draft";
 	targetId: string;
 	files: FileList | File[];
 };
@@ -38,6 +38,8 @@ export async function uploadDocuments({
 				return (await response.json()) as UploadDocumentResult;
 			}),
 		);
+		// `listDocuments` takes `draft` too now, and the intake tray rehydrates
+		// from it, so a draft upload has to invalidate the same key as any other.
 		await queryClient.invalidateQueries({
 			queryKey: orpc.listDocuments.key({ input: { targetType, targetId } }),
 		});

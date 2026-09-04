@@ -1,12 +1,30 @@
-import { and, eq } from "drizzle-orm";
+import { ORPCError } from "@orpc/server";
 import { db } from "@/db";
 import { documentLinks, documents } from "@/db/schema";
-import { prepareLinkDocument } from "../documents";
+import { type DocumentTarget, prepareLinkDocument } from "../documents";
 import {
 	listVisibleDocuments,
 	requireDocumentWriteTarget,
+	unlinkDocumentFromTarget,
 } from "../documents/access";
-import { capabilityProcedure } from "../orpc";
+import { anyCapabilityProcedure, capabilityProcedure } from "../orpc";
+
+/**
+ * A draft belongs to whoever is composing a request, so the capability that
+ * governs it is `ticket.create` — the same one `documents/http.ts` uses for a
+ * draft upload. Gating these procedures on `ticket.update` alone would make a
+ * `ticket.create`-scoped caller able to upload a draft attachment but not
+ * remove it. The route therefore admits either capability and the real one is
+ * asserted here, per target type, so a `ticket.create` key still cannot touch a
+ * ticket's or a case note's attachments.
+ */
+const requireWriteCapability = (
+	target: DocumentTarget,
+	capabilities: ReadonlySet<string>,
+) => {
+	const required = target.targetType === "draft" ? "ticket.create" : "ticket.update";
+	if (!capabilities.has(required)) throw new ORPCError("FORBIDDEN");
+};
 
 export const documentsRouter = {
 	listDocuments: capabilityProcedure("ticket.read.own").listDocuments.handler(
@@ -35,9 +53,11 @@ export const documentsRouter = {
 			);
 		},
 	),
-	createLinkDocument: capabilityProcedure(
+	createLinkDocument: anyCapabilityProcedure(
 		"ticket.update",
+		"ticket.create",
 	).createLinkDocument.handler(async ({ context, input }) => {
+		requireWriteCapability(input, context.capabilities);
 		await requireDocumentWriteTarget(input, {
 			userId: context.userId,
 			role: context.capabilities.has("ticket.read.all")
@@ -57,29 +77,19 @@ export const documentsRouter = {
 		});
 		return { id, kind: "link" as const, ...prepared };
 	}),
-	unlinkDocument: capabilityProcedure("ticket.update").unlinkDocument.handler(
+	unlinkDocument: anyCapabilityProcedure(
+		"ticket.update",
+		"ticket.create",
+	).unlinkDocument.handler(
 		async ({ context, input }) => {
+			requireWriteCapability(input, context.capabilities);
 			await requireDocumentWriteTarget(input, {
 				userId: context.userId,
 				role: context.capabilities.has("ticket.read.all")
 					? "analyst"
 					: "reporter",
 			});
-			const deleted = Boolean(
-				(
-					await db
-						.delete(documentLinks)
-						.where(
-							and(
-								eq(documentLinks.documentId, input.documentId),
-								eq(documentLinks.targetType, input.targetType),
-								eq(documentLinks.targetId, input.targetId),
-							),
-						)
-						.returning({ id: documentLinks.id })
-				)[0],
-			);
-			return { deleted };
+			return unlinkDocumentFromTarget(input.documentId, input);
 		},
 	),
 };

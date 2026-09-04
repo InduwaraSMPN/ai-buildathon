@@ -38,15 +38,21 @@ can read the API server-side, which is why the marketing origin never appears in
 Three things are true of the tree today. Each of them is a property of the
 software, not of how you configure it.
 
-**Ticket text goes to a third-party model provider, on two independent paths.**
+**Ticket text goes to a third-party model provider, on three independent paths.**
 Axel sends the ticket, the messages on it, and the system state it observes to
 the provider named in `agent.model.apiBase`. The API separately sends knowledge
 and ticket text to the provider named in `api.config.llm.apiBase`, to compute
-embeddings. Both are unset in the chart's defaults and both must be filled in;
-they are configured separately, so changing one does not move the other, and
-they may be different vendors with different credentials. This is inherent to
-using hosted inference: **no data-residency claim survives it**, and the chart
-does not pretend otherwise. See "Model providers" below.
+embeddings. The API also sends the AI intake conversation to that same endpoint:
+every word an employee types while composing a ticket at `/tickets/new`, turn by
+turn, along with the draft the model writes back and — when
+`api.config.intake.vision` is switched on — the pixels of every screenshot
+they attach. The first two paths are unset in the chart's defaults and both must
+be filled in; they are configured separately, so changing one does not move the
+other, and they may be different vendors with different credentials. The third
+path has no endpoint of its own: intake rides the embeddings endpoint and its
+credential, so configuring that slot turns intake on as well. This is inherent
+to using hosted inference: **no data-residency claim survives it**, and the
+chart does not pretend otherwise. See "Model providers" below.
 
 **The gRPC gateway requires TLS, and the default certificate is self-signed.**
 The API refuses to start without `AXIOMA_GRPC_TLS_CERT` and
@@ -135,10 +141,14 @@ Copy `examples/values-minimal.yaml` and fill in the things that have no default:
 | `api.config.corsOrigin` | Comma-separated exact origins for the portal and dashboard. Both send credentialed requests, so an origin missing here makes sign-in fail with nothing in the console to explain it. |
 | `agent.model.name`, `agent.model.apiBase`, `secrets.llmKey` | The chat provider. A default would send tickets to a vendor nobody chose. Set `agent.enabled: false` to install without Axel instead. |
 | `api.config.llm.apiBase`, `api.config.llm.embeddingModel` | The embeddings provider. Leave all three of these and the keys empty to install with knowledge retrieval lexical. |
+| `api.config.intake.model` | The model the AI intake composer names on the embeddings endpoint. The chart leaves it empty, which delegates to the model compiled into the API (`gpt-5.6-terra`), and that model only exists on the provider the API was built against. Once `api.config.llm.apiBase` points at your own endpoint, set this to a model that endpoint serves, or intake fails its first call with an opaque gateway 400. |
 
 The chart refuses to render rather than falling back to an endpoint compiled
 into the code, so a half-filled provider block fails at `helm install` with a
-message naming the missing value.
+message naming the missing value. That guard covers endpoints and credentials
+rather than model names: `api.config.intake.model` does fall back to the model
+compiled into the API, so a name the endpoint does not serve surfaces at the
+first intake call rather than at install time.
 
 Generate the secrets:
 
@@ -160,17 +170,19 @@ nobody can administer.
 
 ## Model providers
 
-Two slots, configured independently. They may be the same vendor or different
-ones, and each has its own credential.
+Two provider slots, configured independently. They may be the same vendor or
+different ones, and each has its own credential. The second slot now has two
+consumers: the API's embedding calls and the AI intake composer share a single
+endpoint and a single credential, and differ only in the model they name.
 
-| | Chat | Embeddings |
-| --- | --- | --- |
-| Called by | the agent, through LiteLLM | the API, with a plain `fetch` |
-| Endpoint | `agent.model.apiBase` | `api.config.llm.apiBase` |
-| Model | `agent.model.name` | `api.config.llm.embeddingModel` |
-| Credential | `secrets.llmKey` | `secrets.embeddingKey`, falling back to `secrets.llmKey` |
-| Carries | ticket text, message bodies, observed system state | knowledge and ticket text |
-| If unset | Axel cannot run; set `agent.enabled: false` | retrieval stays lexical, which is a supported state |
+| | Chat | Embeddings | Intake |
+| --- | --- | --- | --- |
+| Called by | the agent, through LiteLLM | the API, with a plain `fetch` | the API, with a plain `fetch` |
+| Endpoint | `agent.model.apiBase` | `api.config.llm.apiBase` | `api.config.llm.apiBase` |
+| Model | `agent.model.name` | `api.config.llm.embeddingModel` | `api.config.intake.model`, empty falling back to `gpt-5.6-terra` |
+| Credential | `secrets.llmKey` | `secrets.embeddingKey`, falling back to `secrets.llmKey` | `secrets.embeddingKey`, falling back to `secrets.llmKey` |
+| Carries | ticket text, message bodies, observed system state | knowledge and ticket text | the whole employee conversation, plus screenshot pixels when `api.config.intake.vision` is on |
+| If unset | Axel cannot run; set `agent.enabled: false` | retrieval stays lexical, which is a supported state | the AI composer at `/tickets/new` is switched off and employees file on the plain form |
 
 Both slots expect an **OpenAI-compatible** endpoint. For chat that is a property
 of the client rather than a preference: `agent/axel/model.py` always sends

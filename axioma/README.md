@@ -165,6 +165,19 @@ carries a `vector(1536)` embedding column behind an HNSW index, and knowledge re
 vector ranks. Embeddings are only written when `AXIOMA_LLM_KEY` is set; without it retrieval degrades to
 lexical and reports `mode: "lexical"`.
 
+**AI intake** reuses that same credential. `intakeCapabilities.enabled` is `Boolean(env.AXIOMA_LLM_KEY)`, so
+setting the key switches the AI composer on at the portal's `/tickets/new`, and clearing it drops that page
+back to the plain ticket form. One variable governs both embeddings and intake. Five more tune the composer,
+each with a default in `api/src/env.ts` that works unchanged:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `AXIOMA_INTAKE_MODEL` | `gpt-5.6-terra` | The model that drafts the ticket. It must be one the endpoint in `AXIOMA_LLM_API_BASE` actually serves, or the first call fails with an opaque gateway 400. |
+| `AXIOMA_INTAKE_VISION` | `false` | Whether the model may read uploaded screenshots. Only `true` and `false` are accepted; anything else fails validation and the API refuses to start. |
+| `AXIOMA_INTAKE_TIMEOUT_MS` | `45000` | Per-call timeout in milliseconds. |
+| `AXIOMA_INTAKE_MAX_TURNS` | `20` | How many conversational turns are allowed before a draft is forced. |
+| `AXIOMA_INTAKE_DRAFT_TTL_HOURS` | `72` | How long an abandoned `open` draft survives before it is swept. |
+
 **Protobuf codegen** is wired on both sides. After syncing the agent dependencies, `grpcio-tools`
 provides protoc for `agent/scripts/generate-proto.sh` and `agent/scripts/generate-proto.ps1`. CLI
 generation requires Go and either system `protoc` or `uv` for the pinned `grpcio-tools` fallback;
