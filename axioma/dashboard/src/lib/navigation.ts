@@ -4,11 +4,13 @@ import {
 	RiCalendarScheduleLine as CalendarDays,
 	RiBarChartBoxLine as ChartNoAxesCombined,
 	RiSurveyLine as ClipboardList,
+	RiDraftLine as Draft,
 	RiGitPullRequestLine as GitPullRequest,
+	RiInboxLine as Inbox,
 	RiListView as LayoutList,
 	RiLightbulbLine as Lightbulb,
 	RiListCheck3 as ListChecks,
-	RiMailLine as Mail,
+	RiMailSendLine as MailSend,
 	RiComputerLine as MonitorCog,
 	RiPlugLine as PlugZap,
 	RiFileList3Line as ScrollText,
@@ -21,6 +23,16 @@ import {
 } from "@remixicon/react";
 import { redirect } from "@tanstack/react-router";
 import type { Capability } from "@/sdk/shared";
+
+export const NAV_SECTIONS = [
+	"Work",
+	"Records",
+	"Setup",
+	"Mail",
+	"Administration",
+] as const;
+
+export type NavSection = (typeof NAV_SECTIONS)[number];
 
 /**
  * The single navigation registry for the staff dashboard.
@@ -39,116 +51,145 @@ export const navigation = [
 		to: "/overview",
 		label: "Overview",
 		icon: ChartNoAxesCombined,
-	},
-	{ to: "/tickets", label: "Ticket queue", icon: LayoutList },
-	{
-		to: "/devices",
-		label: "Devices",
-		icon: MonitorCog,
-		capabilities: ["device.read", "device.enroll"],
+		section: "Work",
 	},
 	{
-		to: "/problems",
-		label: "Problems",
-		icon: Lightbulb,
-		capabilities: ["problem.manage"],
-	},
-	{
-		to: "/changes",
-		label: "Changes",
-		icon: GitPullRequest,
-		capabilities: ["change.manage"],
-	},
-	{
-		to: "/knowledge",
-		label: "Knowledge",
-		icon: BookOpen,
-		capabilities: ["knowledge.read"],
+		to: "/tickets",
+		label: "Ticket queue",
+		icon: LayoutList,
+		section: "Work",
 	},
 	{
 		to: "/approvals",
 		label: "Approvals",
 		icon: ThumbsUp,
 		capabilities: ["approval.read"],
-	},
-	{
-		to: "/forms",
-		label: "Request forms",
-		icon: ClipboardList,
-		capabilities: ["catalogue.manage"],
+		section: "Work",
 	},
 	{
 		to: "/device-commands",
 		label: "Device commands",
 		icon: Terminal,
 		capabilities: ["device.approve"],
+		section: "Work",
+	},
+	{
+		to: "/scheduled-work",
+		label: "Scheduled work",
+		icon: CalendarDays,
+		section: "Work",
+	},
+	{
+		to: "/devices",
+		label: "Devices",
+		icon: MonitorCog,
+		capabilities: ["device.read", "device.enroll"],
+		section: "Records",
+	},
+	{
+		to: "/problems",
+		label: "Problems",
+		icon: Lightbulb,
+		capabilities: ["problem.manage"],
+		section: "Records",
+	},
+	{
+		to: "/changes",
+		label: "Changes",
+		icon: GitPullRequest,
+		capabilities: ["change.manage"],
+		section: "Records",
+	},
+	{
+		to: "/knowledge",
+		label: "Knowledge",
+		icon: BookOpen,
+		capabilities: ["knowledge.read"],
+		section: "Records",
 	},
 	{
 		to: "/assets",
 		label: "Assets",
 		icon: Boxes,
 		capabilities: ["admin.settings"],
+		section: "Records",
 	},
 	{
 		to: "/software-licences",
 		label: "Software licences",
 		icon: ScrollText,
 		capabilities: ["admin.settings"],
+		section: "Records",
 	},
-	{ to: "/scheduled-work", label: "Scheduled work", icon: CalendarDays },
 	{
 		to: "/suppliers",
 		label: "Suppliers & contracts",
 		icon: Store,
 		capabilities: ["admin.settings"],
+		section: "Records",
 	},
 	{
-		to: "/mail-log",
-		label: "Mail send log",
-		icon: Mail,
-		capabilities: ["admin.settings"],
-	},
-	{
-		to: "/mailboxes",
-		label: "Mailboxes",
-		icon: Mail,
-		capabilities: ["admin.settings"],
-	},
-	{
-		to: "/mail-templates",
-		label: "Mail templates",
-		icon: Mail,
-		capabilities: ["admin.settings"],
+		to: "/forms",
+		label: "Request forms",
+		icon: ClipboardList,
+		capabilities: ["catalogue.manage"],
+		section: "Setup",
 	},
 	{
 		to: "/ticket-rules",
 		label: "Ticket rules",
 		icon: ListChecks,
 		capabilities: ["admin.settings"],
+		section: "Setup",
 	},
 	{
 		to: "/workflows",
 		label: "Workflows",
 		icon: Workflow,
 		capabilities: ["admin.settings"],
+		section: "Setup",
+	},
+	{
+		to: "/mail-log",
+		label: "Mail send log",
+		icon: MailSend,
+		capabilities: ["admin.settings"],
+		section: "Mail",
+	},
+	{
+		to: "/mailboxes",
+		label: "Mailboxes",
+		icon: Inbox,
+		capabilities: ["admin.settings"],
+		section: "Mail",
+	},
+	{
+		to: "/mail-templates",
+		label: "Mail templates",
+		icon: Draft,
+		capabilities: ["admin.settings"],
+		section: "Mail",
 	},
 	{
 		to: "/admin/roles",
 		label: "Roles",
 		icon: ShieldCheck,
 		capabilities: ["admin.roles"],
+		section: "Administration",
 	},
 	{
 		to: "/admin/connectors",
 		label: "ITSM connectors",
 		icon: PlugZap,
 		capabilities: ["admin.connectors"],
+		section: "Administration",
 	},
 	{
 		to: "/admin/environments",
 		label: "Environments",
 		icon: Server,
 		capabilities: ["admin.environments"],
+		section: "Administration",
 	},
 ] as const;
 
@@ -167,6 +208,15 @@ export function permits(held: readonly Capability[], entry: NavEntry): boolean {
 /** The subset of the registry the given user may navigate to. */
 export function visibleNavigation(held: readonly Capability[]) {
 	return navigation.filter((entry) => permits(held, entry));
+}
+
+/** The registry grouped by section, in NAV_SECTIONS order, with empties dropped. */
+export function visibleSections(held: readonly Capability[]) {
+	const visible = visibleNavigation(held);
+	return NAV_SECTIONS.flatMap((section) => {
+		const entries = visible.filter((entry) => entry.section === section);
+		return entries.length ? [{ section, entries }] : [];
+	});
 }
 
 /** The single landing route. Every guard redirects here; it must stay ungated. */

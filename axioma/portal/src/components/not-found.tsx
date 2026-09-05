@@ -1,7 +1,7 @@
 import { Link } from "@tanstack/react-router";
 
 import { PageHeading, PageShell } from "@/components/ticket-ui";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
 	Empty,
 	EmptyContent,

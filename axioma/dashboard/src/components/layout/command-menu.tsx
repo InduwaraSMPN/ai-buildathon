@@ -12,7 +12,7 @@ import {
 	CommandList,
 } from "@/components/ui/command";
 import { Kbd } from "@/components/ui/kbd";
-import { type NavPath, visibleNavigation } from "@/lib/navigation";
+import { type NavPath, visibleSections } from "@/lib/navigation";
 import { Route } from "@/routes/_auth/route";
 import { orpc } from "@/utils/orpc";
 
@@ -78,9 +78,14 @@ export function CommandMenu({
 		(result) => result.objectType,
 	);
 	const term = search.trim().toLowerCase();
-	const views = visibleNavigation(capabilities).filter(({ label }) =>
-		label.toLowerCase().includes(term),
-	);
+	const sections = visibleSections(capabilities)
+		.map(({ section, entries }) => ({
+			section,
+			entries: entries.filter(({ label }) =>
+				label.toLowerCase().includes(term),
+			),
+		}))
+		.filter(({ entries }) => entries.length > 0);
 
 	return (
 		<CommandDialog
@@ -109,16 +114,16 @@ export function CommandMenu({
 					</span>
 				</div>
 				<CommandList>
-					{views.length ? (
-						<CommandGroup heading="Views">
-							{views.map(({ to, label, icon: Icon }) => (
+					{sections.map(({ section, entries }) => (
+						<CommandGroup key={section} heading={section}>
+							{entries.map(({ to, label, icon: Icon }) => (
 								<CommandItem key={to} value={to} onSelect={() => goTo(to)}>
 									<Icon />
 									{label}
 								</CommandItem>
 							))}
 						</CommandGroup>
-					) : null}
+					))}
 					{!term ? null : results.isError && results.data == null ? (
 						<div className="p-4 text-center text-sm" role="alert">
 							<p className="text-destructive">Search failed</p>

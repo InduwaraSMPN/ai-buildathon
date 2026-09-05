@@ -7,7 +7,6 @@ import {
 	DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import { CONTACT_EMAIL, footerColumns, nav } from "../content/site";
-import { AxiomaWordmark } from "./brand";
 import { ThemeToggle } from "./theme-toggle";
 
 /**
@@ -51,7 +50,20 @@ function SubscribeForm() {
 export function Wordmark() {
 	return (
 		<Link className="wordmark" to="/" aria-label="Axiōma home">
-			<AxiomaWordmark className="wordmark-logo" />
+			<img
+				className="wordmark-logo wordmark-logo-light"
+				src="/brand/axioma-logo.svg"
+				alt=""
+				width={120}
+				height={27}
+			/>
+			<img
+				className="wordmark-logo wordmark-logo-dark"
+				src="/brand/axioma-logo-dark.svg"
+				alt=""
+				width={120}
+				height={27}
+			/>
 		</Link>
 	);
 }
@@ -139,8 +151,28 @@ export function SiteFooter() {
 					</nav>
 				</div>
 				<p className="footer-legal">© {new Date().getFullYear()} Axiōma</p>
+				{/* The shipped brand files, not the inline wordmark: each carries the
+				    approved fill for its ground (#008236 on light, #016630 on dark),
+				    so the pair is swapped by theme rather than tinted by --brand.
+				    The ™ lockup belongs to this footer alone; everywhere else uses
+				    the plain wordmark in /brand/axioma-logo*.svg. Paths are
+				    root-relative: a relative one resolves against /pricing and the
+				    other nested routes, which 404s. */}
 				<Link className="footer-logo" to="/" aria-label="Axiōma home">
-					<AxiomaWordmark />
+					<img
+						className="footer-logo-light"
+						src="/brand/axioma-wordmark.svg"
+						alt=""
+						width={142}
+						height={40}
+					/>
+					<img
+						className="footer-logo-dark"
+						src="/brand/axioma-wordmark-dark.svg"
+						alt=""
+						width={142}
+						height={40}
+					/>
 				</Link>
 			</div>
 		</footer>

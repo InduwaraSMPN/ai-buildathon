@@ -3,7 +3,16 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { PageContainer } from "@/components/layout/page-container";
 import { PageState } from "@/components/support-ui";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardAction,
+	CardDescription,
+	CardFooter,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
 import {
 	Dialog,
 	DialogContent,
@@ -13,16 +22,8 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
-import { Empty, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import {
-	Item,
-	ItemActions,
-	ItemContent,
-	ItemGroup,
-	ItemTitle,
-} from "@/components/ui/item";
 import {
 	NativeSelect,
 	NativeSelectOption,
@@ -150,21 +151,35 @@ function FormsRoute() {
 			}
 		>
 			{(query.data ?? []).length === 0 ? (
-				<Empty>
-					<EmptyHeader>
-						<EmptyTitle>No forms found</EmptyTitle>
-					</EmptyHeader>
-				</Empty>
+				<PageState
+					kind="empty"
+					title="No forms found"
+					description="Create the first request form to collect typed details."
+				/>
 			) : (
-				<ItemGroup className="gap-3 md:grid md:grid-cols-2">
+				<div className="grid gap-4 lg:grid-cols-2">
 					{(query.data ?? []).map((form) => (
-						<Item key={form.id} variant="outline">
-							<ItemContent>
-								<ItemTitle>
-									{form.name} · {form.status}
-								</ItemTitle>
-							</ItemContent>
-							<ItemActions>
+						<Card key={form.id} className="h-full">
+							<CardHeader>
+								<CardTitle>{form.name}</CardTitle>
+								<CardDescription>
+									{form.key} · v{form.version} · {form.fields.length} fields
+								</CardDescription>
+								<CardAction>
+									<Badge
+										variant={
+											form.status === "published"
+												? "default"
+												: form.status === "archived"
+													? "outline"
+													: "secondary"
+										}
+									>
+										{form.status}
+									</Badge>
+								</CardAction>
+							</CardHeader>
+							<CardFooter className="mt-auto flex gap-2">
 								{form.status === "draft" ? (
 									<Button
 										size="sm"
@@ -214,10 +229,10 @@ function FormsRoute() {
 										</NativeSelect>
 									</Field>
 								)}
-							</ItemActions>
-						</Item>
+							</CardFooter>
+						</Card>
 					))}
-				</ItemGroup>
+				</div>
 			)}
 		</PageContainer>
 	);

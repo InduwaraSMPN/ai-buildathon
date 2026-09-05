@@ -1,5 +1,6 @@
 import { RiArrowRightUpLine as ArrowRightUp } from "@remixicon/react";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
 	DropdownMenu,
@@ -14,12 +15,20 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { authClient } from "@/lib/auth-client";
 
+function initials(name: string | null | undefined, email: string) {
+	const letters = (name?.trim().split(/\s+/).filter(Boolean) ?? [])
+		.slice(0, 2)
+		.map((w) => w.charAt(0))
+		.join("");
+	return (letters || email.charAt(0)).toUpperCase();
+}
+
 export default function UserMenu() {
 	const navigate = useNavigate();
 	const { data: session, isPending } = authClient.useSession();
 
 	if (isPending) {
-		return <Skeleton className="h-9 w-24" />;
+		return <Skeleton className="size-8 rounded-full" />;
 	}
 
 	if (!session) {
@@ -30,20 +39,36 @@ export default function UserMenu() {
 		);
 	}
 
+	const { name, email, image } = session.user;
+
 	return (
 		<DropdownMenu>
-			<DropdownMenuTrigger render={<Button variant="outline" />}>
-				{session.user.name}
+			<DropdownMenuTrigger
+				render={
+					<Button
+						variant="ghost"
+						size="icon"
+						className="rounded-full"
+						aria-label="Account"
+					/>
+				}
+			>
+				<Avatar>
+					<AvatarImage src={image ?? undefined} alt="" />
+					<AvatarFallback className="font-medium text-xs">
+						{initials(name, email)}
+					</AvatarFallback>
+				</Avatar>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent className="bg-card">
+			<DropdownMenuContent align="end" className="min-w-56">
 				<DropdownMenuGroup>
-					<DropdownMenuLabel>My Account</DropdownMenuLabel>
+					<DropdownMenuLabel className="flex flex-col gap-0.5">
+						<span>{name}</span>
+						<span className="font-normal text-muted-foreground text-xs">
+							{email}
+						</span>
+					</DropdownMenuLabel>
 					<DropdownMenuSeparator />
-					<DropdownMenuItem>{session.user.email}</DropdownMenuItem>
-					<DropdownMenuSeparator />
-					{/* The terms are accepted at sign-in, so they have to stay
-					 * reachable afterwards — this is the only entry point to them
-					 * from inside the portal. */}
 					<DropdownMenuItem
 						render={
 							<Link

@@ -13,7 +13,6 @@
 		"features/tickets/components/ticket-queue.tsx"
 	],
 	"groupedCallSites": {
-		"components/mode-toggle.tsx": { "symbol": "DropdownMenuGroup", "count": 1 },
 		"features/tickets/components/dynamic-fields.tsx": {
 			"symbol": "SelectGroup",
 			"count": 1

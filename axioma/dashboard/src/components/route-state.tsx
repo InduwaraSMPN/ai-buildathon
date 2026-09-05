@@ -48,7 +48,7 @@ export function AuthPending() {
 					aria-hidden="true"
 				>
 					<Skeleton className="h-4 w-40" />
-					<Skeleton className="h-8 w-44" />
+					<Skeleton className="h-8 w-52" />
 				</div>
 				<main
 					id="main-content"

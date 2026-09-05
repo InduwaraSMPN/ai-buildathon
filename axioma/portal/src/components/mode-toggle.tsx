@@ -1,40 +1,40 @@
-import { RiMoonLine, RiSunLine } from "@remixicon/react";
+import { RiComputerLine, RiMoonLine, RiSunLine } from "@remixicon/react";
 import { useTheme } from "@/components/theme-provider";
-import { Button } from "@/components/ui/button";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuGroup,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+
+const THEMES = [
+	{ value: "light", label: "Light theme", icon: RiSunLine },
+	{ value: "dark", label: "Dark theme", icon: RiMoonLine },
+	{ value: "system", label: "Follow system theme", icon: RiComputerLine },
+] as const;
+const DEFAULT_THEME = "dark"; // mirrors ThemeProvider defaultTheme in routes/__root.tsx and index.html
 
 export function ModeToggle() {
-	const { setTheme } = useTheme();
+	const { theme, setTheme } = useTheme();
+	const current = THEMES.some((t) => t.value === theme)
+		? (theme as (typeof THEMES)[number]["value"])
+		: DEFAULT_THEME;
 
 	return (
-		<DropdownMenu>
-			<DropdownMenuTrigger
-				render={
-					<Button variant="outline" size="icon" aria-label="Toggle theme" />
-				}
-			>
-				<RiSunLine className="rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-				<RiMoonLine className="absolute rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-			</DropdownMenuTrigger>
-			<DropdownMenuContent align="end">
-				<DropdownMenuGroup>
-					<DropdownMenuItem onClick={() => setTheme("light")}>
-						Light
-					</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => setTheme("dark")}>
-						Dark
-					</DropdownMenuItem>
-					<DropdownMenuItem onClick={() => setTheme("system")}>
-						System
-					</DropdownMenuItem>
-				</DropdownMenuGroup>
-			</DropdownMenuContent>
-		</DropdownMenu>
+		<ToggleGroup
+			value={[current]}
+			onValueChange={([next]) => {
+				if (next) setTheme(next);
+			}}
+			aria-label="Theme"
+			className="gap-0.5 rounded-full bg-muted p-0.5"
+		>
+			{THEMES.map(({ value, label, icon: Icon }) => (
+				<ToggleGroupItem
+					key={value}
+					value={value}
+					size="sm"
+					aria-label={label}
+					className="w-7 rounded-full px-0 text-muted-foreground aria-pressed:bg-card aria-pressed:text-foreground aria-pressed:ring-1 aria-pressed:ring-foreground/10"
+				>
+					<Icon aria-hidden="true" />
+				</ToggleGroupItem>
+			))}
+		</ToggleGroup>
 	);
 }

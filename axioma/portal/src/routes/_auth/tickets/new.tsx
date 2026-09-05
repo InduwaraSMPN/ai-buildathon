@@ -4,7 +4,6 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { PageHeading, PageShell } from "@/components/ticket-ui";
-import { Alert, AlertAction, AlertTitle } from "@/components/ui/alert";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
@@ -92,24 +91,33 @@ function ManualBranch() {
 	}, []);
 	return (
 		<PageShell>
-			<BackLink />
-			<PageHeading
-				eyebrow={intakeCopy.eyebrow}
-				title={intakeCopy.composerTitle}
-				description={intakeCopy.composerDescription}
-			/>
-			<Card className="max-w-2xl">
-				<CardHeader className="border-b">
-					<CardTitle className="text-base">
-						{intakeCopy.manualCardTitle}
-					</CardTitle>
-				</CardHeader>
-				<CardContent>
-					{/* Mounted only once the carried values are known, so the
-					    uncontrolled form is not built from an empty first pass. */}
-					{ready ? <RequestForm initialValues={initialValues} /> : <Spinner />}
-				</CardContent>
-			</Card>
+			{/* The form column is narrower than the shell, so centre the whole
+			    column — back link and heading included — rather than leaving it
+			    pinned left against an empty right gutter. */}
+			<div className="mx-auto w-full max-w-2xl">
+				<BackLink />
+				<PageHeading
+					eyebrow={intakeCopy.eyebrow}
+					title={intakeCopy.composerTitle}
+					description={intakeCopy.composerDescription}
+				/>
+				<Card>
+					<CardHeader className="border-b">
+						<CardTitle className="text-base">
+							{intakeCopy.manualCardTitle}
+						</CardTitle>
+					</CardHeader>
+					<CardContent>
+						{/* Mounted only once the carried values are known, so the
+						    uncontrolled form is not built from an empty first pass. */}
+						{ready ? (
+							<RequestForm initialValues={initialValues} />
+						) : (
+							<Spinner />
+						)}
+					</CardContent>
+				</Card>
+			</div>
 		</PageShell>
 	);
 }

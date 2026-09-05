@@ -1,5 +1,5 @@
 import { Link, useMatchRoute } from "@tanstack/react-router";
-import { AxiomaMark, AxiomaWordmark } from "@/components/brand";
+
 import {
 	Sidebar,
 	SidebarContent,
@@ -9,9 +9,10 @@ import {
 	SidebarMenu,
 	SidebarMenuButton,
 	SidebarMenuItem,
+	SidebarRail,
 	useSidebar,
 } from "@/components/ui/sidebar";
-import { LANDING, visibleNavigation } from "@/lib/navigation";
+import { LANDING, visibleSections } from "@/lib/navigation";
 import { Route } from "@/routes/_auth/route";
 
 export function AppSidebar() {
@@ -23,22 +24,54 @@ export function AppSidebar() {
 			<SidebarHeader className="h-14 shrink-0 border-b p-0">
 				<Link
 					to={LANDING}
+					aria-label="Axiōma"
 					onClick={() => setOpenMobile(false)}
 					className="flex size-full items-center justify-center px-2"
 				>
-					<AxiomaMark className="hidden size-5 shrink-0 text-primary group-data-[collapsible=icon]:block" />
-					<AxiomaWordmark
-						className="h-7 w-auto text-primary group-data-[collapsible=icon]:hidden"
-						title="Axiōma"
-					/>
+					{/* The shipped brand files rather than the inline logos: each
+					    carries the approved fill for its ground (#008236 on light,
+					    #016630 on dark). One wrapper per theme, and inside it the
+					    mark replaces the wordmark once the rail collapses. */}
+					<span className="flex items-center dark:hidden">
+						<img
+							src="/brand/axioma-mark.svg"
+							alt=""
+							width={47}
+							height={40}
+							className="hidden size-5 shrink-0 group-data-[collapsible=icon]:block"
+						/>
+						<img
+							src="/brand/axioma-logo.svg"
+							alt=""
+							width={120}
+							height={27}
+							className="h-7 w-auto group-data-[collapsible=icon]:hidden"
+						/>
+					</span>
+					<span className="hidden items-center dark:flex">
+						<img
+							src="/brand/axioma-mark-dark.svg"
+							alt=""
+							width={47}
+							height={40}
+							className="hidden size-5 shrink-0 group-data-[collapsible=icon]:block"
+						/>
+						<img
+							src="/brand/axioma-logo-dark.svg"
+							alt=""
+							width={120}
+							height={27}
+							className="h-7 w-auto group-data-[collapsible=icon]:hidden"
+						/>
+					</span>
 				</Link>
 			</SidebarHeader>
 			<SidebarContent>
-				<SidebarGroup>
-					<SidebarGroupLabel>Operations</SidebarGroupLabel>
-					<SidebarMenu className="gap-1" aria-label="Operations">
-						{visibleNavigation(capabilities).map(
-							({ to, label, icon: Icon }) => (
+				{visibleSections(capabilities).map(({ section, entries }) => (
+					<SidebarGroup key={section}>
+						<SidebarGroupLabel>{section}</SidebarGroupLabel>
+						<SidebarMenu className="gap-1" aria-label={section}>
+							{entries.map(({ to, label, icon: Icon }) => (
 								<SidebarMenuItem key={to}>
 									<SidebarMenuButton
 										tooltip={label}
@@ -51,11 +84,12 @@ export function AppSidebar() {
 										<span>{label}</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
-							),
-						)}
-					</SidebarMenu>
-				</SidebarGroup>
+							))}
+						</SidebarMenu>
+					</SidebarGroup>
+				))}
 			</SidebarContent>
+			<SidebarRail />
 		</Sidebar>
 	);
 }

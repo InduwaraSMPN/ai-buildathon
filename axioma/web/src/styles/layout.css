@@ -30,7 +30,20 @@
 	display: block;
 	width: auto;
 	height: 26px;
-	color: var(--brand);
+}
+
+/* Same theme swap as the footer lockup: the files carry their own fill, so
+   exactly one of the pair is shown. */
+.wordmark .wordmark-logo-dark {
+	display: none;
+}
+
+.dark .wordmark .wordmark-logo-light {
+	display: none;
+}
+
+.dark .wordmark .wordmark-logo-dark {
+	display: block;
 }
 
 .desktop-nav {
@@ -273,11 +286,28 @@
 	color: var(--brand);
 }
 
-.footer-logo svg {
+.footer-logo svg,
+.footer-logo img {
 	display: block;
 	width: 100%;
 	height: auto;
 	margin-bottom: -4.542%;
+}
+
+/* The two brand files differ only in fill, so exactly one is ever shown: the
+   theme is a `.dark` class, not a media query, and the toggle must win over
+   the visitor's system setting. Each selector is scoped to `.footer-logo` so
+   it outranks the `.footer-logo img` sizing rule above. */
+.footer-logo .footer-logo-dark {
+	display: none;
+}
+
+.dark .footer-logo .footer-logo-light {
+	display: none;
+}
+
+.dark .footer-logo .footer-logo-dark {
+	display: block;
 }
 
 @media (max-width: 980px) {

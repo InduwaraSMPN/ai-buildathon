@@ -11,6 +11,7 @@ import {
 	BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
+import { Kbd } from "@/components/ui/kbd";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { LANDING } from "@/lib/navigation";
@@ -25,8 +26,11 @@ export function Header({
 	showTier3: boolean;
 }) {
 	const crumbs = useBreadcrumbs();
+	const isMac =
+		typeof navigator !== "undefined" &&
+		/Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 	return (
-		<header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background/80 px-4 backdrop-blur-md">
+		<header className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between gap-2 border-b bg-background px-4">
 			<div className="flex min-w-0 items-center gap-2">
 				<SidebarTrigger />
 				<div className="h-4 w-px bg-border" />
@@ -63,15 +67,15 @@ export function Header({
 					<>
 						<Button
 							variant="outline"
-							size="sm"
+							size="default"
 							onClick={onSearch}
 							aria-label="Search records"
 						>
 							<Search />
 							<span className="hidden sm:inline">Search</span>
-							<kbd className="hidden text-muted-foreground md:inline">
-								⌘ + K
-							</kbd>
+							<Kbd className="hidden md:inline-flex">
+								{isMac ? "⌘K" : "Ctrl K"}
+							</Kbd>
 						</Button>
 						<NotificationCenter />
 					</>

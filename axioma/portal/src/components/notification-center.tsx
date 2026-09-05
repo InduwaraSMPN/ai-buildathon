@@ -40,9 +40,22 @@ export function NotificationCenter() {
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
-				render={<Button variant="ghost" size="icon" aria-label={unreadLabel} />}
+				render={
+					<Button
+						variant="ghost"
+						size="icon"
+						aria-label={unreadLabel}
+						className="relative"
+					/>
+				}
 			>
 				<RiNotificationLine />
+				{unread > 0 ? (
+					<span
+						aria-hidden
+						className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-background"
+					/>
+				) : null}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="w-80 p-2">
 				<DropdownMenuGroup>

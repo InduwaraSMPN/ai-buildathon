@@ -56,11 +56,17 @@ export function CalendarPage({ work }: { work: readonly ScheduledWork[] }) {
 					))}
 				</div>
 			) : (
-				<PageState
-					kind="empty"
-					title="No scheduled work"
-					description="No work is scheduled in this period."
-				/>
+				// Wrapped: the empty state carries `flex-1`, so as a direct child of
+				// PageContainer's flex column it stretched to the full viewport
+				// height. In a block wrapper it settles at its own min height, the
+				// same as every empty state rendered through DataTable.
+				<div>
+					<PageState
+						kind="empty"
+						title="No scheduled work"
+						description="No work is scheduled in this period."
+					/>
+				</div>
 			)}
 		</PageContainer>
 	);
