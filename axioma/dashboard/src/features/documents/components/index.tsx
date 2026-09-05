@@ -252,7 +252,7 @@ export function AttachmentControls({
 								</AttachmentDescription>
 							</AttachmentContent>
 							<AttachmentTrigger
-								render={<a href={item.href} />}
+								render={<a href={item.href} target="_blank" rel="noopener noreferrer" />}
 								aria-label={`Open ${item.name}`}
 							/>
 						</Attachment>
