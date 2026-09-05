@@ -1,9 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { LoadingCards, PageHeading, PageShell } from "@/components/ticket-ui";
+import { BackToHome } from "@/components/back-to-home";
+import {
+	LoadingCards,
+	PageHeading,
+	PageShell,
+	panelCardClass,
+} from "@/components/ticket-ui";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { KnowledgeBrowser } from "@/features/knowledge/components";
 import { orpc } from "@/utils/orpc";
 
@@ -50,22 +57,27 @@ function KnowledgeRoute() {
 	}
 	return (
 		<PageShell>
+			<BackToHome />
 			<PageHeading
-				eyebrow="Help centre"
 				title="Help articles"
 				description="Find clear steps for common questions and problems."
+				meta={`${filtered.length} ${filtered.length === 1 ? "article" : "articles"}`}
 			/>
-			<KnowledgeBrowser
-				articles={filtered}
-				query={query}
-				onQueryChange={setQuery}
-				onArticleSelect={(article) =>
-					void navigate({
-						to: "/help-articles/$articleId",
-						params: { articleId: article.id },
-					})
-				}
-			/>
+			<Card className={panelCardClass}>
+				<CardContent>
+					<KnowledgeBrowser
+						articles={filtered}
+						query={query}
+						onQueryChange={setQuery}
+						onArticleSelect={(article) =>
+							void navigate({
+								to: "/help-articles/$articleId",
+								params: { articleId: article.id },
+							})
+						}
+					/>
+				</CardContent>
+			</Card>
 		</PageShell>
 	);
 }

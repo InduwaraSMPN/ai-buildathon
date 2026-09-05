@@ -26,8 +26,8 @@ export function NotFound() {
 					</EmptyDescription>
 				</EmptyHeader>
 				<EmptyContent>
-					<Link to="/my-requests" className={buttonVariants()}>
-						Back to my requests
+					<Link to="/home" className={buttonVariants()}>
+						Back to home
 					</Link>
 					<Link
 						to="/help-articles"
@@ -52,8 +52,8 @@ export function NotFoundInline() {
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
-				<Link to="/my-requests" className={buttonVariants()}>
-					Back to my requests
+				<Link to="/home" className={buttonVariants()}>
+					Back to home
 				</Link>
 			</EmptyContent>
 		</Empty>

@@ -125,7 +125,7 @@ function ManualBranch() {
 function BackLink() {
 	return (
 		<Link
-			to="/my-requests"
+			to="/home"
 			className={buttonVariants({
 				variant: "ghost",
 				size: "sm",
@@ -133,7 +133,7 @@ function BackLink() {
 			})}
 		>
 			<RiArrowLeftLine data-icon="inline-start" aria-hidden="true" />
-			{intakeCopy.backToRequests}
+			Back to home
 		</Link>
 	);
 }

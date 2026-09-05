@@ -120,6 +120,15 @@ func TestCommandTimeoutSelection(t *testing.T) {
 // — a database failover does exactly that — and a terminal classification here
 // exited every daemon that happened to reconnect during the outage, with no
 // restart until the employee next logged on.
+func TestAuthBackoffIsBoundedAndNeverTight(t *testing.T) {
+	if got := authBackoff(1); got != maxBackoff {
+		t.Fatalf("first auth refusal backoff = %s, want %s", got, maxBackoff)
+	}
+	if got := authBackoff(100); got != maxAuthBackoff {
+		t.Fatalf("auth refusal backoff = %s, want cap %s", got, maxAuthBackoff)
+	}
+}
+
 func TestAuthRefusalIsRetriable(t *testing.T) {
 	for _, code := range []codes.Code{codes.Unauthenticated, codes.PermissionDenied} {
 		err := authError("connect", status.Error(code, "refused"))

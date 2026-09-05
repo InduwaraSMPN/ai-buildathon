@@ -128,6 +128,19 @@ export const fallbackStatusCopy = {
 
 export const ticketStages = ["Received", "Working on it", "Done"] as const;
 
+const stageIndexes: Record<StateType, number> = {
+	new: 0,
+	open: 1,
+	pending: 1,
+	resolved: 2,
+	closed: 2,
+	merged: 2,
+	cancelled: 2,
+};
+
+export const getStageIndex = (stateType: string) =>
+	isStateType(stateType) ? stageIndexes[stateType] : 0;
+
 const stages: Record<StateType, string> = {
 	new: ticketStages[0],
 	open: ticketStages[1],
@@ -216,19 +229,9 @@ export const resolutionCopy = {
 
 export const homeCopy = {
 	pageTitle: "My requests · Axiōma",
-	eyebrow: "Employee support",
-	welcome: (name: string) => `Good to see you, ${name}`,
-	title: "Your support requests",
-	description:
-		"Ask for help, see what’s happening, and return to your work with confidence.",
+	title: "My requests",
+	description: "View and track all of your support requests.",
 	newRequest: "New request",
-	connectComputer: "Connect a computer",
-	codeLabel: "Code shown by axel-cli",
-	codePlaceholder: "ABCDEF-1234",
-	codeError: "Enter the code shown on your computer.",
-	connecting: "Connecting…",
-	connectError: "We couldn’t use that code. Check it and try again.",
-	connected: "Computer connected.",
 	requests: "Your requests",
 	request: "request",
 	requestsPlural: "requests",

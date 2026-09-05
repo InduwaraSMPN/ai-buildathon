@@ -197,15 +197,15 @@ function RouteComponent() {
 	return (
 		<PageShell>
 			<Link
-				to="/my-requests"
+				to="/home"
 				className={buttonVariants({
 					variant: "ghost",
 					size: "sm",
 					className: "mb-6 -ml-2",
 				})}
 			>
-				<RiArrowLeftLine data-icon="inline-start" aria-hidden="true" />{" "}
-				{ticketDetailCopy.back}
+				<RiArrowLeftLine data-icon="inline-start" aria-hidden="true" /> Back to
+				home
 			</Link>
 
 			<div className="mb-3 flex flex-wrap items-center gap-3">
@@ -256,12 +256,14 @@ function RouteComponent() {
 						</CardContent>
 					</Card>
 
-					<ConversationCard ticketId={data.id} messages={data.messages} />
+					<div id="conversation" className="scroll-mt-24">
+						<ConversationCard ticketId={data.id} messages={data.messages} />
+					</div>
 
 					<ResolutionCard
 						ticket={data}
 						pending={updateTicket.isPending}
-						onAction={(input) => updateTicket.mutate(input)}
+						onAction={(input) => updateTicket.mutateAsync(input)}
 					/>
 					{data.statusStateType === "closed" && data.csat ? (
 						<CsatCard csat={data.csat} />

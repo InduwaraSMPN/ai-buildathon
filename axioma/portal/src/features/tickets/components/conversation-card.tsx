@@ -58,9 +58,12 @@ export function ConversationCard({
 	const reply = useMutation(
 		orpc.addMyTicketMessage.mutationOptions({
 			onSuccess: async () => {
-				await queryClient.invalidateQueries({
-					queryKey: orpc.getMyTicket.key({ input: { id: ticketId } }),
-				});
+				await Promise.all([
+					queryClient.invalidateQueries({
+						queryKey: orpc.getMyTicket.key({ input: { id: ticketId } }),
+					}),
+					queryClient.invalidateQueries({ queryKey: orpc.listTickets.key() }),
+				]);
 				toast.success(conversationCopy.replySent);
 			},
 			onError: () => toast.error(conversationCopy.replyError),

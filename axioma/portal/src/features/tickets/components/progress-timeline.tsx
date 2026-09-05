@@ -2,22 +2,13 @@ import { RiCheckLine, RiCircleLine } from "@remixicon/react";
 import { Spinner } from "@/components/ui/spinner";
 import {
 	getProgressMarkerCopy,
+	getStageIndex,
 	isStateType,
 	statusDetailCopy,
 	ticketStages,
 	timelineCopy,
 } from "@/features/tickets/copy";
 import { cn } from "@/lib/utils";
-
-const stageIndex: Record<string, number> = {
-	new: 0,
-	open: 1,
-	pending: 1,
-	resolved: 2,
-	closed: 2,
-	merged: 2,
-	cancelled: 2,
-};
 
 export function ProgressTimeline({
 	stateType,
@@ -26,7 +17,7 @@ export function ProgressTimeline({
 	stateType: string;
 	progressMarker: string | null;
 }) {
-	const current = isStateType(stateType) ? (stageIndex[stateType] ?? 0) : 0;
+	const current = getStageIndex(stateType);
 	// The marker is present tense — "Making sure the fix worked" — so it belongs
 	// only to a request still being worked. On a finished one it contradicts the
 	// timeline directly above it, whatever the last writer happened to leave.

@@ -12,7 +12,8 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-
+import { statusCopy } from "@/features/status/copy";
+import { siteUrl } from "@/lib/api-url";
 import { authClient } from "@/lib/auth-client";
 
 function initials(name: string | null | undefined, email: string) {
@@ -71,6 +72,21 @@ export default function UserMenu() {
 					<DropdownMenuSeparator />
 					<DropdownMenuItem
 						render={
+							<a
+								href={siteUrl("status")}
+								target="_blank"
+								rel="noreferrer noopener"
+							/>
+						}
+					>
+						{statusCopy.viewStatus}
+						<ArrowRightUp
+							className="ml-auto size-3.5 text-muted-foreground"
+							aria-hidden="true"
+						/>
+					</DropdownMenuItem>
+					<DropdownMenuItem
+						render={
 							<Link
 								to="/acceptable-use"
 								target="_blank"
@@ -79,7 +95,10 @@ export default function UserMenu() {
 						}
 					>
 						Acceptable use policy
-						<ArrowRightUp className="ml-auto size-3.5 text-muted-foreground" />
+						<ArrowRightUp
+							className="ml-auto size-3.5 text-muted-foreground"
+							aria-hidden="true"
+						/>
 					</DropdownMenuItem>
 					<DropdownMenuSeparator />
 					<DropdownMenuItem

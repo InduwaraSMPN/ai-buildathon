@@ -4,6 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { timeAgo } from "@/components/ticket-ui";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -76,13 +77,6 @@ function PrivacyNotice() {
 			<AlertTitle>{requestFormCopy.privacyTitle}</AlertTitle>
 			<AlertDescription>{requestFormCopy.privacyDescription}</AlertDescription>
 		</Alert>
-	);
-}
-
-function lastSeen(date: Date) {
-	return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
-		-Math.max(1, Math.round((Date.now() - date.getTime()) / 60_000)),
-		"minute",
 	);
 }
 
@@ -312,7 +306,7 @@ function IncidentRequestForm({
 											{devices.data.map((device) => (
 												<SelectItem key={device.id} value={device.id}>
 													{device.hostname}, {requestFormCopy.lastSeen}{" "}
-													{lastSeen(device.lastSeenAt)}
+													{timeAgo(device.lastSeenAt)}
 												</SelectItem>
 											))}
 										</SelectGroup>

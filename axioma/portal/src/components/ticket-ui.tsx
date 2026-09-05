@@ -26,6 +26,7 @@ import {
 import { ticketStatusTone } from "@/lib/status-tone";
 import { cn } from "@/lib/utils";
 import type { STATE_TYPES } from "@/sdk/shared";
+import { BackToHome } from "./back-to-home";
 
 type StateType = (typeof STATE_TYPES)[number];
 
@@ -74,12 +75,44 @@ export function formatDate(value: Date) {
 	}).format(new Date(value));
 }
 
+export function timeAgo(value: Date) {
+	const seconds = (new Date(value).getTime() - Date.now()) / 1_000;
+	const absolute = Math.abs(seconds);
+	const [divisor, unit]: [number, Intl.RelativeTimeFormatUnit] =
+		absolute < 60
+			? [1, "second"]
+			: absolute < 3_600
+				? [60, "minute"]
+				: absolute < 86_400
+					? [3_600, "hour"]
+					: absolute < 2_592_000
+						? [86_400, "day"]
+						: absolute < 31_536_000
+							? [2_592_000, "month"]
+							: [31_536_000, "year"];
+	return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
+		Math.round(seconds / divisor),
+		unit,
+	);
+}
+
+/**
+ * The home page's panel surface. Every page-level card matches it so a route
+ * change never shifts the radius or the padding under the reader.
+ */
+export const panelCardClass =
+	"rounded-3xl py-5 [--card-spacing:--spacing(5)] sm:py-7 sm:[--card-spacing:--spacing(7)]";
+
+/** Heading inside a panel card. */
+export const panelTitleClass = "font-semibold text-2xl";
+
 export function PageShell({
 	children,
+	backToHome = false,
 	id = "main-content",
 	tabIndex = -1,
 	...mainProps
-}: ComponentProps<"main">) {
+}: ComponentProps<"main"> & { backToHome?: boolean }) {
 	return (
 		<main
 			className="min-h-full bg-muted/20"
@@ -88,6 +121,7 @@ export function PageShell({
 			{...mainProps}
 		>
 			<div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 sm:py-12 lg:px-8">
+				{backToHome ? <BackToHome /> : null}
 				{children}
 			</div>
 		</main>
@@ -114,32 +148,29 @@ export function PageHeading({
 	className?: string;
 }) {
 	return (
-		<header
-			className={cn(
-				"mb-5 flex flex-col justify-between gap-5 sm:flex-row sm:items-end",
-				className,
-			)}
-		>
-			<div className="max-w-2xl">
-				{eyebrow ? (
-					<p className="mb-2 font-semibold text-primary text-xs uppercase tracking-eyebrow">
-						{eyebrow}
-					</p>
-				) : null}
-				<h1
-					id={titleId}
-					className="wrap-break-word font-heading font-semibold text-2xl tracking-tight"
-				>
-					{title}
-				</h1>
-				{description ? (
-					<p className="mt-1 text-muted-foreground text-sm">{description}</p>
-				) : null}
-				{meta ? (
-					<p className="mt-3 text-muted-foreground text-xs">{meta}</p>
-				) : null}
+		// The action aligns with the description, not with the meta line under it:
+		// a count that appears only on some pages must not drag the button down.
+		<header className={cn("mb-6 flex flex-col gap-2 px-2", className)}>
+			<div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+				<div className="max-w-2xl">
+					{eyebrow ? (
+						<p className="mb-2 font-semibold text-primary text-xs uppercase tracking-eyebrow">
+							{eyebrow}
+						</p>
+					) : null}
+					<h1
+						id={titleId}
+						className="wrap-break-word font-heading font-semibold text-2xl tracking-tight"
+					>
+						{title}
+					</h1>
+					{description ? (
+						<p className="mt-1 text-muted-foreground text-sm">{description}</p>
+					) : null}
+				</div>
+				{action}
 			</div>
-			{action}
+			{meta ? <p className="text-muted-foreground text-xs">{meta}</p> : null}
 		</header>
 	);
 }

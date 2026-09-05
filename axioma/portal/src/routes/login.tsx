@@ -10,7 +10,7 @@ export const Route = createFileRoute("/login")({
 	beforeLoad: async () => {
 		const session = await authClient.getSession();
 		if (session.error) throw session.error;
-		if (session.data) throw redirect({ to: "/my-requests" });
+		if (session.data) throw redirect({ to: "/home" });
 	},
 	component: RouteComponent,
 	errorComponent: RouteError,

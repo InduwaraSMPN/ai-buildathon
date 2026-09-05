@@ -1,7 +1,5 @@
-import { RiArrowLeftLine } from "@remixicon/react";
 import { useState } from "react";
 import { PageHeading } from "@/components/ticket-ui";
-import { Button } from "@/components/ui/button";
 import {
 	Field,
 	FieldGroup,
@@ -21,11 +19,9 @@ export type KnowledgeArticleData = {
 
 export function KnowledgeArticle({
 	article,
-	onBack,
 	onHelpful,
 }: {
 	article: KnowledgeArticleData;
-	onBack?: () => void;
 	onHelpful?: (helpful: boolean) => void;
 }) {
 	const [helpful, setHelpful] = useState("");
@@ -35,17 +31,6 @@ export function KnowledgeArticle({
 			className="flex flex-col gap-6"
 			aria-labelledby="knowledge-article-title"
 		>
-			{onBack ? (
-				<Button
-					type="button"
-					variant="ghost"
-					onClick={onBack}
-					className="self-start"
-				>
-					<RiArrowLeftLine data-icon="inline-start" aria-hidden="true" />
-					Back to help articles
-				</Button>
-			) : null}
 			<PageHeading
 				className="border-b pb-5"
 				eyebrow={article.topic ?? undefined}

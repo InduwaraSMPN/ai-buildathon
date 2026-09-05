@@ -20,7 +20,7 @@ import { authClient } from "@/lib/auth-client";
 
 import Loader from "./loader";
 
-const LANDING = "/my-requests";
+const LANDING = "/home";
 
 export default function SignInForm({
 	onSwitchToSignUp,

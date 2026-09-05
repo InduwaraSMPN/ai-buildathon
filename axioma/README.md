@@ -73,7 +73,7 @@ run `pnpm mirror` from `ui/` to mirror it into both apps.
 On Windows, use `pwsh scripts/generate-proto.ps1` instead of the Bash generation command before starting the agent.
 
 > [!NOTE]
-> `web/package.json` declares port 3000, which collides with the API — the `Tiltfile` overrides it to 3003, so pass the port explicitly when starting it by hand. `CORS_ORIGIN` admits only `http://localhost:3001` and `http://localhost:3002`; serving a frontend anywhere else makes auth cookies fail silently.
+> `web/package.json` declares port 3003. `CORS_ORIGIN` admits only `http://localhost:3001` and `http://localhost:3002`; serving an authenticated frontend anywhere else makes auth cookies fail silently.
 
 ## Demo scenarios
 
@@ -120,7 +120,7 @@ These are what CI runs, per project, in this order.
 | `api` | `pnpm check` · `pnpm check-types` · `pnpm db:migrate` · `pnpm test` · `pnpm build` |
 | `portal`, `dashboard` | `pnpm check` · `pnpm validate` · `pnpm build` · `pnpm check-types` |
 | `ui` | `node scripts/publish-ui.mjs --check` |
-| `web` | `pnpm check` · `pnpm check-types` · `pnpm build` |
+| `web` | `pnpm check` · `pnpm build` · `pnpm check-types` · `pnpm audit-figures` |
 | `agent` | `uv run ruff check axel tests` · `uv run pytest` |
 | `cli` | `gofmt -l ./internal ./cmd` · `go vet ./...` · `go test ./...` · `go build ./...` |
 | contracts | `pnpm --dir api contracts:check` |

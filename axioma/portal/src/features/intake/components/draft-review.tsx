@@ -1,6 +1,7 @@
 import { RiSendPlane2Line, RiSparkling2Line } from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
+import { timeAgo } from "@/components/ticket-ui";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,13 +83,6 @@ function countFilledFields(values: DraftViewState["values"]): number {
 		0,
 	);
 	return scalars + nested;
-}
-
-function lastSeen(date: Date) {
-	return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
-		-Math.max(1, Math.round((Date.now() - date.getTime()) / 60_000)),
-		"minute",
-	);
 }
 
 export function DraftReview({
@@ -380,7 +374,7 @@ export function DraftReview({
 									{devices.data.map((device) => (
 										<SelectItem key={device.id} value={device.id}>
 											{device.hostname}, {requestFormCopy.lastSeen}{" "}
-											{lastSeen(device.lastSeenAt)}
+											{timeAgo(device.lastSeenAt)}
 										</SelectItem>
 									))}
 								</SelectGroup>

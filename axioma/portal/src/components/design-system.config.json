@@ -3,6 +3,7 @@
 		"components/ticket-ui.tsx",
 		"features/status/components/service-status.tsx",
 		"features/tickets/components/conversation-card.tsx",
+		"features/tickets/components/resolution-actions.tsx",
 		"features/tickets/components/resolution-card.tsx"
 	],
 	"groupedCallSites": {

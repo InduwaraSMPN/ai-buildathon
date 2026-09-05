@@ -23,6 +23,7 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 export type KnowledgeArticleSummary = {
 	id: string;
@@ -72,7 +73,14 @@ export function KnowledgeBrowser({
 
 	return (
 		<section className="flex flex-col gap-5">
-			<FieldGroup className="grid gap-4 sm:grid-cols-[1fr_14rem]">
+			{/* One column when there is no topic select: the reserved 14rem track
+			    otherwise left the search field short with nothing beside it. */}
+			<FieldGroup
+				className={cn(
+					"grid gap-4",
+					onFolderChange ? "sm:grid-cols-[1fr_14rem]" : undefined,
+				)}
+			>
 				<Field>
 					<FieldLabel htmlFor={searchId}>Search help articles</FieldLabel>
 					<Input
@@ -116,6 +124,7 @@ export function KnowledgeBrowser({
 							<Item
 								key={article.id}
 								variant="outline"
+								className="rounded-2xl p-5"
 								render={<button type="button" />}
 								onClick={() => onArticleSelect(article)}
 							>
@@ -142,7 +151,7 @@ export function KnowledgeBrowser({
 					})}
 				</ItemGroup>
 			) : (
-				<Empty className="border" role="status">
+				<Empty className="rounded-2xl border" role="status">
 					<EmptyHeader>
 						<EmptyTitle>No articles found</EmptyTitle>
 						<EmptyDescription>{emptyMessage}</EmptyDescription>

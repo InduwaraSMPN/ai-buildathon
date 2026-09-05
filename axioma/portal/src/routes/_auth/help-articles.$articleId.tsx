@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { BackToHome } from "@/components/back-to-home";
 import { PageShell } from "@/components/ticket-ui";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,6 @@ export const Route = createFileRoute("/_auth/help-articles/$articleId")({
 });
 function ArticleRoute() {
 	const { articleId } = Route.useParams();
-	const navigate = useNavigate();
 	const query = useQuery(
 		orpc.getPublicKnowledgeArticle.queryOptions({ input: { id: articleId } }),
 	);
@@ -65,22 +65,15 @@ function ArticleRoute() {
 							This help article may have been moved or removed.
 						</EmptyDescription>
 					</EmptyHeader>
-					<Button
-						variant="outline"
-						onClick={() => void navigate({ to: "/help-articles" })}
-					>
-						Back to help articles
-					</Button>
+					<BackToHome />
 				</Empty>
 			</PageShell>
 		);
 	}
 	return (
 		<PageShell>
-			<KnowledgeArticle
-				article={query.data}
-				onBack={() => void navigate({ to: "/help-articles" })}
-			/>
+			<BackToHome />
+			<KnowledgeArticle article={query.data} />
 		</PageShell>
 	);
 }
