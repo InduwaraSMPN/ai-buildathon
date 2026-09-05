@@ -4,6 +4,8 @@ import { db } from "@/db";
 import {
 	cmdbClasses,
 	cmdbClassProperties,
+	cmdbObjectProperties,
+	cmdbObjectRelationships,
 	cmdbObjects,
 	cmdbRelationshipTypes,
 	ticketCmdbObjects,
@@ -110,6 +112,91 @@ export const cmdbRouter = {
 			.where(input.classId ? eq(cmdbObjects.classId, input.classId) : undefined)
 			.orderBy(desc(cmdbObjects.observedAt))
 			.limit(input.limit),
+	),
+	getCmdbObject: capabilityProcedure("ticket.read.all").getCmdbObject.handler(
+		async ({ input }) => {
+			const [row] = await db
+				.select({
+					object: cmdbObjects,
+					classKey: cmdbClasses.key,
+					classLabel: cmdbClasses.label,
+				})
+				.from(cmdbObjects)
+				.innerJoin(cmdbClasses, eq(cmdbObjects.classId, cmdbClasses.id))
+				.where(eq(cmdbObjects.id, input.id))
+				.limit(1);
+			if (!row) return null;
+			// A relationship reads in both directions, and which verb applies
+			// depends on which end this object sits at, so the two halves are
+			// fetched separately and each keeps the verb that describes it.
+			const [properties, outgoing, incoming] = await Promise.all([
+				db
+					.select({
+						id: cmdbObjectProperties.id,
+						propertyKey: cmdbClassProperties.propertyKey,
+						label: cmdbClassProperties.label,
+						propertyType: cmdbClassProperties.propertyType,
+						value: cmdbObjectProperties.value,
+					})
+					.from(cmdbObjectProperties)
+					.innerJoin(
+						cmdbClassProperties,
+						eq(cmdbObjectProperties.propertyId, cmdbClassProperties.id),
+					)
+					.where(eq(cmdbObjectProperties.objectId, input.id))
+					.orderBy(cmdbClassProperties.propertyKey),
+				db
+					.select({
+						id: cmdbObjectRelationships.id,
+						verb: cmdbRelationshipTypes.verb,
+						objectId: cmdbObjects.id,
+						objectName: cmdbObjects.name,
+					})
+					.from(cmdbObjectRelationships)
+					.innerJoin(
+						cmdbRelationshipTypes,
+						eq(cmdbObjectRelationships.typeId, cmdbRelationshipTypes.id),
+					)
+					.innerJoin(
+						cmdbObjects,
+						eq(cmdbObjectRelationships.targetObjectId, cmdbObjects.id),
+					)
+					.where(eq(cmdbObjectRelationships.sourceObjectId, input.id)),
+				db
+					.select({
+						id: cmdbObjectRelationships.id,
+						verb: cmdbRelationshipTypes.inverseVerb,
+						objectId: cmdbObjects.id,
+						objectName: cmdbObjects.name,
+					})
+					.from(cmdbObjectRelationships)
+					.innerJoin(
+						cmdbRelationshipTypes,
+						eq(cmdbObjectRelationships.typeId, cmdbRelationshipTypes.id),
+					)
+					.innerJoin(
+						cmdbObjects,
+						eq(cmdbObjectRelationships.sourceObjectId, cmdbObjects.id),
+					)
+					.where(eq(cmdbObjectRelationships.targetObjectId, input.id)),
+			]);
+			return {
+				...row.object,
+				classKey: row.classKey,
+				classLabel: row.classLabel,
+				properties,
+				relationships: [
+					...outgoing.map((edge) => ({
+						...edge,
+						direction: "outgoing" as const,
+					})),
+					...incoming.map((edge) => ({
+						...edge,
+						direction: "incoming" as const,
+					})),
+				],
+			};
+		},
 	),
 	cmdbImpact: capabilityProcedure("ticket.read.all").cmdbImpact.handler(
 		({ input }) => impactForObject(input.objectId, input.maxDepth),

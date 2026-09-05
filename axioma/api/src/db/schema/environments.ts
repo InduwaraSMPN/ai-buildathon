@@ -8,15 +8,14 @@ import {
 	timestamp,
 	uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { ENVIRONMENT_CONNECTION_TYPES } from "@/shared";
 import { services } from "./catalogue";
 import { tickets } from "./tickets";
 
-export const ENVIRONMENT_CONNECTION_TYPES = [
-	"in_cluster",
-	"kubeconfig",
-] as const;
-export type EnvironmentConnectionType =
-	(typeof ENVIRONMENT_CONNECTION_TYPES)[number];
+export {
+	ENVIRONMENT_CONNECTION_TYPES,
+	type EnvironmentConnectionType,
+} from "@/shared";
 
 export const ENVIRONMENT_MODES = ["act", "shadow"] as const;
 export type EnvironmentMode = (typeof ENVIRONMENT_MODES)[number];

@@ -51,7 +51,11 @@ import { reconcileCoreSearchDocuments } from "./search/projections";
 import { transitionTicketStopwatches } from "./sla/runtime";
 import { sweepPresence, sweepSla } from "./sla/sweep";
 import { findTicketTransition, resolveTicketStatus } from "./tickets";
-import { executeTool, sweepExpiredChangeVerifications } from "./tools";
+import {
+	executeTool,
+	sweepExpiredChangeVerifications,
+	ToolRefusalError,
+} from "./tools";
 import { readContextForTicket } from "./tools/cmdb";
 import {
 	deviceActionTimeoutSeconds,
@@ -624,6 +628,10 @@ export class Gateway {
 	) {
 		const runId = String(request.runId);
 		const callId = String(request.callId).trim();
+		// Held outside the try so the catch can record a refusal against the step
+		// that attempted the call; it stays undefined for anything that fails
+		// before the source step is resolved.
+		let stepId: string | undefined;
 		try {
 			if (!callId) throw new Error("tool request call_id is required");
 			if (this.runAgents.get(runId) !== workerId)
@@ -651,7 +659,7 @@ export class Gateway {
 				if (!ticket?.deviceId || input?.device_id !== ticket.deviceId)
 					throw new Error("device tool must target the ticket device");
 			}
-			const stepId = await this.resolveStepId(runId, request, toolName);
+			stepId = await this.resolveStepId(runId, request, toolName);
 			const claimed = await db
 				.insert(agentToolCalls)
 				.values({
@@ -781,6 +789,18 @@ export class Gateway {
 							eq(agentToolCalls.status, "in_progress"),
 						),
 					);
+			// A refusal is a governed outcome, not a platform fault: it names only
+			// the environment and the tool, so it is written verbatim onto the step
+			// that attempted the write. Recording it here rather than letting it
+			// travel back through the worker is what keeps the intent in the
+			// transcript while the agent still learns nothing about the mode it is
+			// running in — and it is the row `suppressedCallsForRun` reads to turn
+			// a suppression into a reviewable proposal.
+			if (error instanceof ToolRefusalError && stepId)
+				await db
+					.update(agentSteps)
+					.set({ error: message })
+					.where(eq(agentSteps.id, stepId));
 			// The full text — driver messages, ticket and run identifiers — is kept
 			// for the operator and for the tool-call record, but what goes back over
 			// the wire and into the employee-visible transcript is the call id, so
@@ -862,18 +882,24 @@ export class Gateway {
 		const enrolmentToken = String(hello.enrolmentToken ?? "");
 		let issuedCredential = "";
 		let issuedClaimCode = "";
+		// `?? ""` on every field, because `String(undefined)` is the five-letter
+		// word "undefined" and it was being written to the row verbatim: the
+		// fleet list showed a device called undefined, running undefined
+		// undefined, on Agent undefined. A hello that omits a field means the
+		// agent did not report it, which is an empty string.
+		const text = (value: unknown, limit: number) =>
+			String(value ?? "").slice(0, limit);
 		const details = {
-			hostname: String(hello.hostname).slice(0, 255),
-			username: String(hello.username).slice(0, 255),
-			platform: String(hello.platform).slice(0, 64),
-			release: String(hello.release).slice(0, 255),
-			agentVersion: String(hello.agentVersion).slice(0, 64),
+			hostname: text(hello.hostname, 255),
+			username: text(hello.username, 255),
+			platform: text(hello.platform, 64),
+			release: text(hello.release, 255),
+			agentVersion: text(hello.agentVersion, 64),
 			connected: "online" as const,
 			lastSeenAt: new Date(),
 		};
 		if (enrolmentToken) {
 			issuedCredential = issueDeviceCredential();
-			issuedClaimCode = issueDeviceClaimCode();
 			const enrolled = await db
 				.transaction(async (tx) => {
 					const token = (
@@ -893,21 +919,27 @@ export class Gateway {
 							.returning({ id: deviceEnrolmentTokens.id })
 					)[0];
 					if (!token) return false;
-					await tx.insert(devices).values({
-						id: deviceId,
-						...details,
+					const issued = {
 						credentialHash: hashDeviceSecret(issuedCredential),
 						credentialRotatedAt: new Date(),
 						enrolledAt: new Date(),
-						// Enrolment says which gateway this machine belongs to, not
-						// whose machine it is. The employee types this code into the
-						// portal to fill `owner_id`, which is what makes the device
-						// theirs — and what every owner-scoped read depends on.
-						claimCodeHash: hashDeviceSecret(
-							normaliseClaimCode(issuedClaimCode),
-						),
-						claimCodeExpiresAt: new Date(Date.now() + CLAIM_CODE_TTL_MS),
-					});
+					};
+					// Upsert, because the device keeps the UUID it minted on first
+					// run: a plain insert turned every second enrolment into a
+					// primary-key violation that the catch below reported as
+					// "invalid enrolment", and the only way out was deleting
+					// device.json to mint a new UUID — which orphans the old row
+					// along with its owner, its command history, and its inventory.
+					// Re-enrolment is also how a device revoked by mistake comes
+					// back: spending a fresh token is the operator's decision to
+					// allow it, so the revocation is cleared with the credential.
+					await tx
+						.insert(devices)
+						.values({ id: deviceId, ...details, ...issued })
+						.onConflictDoUpdate({
+							target: devices.id,
+							set: { ...details, ...issued, revokedAt: null },
+						});
 					return true;
 				})
 				// Without the log a constraint violation or a connection loss was
@@ -937,19 +969,62 @@ export class Gateway {
 			this.sequences.set(deviceId, await this.loadSequence(deviceId));
 		const stillAuthorized = (
 			await db
-				.select({ revokedAt: devices.revokedAt })
+				.select({
+					revokedAt: devices.revokedAt,
+					ownerId: devices.ownerId,
+					claimCodeHash: devices.claimCodeHash,
+					claimCodeExpiresAt: devices.claimCodeExpiresAt,
+				})
 				.from(devices)
 				.where(eq(devices.id, deviceId))
 				.limit(1)
 		)[0];
 		if (!stillAuthorized || stillAuthorized.revokedAt)
 			throw this.deviceAuthError(deviceId, "revoked before replay");
+		// Enrolment says which gateway this machine belongs to, not whose machine
+		// it is. The employee types this code into the portal to fill `owner_id`,
+		// which is what makes the device theirs — and what every owner-scoped read
+		// depends on. Issuing it only on the connection that spent the enrolment
+		// token made that a one-shot: a device that reconnected before anyone read
+		// the code off `axel-cli status` — a closed lid is enough — was left
+		// permanently unclaimable, with no path back short of re-enrolling. So any
+		// hello from a machine nobody owns re-issues one whenever the stored code
+		// is gone or has expired, and enrolment always mints a fresh one because
+		// the device that just re-enrolled may have lost its local copy.
+		const claimCodeUsable =
+			stillAuthorized.claimCodeHash !== null &&
+			stillAuthorized.claimCodeExpiresAt !== null &&
+			stillAuthorized.claimCodeExpiresAt.getTime() > Date.now();
+		if (!stillAuthorized.ownerId && (enrolmentToken || !claimCodeUsable)) {
+			const code = issueDeviceClaimCode();
+			// Guarded on the owner still being absent so a claim that lands between
+			// the read above and this write is not undone by a code nobody asked
+			// for, and so a claimed device is sent nothing.
+			const stored = await db
+				.update(devices)
+				.set({
+					claimCodeHash: hashDeviceSecret(normaliseClaimCode(code)),
+					claimCodeExpiresAt: new Date(Date.now() + CLAIM_CODE_TTL_MS),
+				})
+				.where(
+					and(
+						eq(devices.id, deviceId),
+						sql`${devices.ownerId} is null`,
+						sql`${devices.revokedAt} is null`,
+					),
+				)
+				.returning({ id: devices.id });
+			if (stored[0]) issuedClaimCode = code;
+		}
 		const old = this.devices.get(deviceId);
 		if (old) old.stream.end();
 		this.devices.set(deviceId, { stream, lastSeen: Date.now(), generation });
 		stream.write({
 			enrollment: {
-				claimed: true,
+				// Whether someone owns this machine, not whether it enrolled. It is
+				// how the agent knows a code it is still showing has been used and
+				// should stop being offered to whoever reads `axel-cli status`.
+				claimed: stillAuthorized.ownerId !== null,
 				authValid: true,
 				credential: issuedCredential,
 				claimCode: issuedClaimCode,
@@ -996,10 +1071,14 @@ export class Gateway {
 				credentialRotatedAt: new Date(),
 			})
 			.where(and(eq(devices.id, deviceId), sql`${devices.revokedAt} is null`))
-			.returning({ id: devices.id });
+			.returning({ ownerId: devices.ownerId });
 		if (!changed[0]) return false;
 		connection.stream.write({
-			enrollment: { claimed: true, authValid: true, credential },
+			enrollment: {
+				claimed: changed[0].ownerId !== null,
+				authValid: true,
+				credential,
+			},
 		});
 		return true;
 	}
@@ -1238,7 +1317,14 @@ export class Gateway {
 							? (resolutionCode as (typeof RESOLUTION_CODES)[number])
 							: undefined,
 						resolvedAt: resolved ? new Date() : undefined,
-						progressMarker: resolved ? "verifying_fix" : "handing_to_person",
+						// The marker answers "what is happening right now", so a
+						// resolved ticket has no answer and must not keep the last
+						// one. Leaving `verifying_fix` on it put "Making sure the
+						// fix worked" under a finished timeline on the employee's
+						// own screen — the last thing they see after act 1 — as
+						// though work were still going on. Escalation is different:
+						// the ticket stays live and a person now has it.
+						progressMarker: resolved ? null : "handing_to_person",
 					})
 					.where(
 						and(eq(tickets.id, run.ticketId), eq(tickets.status, fromStatus)),

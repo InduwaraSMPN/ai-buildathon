@@ -111,11 +111,20 @@ const referenceSql = sql<string>`case ${searchDocuments.objectType}
 	when 'agent_run' then 'deidentified-agent-outcome'
 	else ${searchDocuments.objectId} end`;
 
-/** Every sensitive source is admitted in SQL before ranking or limiting. */
+/**
+ * Every sensitive source is admitted in SQL before ranking or limiting.
+ *
+ * `staff` is admitted here and nowhere else. Axel is a staff actor and its
+ * transcript is read in the IT dashboard, not by the reporter — and a runbook is
+ * exactly the class of article written to resolve an incident, so excluding that
+ * audience left forced retrieval able to reach only end-user help pages. The
+ * employee-facing boundary is a different filter: the portal's deflection scope
+ * admits `public` alone, and moving this does not move that.
+ */
 const accessSql = (ticketId: string) => sql`(
 	(${searchDocuments.objectType} = 'knowledge_article' and exists (
 		select 1 from knowledge_articles ka where ka.id = ${searchDocuments.objectId}
-		and ka.status = 'published' and ka.audience in ('public', 'employees') and ka.is_restricted = false
+		and ka.status = 'published' and ka.audience in ('public', 'employees', 'staff') and ka.is_restricted = false
 	)) or
 	(${searchDocuments.objectType} = 'known_error' and exists (
 		select 1 from problems p where p.id = ${searchDocuments.objectId}
@@ -257,7 +266,13 @@ export async function knowledgeFetch(
 						and(
 							eq(knowledgeArticles.id, input.id),
 							eq(knowledgeArticles.status, "published"),
-							inArray(knowledgeArticles.audience, ["public", "employees"]),
+							// Same audience set as `accessSql`; the two must agree, or an
+							// article can be found and then refused when it is fetched.
+							inArray(knowledgeArticles.audience, [
+								"public",
+								"employees",
+								"staff",
+							]),
 							eq(knowledgeArticles.isRestricted, false),
 						),
 					)

@@ -18,6 +18,43 @@ function hashToken(token: string): string {
 	return createHash("sha256").update(token).digest("hex");
 }
 
+/**
+ * Plain English, because this text is read aloud off the approval screen. A
+ * reason a person cannot evaluate is not an authorisation prompt.
+ */
+const DEMO_PROPOSAL_REASONS = [
+	"Outlook profile is corrupt and the typed repair actions did not clear it; this rebuilds the profile in place.",
+	"Print spooler is wedged and holding four jobs; restarting it is the documented repair and no typed action covers it.",
+	"Certificate store is missing the new internal root, which is why the intranet fails to load.",
+	"Disk cleanup on a laptop at 98% full, after the typed temp-file action recovered too little.",
+];
+
+/**
+ * The argument vector each reason above asks for, one to one. An approver reads
+ * this off the screen and decides, so it has to be the command that does the
+ * described repair and nothing else: `powershell.exe -ExecutionPolicy Bypass
+ * -File demo-script-1.ps1` said only "run an unnamed script with the guard
+ * rails off", which is a reason to refuse rather than an authorisation prompt.
+ */
+const DEMO_PROPOSAL_COMMANDS: readonly (readonly string[])[] = [
+	[
+		"powershell.exe",
+		"-NoProfile",
+		"-NonInteractive",
+		"-Command",
+		'Remove-Item -LiteralPath "$env:LOCALAPPDATA\\Microsoft\\Outlook\\corrupt.ost" -Force',
+	],
+	[
+		"powershell.exe",
+		"-NoProfile",
+		"-NonInteractive",
+		"-Command",
+		"Restart-Service -Name Spooler -Force",
+	],
+	["certutil.exe", "-user", "-addstore", "Root", "internal-root-2026.cer"],
+	["cleanmgr.exe", "/sagerun:1"],
+];
+
 export async function seedAssetsAndDevices(): Promise<void> {
 	await db.transaction(async (tx) => {
 		// Asset statuses (3) — not in baseline
@@ -144,12 +181,31 @@ export async function seedAssetsAndDevices(): Promise<void> {
 				.onConflictDoNothing();
 		}
 
-		// Device commands — ~12 across devices
-		const commandTools = [
-			"collect_logs",
-			"run_script",
-			"check_disk",
-			"install_package",
+		// Device commands — ~12 across devices. Act 3 ends on this list, one
+		// screen after the audience watched the real tools run, so an invented
+		// tool name here reads as a capability that does not exist. Every entry
+		// names a tool in the registry and carries that tool's real input.
+		const commandCalls = [
+			{
+				tool: "device_read_state",
+				input: { facets: ["resolver", "adapters"] },
+				output: { resolver: { ok: true, data: { cached_entries: 12 } } },
+			},
+			{
+				tool: "device_run_action",
+				input: { action: "flush_dns", parameters: {} },
+				output: { ok: true },
+			},
+			{
+				tool: "device_read_state",
+				input: { facets: ["storage"] },
+				output: { storage: { ok: true, data: { free_bytes: 8_589_934_592 } } },
+			},
+			{
+				tool: "device_run_action",
+				input: { action: "clear_temp_files", parameters: {} },
+				output: { ok: true },
+			},
 		];
 		for (let i = 0; i < 12; i++) {
 			const id = `demo-device-cmd-${String(i + 1).padStart(2, "0")}`;
@@ -157,7 +213,7 @@ export async function seedAssetsAndDevices(): Promise<void> {
 
 			// Ensure unique per device: use i as sequence for simplicity distinct per device due to sparse use
 			const seqForDevice = i + 1;
-			const tool = commandTools[i % commandTools.length]!;
+			const call = commandCalls[i % commandCalls.length]!;
 			const status =
 				i % 4 === 0
 					? "succeeded"
@@ -179,11 +235,14 @@ export async function seedAssetsAndDevices(): Promise<void> {
 					id,
 					deviceId,
 					sequence: seqForDevice,
-					tool,
-					input: { target: hostnameForDevice(deviceId), demo: true },
+					tool: call.tool,
+					input: { device_id: deviceId, ...call.input },
 					status: status as typeof deviceCommands.$inferInsert.status,
-					output: status === "succeeded" ? { result: "ok", demo: true } : null,
-					error: status === "failed" ? "simulated failure for demo" : null,
+					output: status === "succeeded" ? call.output : null,
+					error:
+						status === "failed"
+							? "the device did not answer within the read timeout"
+							: null,
 					createdAt,
 					dispatchedAt,
 					completedAt,
@@ -191,34 +250,32 @@ export async function seedAssetsAndDevices(): Promise<void> {
 				.onConflictDoNothing();
 		}
 
-		// Device command proposals — 4 (2 pending) — need tickets; fallback to demo-ticket ids if tickets not yet seeded?
-		// We insert proposals after tickets in demo order, but this module runs before tickets.
-		// So we defer: insert proposals with dummy ticketIds that will match later seeded tickets (first 4 demo tickets).
-		// To keep FK optional? ticket_id is NOT NULL but no FK constraint to tickets? Check schema — it is not FK.
-		// Actually device_command_proposals has ticket_id NOT NULL but no FK references clause? Schema shows no reference, just text.
-		// So safe to insert now with future ticket ids.
+		// Device command proposals — four, two of them still awaiting a decision.
+		// `ticket_id` is text with no foreign key, which is what lets these be
+		// written here even though this module runs before tickets are seeded.
 		for (let i = 0; i < 4; i++) {
 			const id = `demo-proposal-${String(i + 1).padStart(2, "0")}`;
 			const deviceId = `demo-device-${String(i + 1).padStart(2, "0")}`;
-			// These ticket ids will be created by tickets.ts as demo ticket numbers; but deviceCommandProposals.ticketId is just text
-			// We'll map to deterministic future ticket CUIDs? Better use demo-ticket-future ids that tickets module also uses as internal CUID?
-			// Since tickets uses random UUID for id, we cannot know ahead. So for demo we use placeholder like pending ticket relation will be loose.
-			// Alternative: postpone proposal seeding to after tickets. For now insert with a seeded ticket id we also seed manually without createTicket.
-			// Simplest: create a placeholder ticket id string that suggests relation but not FK-enforced.
 			const ticketId = `demo-ticket-proposal-${String(i + 1).padStart(2, "0")}`;
 			const status = i < 2 ? "proposed" : i === 2 ? "approved" : "rejected";
 			const requestedById = DEMO_USERS[0]!.id;
 			const approvedById = status !== "proposed" ? DEMO_USERS[1]!.id : null;
 			const decidedAt =
 				status !== "proposed" ? daysFromEpoch(15 + i, 14) : null;
-			const expiresAt = daysFromEpoch(30 + i, 9);
+			// Every proposal expires ahead of now, not at a fixed date in the seed's
+			// own timeline. `expireStaleProposals` runs on every list call and
+			// expires anything still `proposed` or `approved`, so a backdated
+			// expiry both emptied the pending queue — no Approve or Reject to point
+			// at — and rewrote the approved row to `expired`, which then showed as
+			// expired and "Decided by Jamie Chen" on the same card.
+			const expiresAt = new Date(Date.now() + (i + 3) * 24 * 60 * 60_000);
 			const createdAt = daysFromEpoch(12 + i, 10);
-			const command = [
+			const command = DEMO_PROPOSAL_COMMANDS[i] ?? [
 				"powershell.exe",
-				"-ExecutionPolicy",
-				"Bypass",
-				"-File",
-				`demo-script-${i + 1}.ps1`,
+				"-NoProfile",
+				"-NonInteractive",
+				"-Command",
+				"Get-Service -Name Spooler",
 			];
 			const digest = createHash("sha256")
 				.update(JSON.stringify(command))
@@ -232,15 +289,19 @@ export async function seedAssetsAndDevices(): Promise<void> {
 					command,
 					digest,
 					requestedById,
-					reason: `Demo proposal ${i + 1}: routine maintenance via device command`,
+					reason:
+						DEMO_PROPOSAL_REASONS[i] ?? "Routine maintenance on this device",
 					status: status as typeof deviceCommandProposals.$inferInsert.status,
 					approvedById,
 					decidedAt,
+					// A decision note is read by whoever audits the decision later, so
+					// it says what was decided and why, the way the approver would
+					// have written it. "Approved for demo" said nothing.
 					decisionNote:
 						status !== "proposed"
 							? status === "approved"
-								? "Approved for demo"
-								: "Rejected - not needed"
+								? "Root is the published internal CA and the thumbprint matches the PKI page. Approved."
+								: "The laptop is due for replacement this week; cleanmgr will not help and the disk is being reimaged anyway."
 							: null,
 					expiresAt,
 					createdAt,
@@ -252,26 +313,4 @@ export async function seedAssetsAndDevices(): Promise<void> {
 	console.log(
 		"[seed:assets-devices] seeded asset statuses, assets, devices, tokens, commands, proposals",
 	);
-}
-
-function hostnameForDevice(deviceId: string): string {
-	const num = Number.parseInt(deviceId.replace("demo-device-", ""), 10);
-	const hosts = [
-		"ENG-LT-001",
-		"ENG-LT-002",
-		"ENG-LT-003",
-		"SALES-LT-042",
-		"SALES-LT-043",
-		"FIN-LT-010",
-		"FIN-LT-011",
-		"IT-LT-001",
-		"IT-LT-002",
-		"IT-LT-003",
-		"IT-LT-004",
-		"HR-LT-005",
-		"OPS-LT-020",
-		"SUPPORT-LT-007",
-		"QA-LT-012",
-	];
-	return hosts[(num - 1) % hosts.length] ?? "UNKNOWN";
 }

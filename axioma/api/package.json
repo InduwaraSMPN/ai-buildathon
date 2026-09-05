@@ -27,7 +27,8 @@
 		"seed": "node scripts/seed-scenarios.mjs",
 		"seed:reset": "node scripts/seed-scenarios.mjs --reset",
 		"seed:device": "pwsh -File scripts/seed-device-fault.ps1",
-		"seed:demo": "tsx src/db/seed/demo.ts"
+		"seed:demo": "tsx src/db/seed/demo.ts",
+		"purge:test-residue": "node scripts/purge-test-residue.mjs"
 	},
 	"dependencies": {
 		"@grpc/grpc-js": "^1.14.4",

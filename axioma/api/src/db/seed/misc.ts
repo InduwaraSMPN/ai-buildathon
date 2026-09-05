@@ -32,13 +32,6 @@ function hashSecret(secret: string): string {
 	return createHash("sha256").update(secret).digest("hex");
 }
 
-function encryptSecret(secret: string): string {
-	const iv = createHash("sha256").update(secret).digest("hex").slice(0, 32);
-	const ct = Buffer.from(secret).toString("base64");
-	const tag = createHash("sha256").update(ct).digest("hex").slice(0, 32);
-	return `v1:${iv}:${ct}:${tag}`;
-}
-
 export async function seedMisc(ticketIds: string[]): Promise<void> {
 	await db.transaction(async (tx) => {
 		// A demo environment holds a fake credential, so it must never displace an
@@ -60,9 +53,13 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 				id: "demo-env-production",
 				key: "production",
 				label: "Production",
-				connectionType: "in_cluster",
-				contextName: "prod-axioma",
-				credentialEncrypted: encryptSecret("demo-cred-production"),
+				// `default` rather than `in_cluster`: the demo API is a local process,
+				// not a pod, so `loadFromCluster` has no service-account token to read
+				// and every cluster tool call fails before it reaches the cluster. The
+				// bootstrap connection follows KUBECONFIG / AXIOMA_K8S_CONTEXT, which
+				// is whatever the operator's own kubeconfig points at — and needs no
+				// credential of its own, so none is stored.
+				connectionType: "default",
 				mode: "act",
 				isDefault: adoptDemoDefault,
 				createdAt: daysFromEpoch(1, 9),
@@ -75,9 +72,13 @@ export async function seedMisc(ticketIds: string[]): Promise<void> {
 				id: "demo-env-staging",
 				key: "staging",
 				label: "Staging",
-				connectionType: "kubeconfig",
-				contextName: "staging-axioma",
-				credentialEncrypted: encryptSecret("demo-cred-staging"),
+				// The same connection as production, deliberately: what makes a shadow
+				// run interesting to watch is the agent reading real state, diagnosing
+				// correctly, and *then* being refused the write. Pointing this at an
+				// unreachable cluster would fail at the first read instead, and the
+				// refusal being demonstrated would be about connectivity rather than
+				// about mode.
+				connectionType: "default",
 				mode: "shadow",
 				isDefault: false,
 				createdAt: daysFromEpoch(1, 9),

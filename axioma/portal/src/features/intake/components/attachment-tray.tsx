@@ -212,62 +212,62 @@ export function useAttachmentTray({
 
 	const list =
 		attachments.length > 0 ? (
-				<PromptInputAttachments>
-					<AttachmentGroup>
-						{attachments.map((entry) => {
-							const isRemoving = removing.includes(entry.key);
-							const uploadLabel =
-								entry.status === "uploading"
-									? intakeCopy.attachmentUploading
-									: null;
-							const description = isRemoving
-								? intakeCopy.attachmentRemoving
-								: uploadLabel;
-							return (
-								<div key={entry.key} className="flex flex-col gap-1">
-									<Attachment state={entry.status} size="sm">
-										<AttachmentMedia variant="icon">
-											{entry.kind === "image" ? (
-												<RiImage2Line aria-hidden="true" />
-											) : (
-												<RiFileLine aria-hidden="true" />
-											)}
-										</AttachmentMedia>
-										<AttachmentContent>
-											<AttachmentTitle>{entry.name}</AttachmentTitle>
-											{description ? (
-												<AttachmentDescription>
-													{description}
-												</AttachmentDescription>
-											) : null}
-										</AttachmentContent>
-										<AttachmentActions>
-											<AttachmentAction
-												aria-label={`${intakeCopy.removeAttachment}: ${entry.name}`}
-												disabled={isRemoving}
-												onClick={() => void remove(entry)}
-											>
-												<RiCloseLine aria-hidden="true" />
-											</AttachmentAction>
-										</AttachmentActions>
-									</Attachment>
-									{visionEnabled && entry.kind === "image" ? (
-										<Label className="flex items-center gap-2 font-normal text-xs">
-											<Checkbox
-												checked={entry.read}
-												disabled={isRemoving}
-												onCheckedChange={(checked) =>
-													toggleRead(entry.key, checked === true)
-												}
-											/>
-											<span>{intakeCopy.readScreenshotsLabel}</span>
-										</Label>
-									) : null}
-								</div>
-							);
-						})}
-					</AttachmentGroup>
-				</PromptInputAttachments>
+			<PromptInputAttachments>
+				<AttachmentGroup>
+					{attachments.map((entry) => {
+						const isRemoving = removing.includes(entry.key);
+						const uploadLabel =
+							entry.status === "uploading"
+								? intakeCopy.attachmentUploading
+								: null;
+						const description = isRemoving
+							? intakeCopy.attachmentRemoving
+							: uploadLabel;
+						return (
+							<div key={entry.key} className="flex flex-col gap-1">
+								<Attachment state={entry.status} size="sm">
+									<AttachmentMedia variant="icon">
+										{entry.kind === "image" ? (
+											<RiImage2Line aria-hidden="true" />
+										) : (
+											<RiFileLine aria-hidden="true" />
+										)}
+									</AttachmentMedia>
+									<AttachmentContent>
+										<AttachmentTitle>{entry.name}</AttachmentTitle>
+										{description ? (
+											<AttachmentDescription>
+												{description}
+											</AttachmentDescription>
+										) : null}
+									</AttachmentContent>
+									<AttachmentActions>
+										<AttachmentAction
+											aria-label={`${intakeCopy.removeAttachment}: ${entry.name}`}
+											disabled={isRemoving}
+											onClick={() => void remove(entry)}
+										>
+											<RiCloseLine aria-hidden="true" />
+										</AttachmentAction>
+									</AttachmentActions>
+								</Attachment>
+								{visionEnabled && entry.kind === "image" ? (
+									<Label className="flex items-center gap-2 font-normal text-xs">
+										<Checkbox
+											checked={entry.read}
+											disabled={isRemoving}
+											onCheckedChange={(checked) =>
+												toggleRead(entry.key, checked === true)
+											}
+										/>
+										<span>{intakeCopy.readScreenshotsLabel}</span>
+									</Label>
+								) : null}
+							</div>
+						);
+					})}
+				</AttachmentGroup>
+			</PromptInputAttachments>
 		) : null;
 
 	const upload = (

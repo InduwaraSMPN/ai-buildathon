@@ -70,7 +70,7 @@ test("closure and prior outcomes are authorized by invariants, not current ticke
 		"utf8",
 	);
 	assert.match(source, /join ticket_statuses ts[\s\S]*ts\.is_closed = true/);
-	assert.match(source, /ka\.audience in \('public', 'employees'\)/);
+	assert.match(source, /ka\.audience in \('public', 'employees', 'staff'\)/);
 	assert.doesNotMatch(source, /t\.status in \('resolved', 'closed'\)/);
 	assert.doesNotMatch(source, /ar\.ticket_id =/);
 	assert.match(source, /'deidentified-resolved-ticket'/);

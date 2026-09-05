@@ -4,6 +4,7 @@
 
 import { oc } from "@orpc/contract";
 import { z } from "zod";
+import { ENVIRONMENT_CONNECTION_TYPES } from "../shared";
 
 /**
  * Environment output. Credentials are never included: the encrypted column stays
@@ -14,7 +15,7 @@ const environment = z.object({
 	id: z.string(),
 	key: z.string(),
 	label: z.string(),
-	connectionType: z.enum(["in_cluster", "kubeconfig"]),
+	connectionType: z.enum(ENVIRONMENT_CONNECTION_TYPES),
 	contextName: z.string().nullable(),
 	mode: z.enum(["act", "shadow"]),
 	isDefault: z.boolean(),
@@ -28,7 +29,7 @@ const environment = z.object({
 const environmentInput = z.object({
 	key: z.string().trim().min(1).max(80),
 	label: z.string().trim().min(1).max(160),
-	connectionType: z.enum(["in_cluster", "kubeconfig"]),
+	connectionType: z.enum(ENVIRONMENT_CONNECTION_TYPES),
 	contextName: z.string().trim().min(1).nullable().optional(),
 	credential: z.string().trim().min(1).optional(),
 	mode: z.enum(["act", "shadow"]).default("act"),
@@ -45,7 +46,7 @@ export const environmentsContract = {
 				id: z.string().min(1),
 				key: z.string().trim().min(1).max(80).optional(),
 				label: z.string().trim().min(1).max(160).optional(),
-				connectionType: z.enum(["in_cluster", "kubeconfig"]).optional(),
+				connectionType: z.enum(ENVIRONMENT_CONNECTION_TYPES).optional(),
 				contextName: z.string().trim().min(1).nullable().optional(),
 				credential: z.string().trim().min(1).optional(),
 				mode: z.enum(["act", "shadow"]).optional(),

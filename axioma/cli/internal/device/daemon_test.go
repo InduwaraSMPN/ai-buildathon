@@ -305,6 +305,116 @@ func TestServeConnectionStoresIssuedCredential(t *testing.T) {
 	<-done
 }
 
+// The claim code is issued once and read off `axel-cli status`, and a laptop
+// reconnects routinely — a closed lid is enough. Rebuilding the daemon snapshot
+// from scratch on connect and again on disconnect erased the code on the first
+// reconnect, which left a machine nobody could claim and therefore a device
+// invisible to every owner-scoped read.
+func TestDaemonStateKeepsClaimCodeAcrossReconnects(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	const code = "ABCDEF-2345"
+	id := Identity{DeviceID: "device", Credential: "credential"}
+	for connection := range 10 {
+		stream := newFakeDeviceStream()
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			done <- serveConnection(ctx, cancel, stream, "test", &id,
+				daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+				func(Identity, uint64) error { return nil }, acknowledge)
+		}()
+		<-stream.sent // hello
+		if connection == 0 {
+			// The gateway issues the code with the credential on the connection
+			// that spends the enrolment token, and never again while the code is
+			// still valid, so every later connection has only the local copy.
+			stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{
+				Enrollment: &pb.DeviceEnrollment{AuthValid: true, ClaimCode: code},
+			}}
+		}
+		settle(t, stream, uint64(connection)+1)
+		cancel()
+		stream.close()
+		<-done
+		// What RunDaemon writes between connections; a fresh struct here was half
+		// of the loss.
+		recordDaemonState(disconnectedState("test", id.LastSeenSequence, errors.New("stream closed")))
+		state, err := LoadDaemonState()
+		if err != nil {
+			t.Fatalf("connection %d: load daemon state: %v", connection, err)
+		}
+		if state.ClaimCode != code {
+			t.Fatalf("connection %d left claim code %q, want %q", connection, state.ClaimCode, code)
+		}
+	}
+}
+
+// The inventory clock is persisted so a reconnect loop does not re-run a WMI
+// sweep on every laptop in the fleet, and the between-connections write is on
+// that path too.
+func TestDisconnectedStateKeepsInventoryClock(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	collected := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if err := SaveDaemonState(DaemonState{GRPCHost: "test", LastInventoryAt: collected, ClaimCode: "ABCDEF-2345"}); err != nil {
+		t.Fatal(err)
+	}
+	state := disconnectedState("test", 4, errors.New("stream closed"))
+	if !state.LastInventoryAt.Equal(collected) {
+		t.Fatalf("last inventory = %s, want %s", state.LastInventoryAt, collected)
+	}
+	if state.ClaimCode != "ABCDEF-2345" || state.LastSeenSequence != 4 || state.LastError != "stream closed" {
+		t.Fatalf("unexpected disconnected state: %#v", state)
+	}
+}
+
+// Claiming is what fills owner_id, so once it has happened the code buys
+// nothing and showing it invites someone to type a string that can no longer
+// work. The gateway stops sending one and reports the device as claimed.
+func TestServeConnectionDropsClaimCodeOnceClaimed(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	if err := SaveDaemonState(DaemonState{GRPCHost: "test", ClaimCode: "ABCDEF-2345"}); err != nil {
+		t.Fatal(err)
+	}
+	stream := newFakeDeviceStream()
+	defer stream.close()
+	ctx, cancel := context.WithCancel(context.Background())
+	id := Identity{DeviceID: "device", Credential: "credential"}
+	done := make(chan error, 1)
+	go func() {
+		done <- serveConnection(ctx, cancel, stream, "test", &id,
+			daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+			func(Identity, uint64) error { return nil }, acknowledge)
+	}()
+	<-stream.sent // hello
+	stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{
+		Enrollment: &pb.DeviceEnrollment{Claimed: true, AuthValid: true},
+	}}
+	settle(t, stream, 1)
+	cancel()
+	stream.close()
+	<-done
+	state, err := LoadDaemonState()
+	if err != nil || state.ClaimCode != "" {
+		t.Fatalf("claim code survived the claim: %#v, %v", state, err)
+	}
+}
+
+func acknowledge(_ context.Context, command *pb.DeviceCommand) *pb.CommandResult {
+	return &pb.CommandResult{CommandId: command.CommandId, Sequence: command.Sequence, Ok: true}
+}
+
+// settle waits until everything already queued for the daemon has been handled.
+// One loop reads the gateway's messages in order, so a result for a command
+// sent afterwards is proof that the message before it was processed and its
+// snapshot written. Polling daemon.json instead would fight the writer: on
+// Windows a rename cannot replace a file another handle has open, which is the
+// failure the daemon deliberately logs and carries on from.
+func settle(t *testing.T, stream *fakeDeviceStream, sequence uint64) {
+	t.Helper()
+	stream.recv <- gatewayCommand(sequence)
+	waitForResult(t, stream.sent)
+}
+
 func TestServeConnectionTreatsAuthRefusalAsTerminal(t *testing.T) {
 	for _, enrollment := range []*pb.DeviceEnrollment{{CodeExpired: true}, {AuthValid: false}} {
 		t.Run(fmt.Sprint(enrollment.CodeExpired), func(t *testing.T) {

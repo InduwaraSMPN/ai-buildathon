@@ -1,3 +1,4 @@
+import { Link } from "@tanstack/react-router";
 import { createColumnHelper } from "@tanstack/react-table";
 import type { ReactNode } from "react";
 import { DataTable } from "@/components/data-table";
@@ -45,13 +46,17 @@ export type ChangeSummary = {
 export type ChangeDetail = ChangeSummary & {
 	description: string | null;
 	reasonForChange: string | null;
+	implementationPlan: string | null;
 	testPlan: string | null;
 	rollbackPlan: string | null;
+	pirReview: string | null;
 	pirWasSuccessful: boolean | null;
 	pirActualStartAt: Date | string | null;
 	pirActualEndAt: Date | string | null;
 	pirLessonsLearned: string | null;
 	pirFollowUp: string | null;
+	sourceRunId: string | null;
+	sourceStepId: string | null;
 	cabRequired: boolean;
 	ticketIds: string[];
 	cabMembers: {
@@ -332,8 +337,14 @@ export function ChangeDetailView({
 				<CardContent className="space-y-5">
 					<Section title="Description" value={change.description} />
 					<Section title="Reason for change" value={change.reasonForChange} />
+					<ChangeProvenance change={change} />
+					<Section
+						title="Implementation plan"
+						value={change.implementationPlan}
+					/>
 					<Section title="Test plan" value={change.testPlan} />
 					<Section title="Rollback plan" value={change.rollbackPlan} />
+					<Section title="PIR review" value={change.pirReview} />
 					<Section
 						title="PIR outcome"
 						value={
@@ -500,13 +511,88 @@ export function ChangeDetailView({
 	);
 }
 
+/**
+ * A change's narrative fields. Most are prose a person wrote, but the PIR
+ * review of an agent-raised change is the verifying read's own response, and a
+ * minified Kubernetes payload set as a paragraph is unreadable — the one field
+ * an auditor most needs to read looked like the page had broken. JSON is
+ * indented and set as a scrolling code block instead; anything else is prose.
+ */
 function Section({ title, value }: { title: string; value: string | null }) {
+	const json = value ? formatJson(value) : null;
 	return (
 		<section>
 			<h2 className="mb-1 font-medium text-sm">{title}</h2>
-			<p className="whitespace-pre-wrap text-muted-foreground">
-				{value || "Not recorded."}
-			</p>
+			{json ? (
+				<pre className="max-h-80 overflow-auto rounded-md border bg-muted/40 p-3 text-muted-foreground text-xs">
+					<code>{json}</code>
+				</pre>
+			) : (
+				<p className="whitespace-pre-wrap text-muted-foreground">
+					{value || "Not recorded."}
+				</p>
+			)}
+		</section>
+	);
+}
+
+/** The indented form when the value is a JSON object or array, else null. */
+function formatJson(value: string): string | null {
+	const trimmed = value.trim();
+	if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+	try {
+		return JSON.stringify(JSON.parse(trimmed), null, 2);
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Which agent run and step raised and completed this change.
+ *
+ * An auditor reading a change a person did not type has to be able to reach the
+ * evidence, so the run and step ids are printed verbatim rather than summarised.
+ * The transcript lives on the ticket, so the link goes to the first linked
+ * ticket; a change with no linked ticket still shows the ids, because the ids
+ * are the record and the link is only a convenience.
+ */
+function ChangeProvenance({ change }: { change: ChangeDetail }) {
+	const ticketId = change.ticketIds[0];
+	return (
+		<section>
+			<h2 className="mb-1 font-medium text-sm">Completed by</h2>
+			{change.sourceRunId ? (
+				<p className="text-muted-foreground">
+					Agent run{" "}
+					<span className="font-mono text-foreground">
+						{change.sourceRunId}
+					</span>
+					{change.sourceStepId ? (
+						<>
+							, step{" "}
+							<span className="font-mono text-foreground">
+								{change.sourceStepId}
+							</span>
+						</>
+					) : null}
+					.{" "}
+					{ticketId ? (
+						<Link
+							to="/tickets/$ticketId"
+							params={{ ticketId }}
+							className="underline underline-offset-4 hover:text-foreground"
+						>
+							Open the transcript
+						</Link>
+					) : (
+						"No ticket is linked to this change."
+					)}
+				</p>
+			) : (
+				<p className="text-muted-foreground">
+					No agent run is recorded against this change; it was raised by hand.
+				</p>
+			)}
 		</section>
 	);
 }

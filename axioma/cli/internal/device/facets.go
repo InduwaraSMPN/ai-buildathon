@@ -49,7 +49,12 @@ type AdaptersFacet struct {
 }
 
 type ReachabilityFacet struct {
-	Target          string   `json:"target"`
+	Target string `json:"target"`
+	// Whether the name resolved at all, and the resolver's message when it did
+	// not. A name that does not resolve is the answer to "can this machine
+	// reach the intranet", so it is carried as a field rather than thrown.
+	Resolved        bool     `json:"resolved"`
+	ResolveError    string   `json:"resolve_error,omitempty"`
 	ResolvedAddress string   `json:"resolved_address,omitempty"`
 	PacketLoss      float64  `json:"packet_loss_percent"`
 	MeanLatencyMS   *float64 `json:"mean_latency_ms,omitempty"`

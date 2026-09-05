@@ -33,8 +33,21 @@ class Config(BaseSettings):
     strict_function_calling: bool = False
     temperature: float | None = None
 
-    max_tool_calls: int = 8
-    max_model_turns: int = 10
+    # Co-terminal with the turn budget: the forced knowledge search costs one call
+    # before the loop starts and the loop spends at most one per model turn, so
+    # `max_model_turns + 1` is the largest value that is not dead configuration.
+    # It has to be reachable, too. An infrastructure fix runs to eight calls
+    # (forced search, fetching the runbook it found, two reads, the patch, the
+    # read that discharges the verification, a second read, then the CMDB
+    # observation the resolution gate requires), and a ceiling of 8 cut that off
+    # one call short of resolving. The endpoint path is longer still: a named
+    # action that turns out not to clear the symptom is a normal diagnostic
+    # step, and each attempt costs an action and the read that verifies it, so
+    # two act-and-verify cycles plus the state reads and the observation reach
+    # thirteen. At eleven that run ended on the turn ceiling having already
+    # applied the fix, with nothing recorded and the ticket left open.
+    max_tool_calls: int = 15
+    max_model_turns: int = 14
     run_deadline_seconds: float = 300.0
     # Per-attempt bound on one model call. Without it a stalled provider spends
     # the whole run budget on attempt one and the retry machinery never fires.

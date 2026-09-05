@@ -143,6 +143,21 @@ export const EVIDENCE_TONES = [
 ] as const;
 export type EvidenceTone = (typeof EVIDENCE_TONES)[number];
 
+/**
+ * How the API reaches one environment's Kubernetes API. `default` is the
+ * process's own ambient kubeconfig — KUBECONFIG and AXIOMA_K8S_CONTEXT, falling
+ * back to the default location — and is the only one an API running outside a
+ * cluster can use, so an installation that has not registered a credentialed
+ * environment still works.
+ */
+export const ENVIRONMENT_CONNECTION_TYPES = [
+	"in_cluster",
+	"kubeconfig",
+	"default",
+] as const;
+export type EnvironmentConnectionType =
+	(typeof ENVIRONMENT_CONNECTION_TYPES)[number];
+
 export const DEVICE_CONNECTION_STATES = ["online", "offline"] as const;
 export type DeviceConnectionState = (typeof DEVICE_CONNECTION_STATES)[number];
 

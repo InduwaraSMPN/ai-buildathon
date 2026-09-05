@@ -86,8 +86,8 @@ def test_prompt_accepts_top_level_observation_list() -> None:
 
 
 async def test_forced_search_fetch_and_cmdb_writeback_fit_default_budget() -> None:
-    assert config.max_tool_calls == 8
-    assert config.max_model_turns == 10
+    assert config.max_tool_calls == 15
+    assert config.max_model_turns == 14
     model = ScriptedModel(
         [
             call("knowledge_fetch", {"source": "article", "id": "kb-1"}),
@@ -121,13 +121,16 @@ async def test_forced_search_fetch_and_cmdb_writeback_fit_default_budget() -> No
 async def test_worst_case_infrastructure_fix_fits_the_tool_ceiling() -> None:
     """The longest path a successful run can take, pinned against the ceiling.
 
-    ``max_tool_calls`` was lowered to 8 so it can actually bind — the loop spends
-    at most one tool call per model turn, so a ceiling above ``max_model_turns``
-    was unreachable. That makes the headroom small enough to be worth asserting:
-    forced knowledge search, a fetch, a read, a write, the read that discharges
-    the write's verification obligation, and the CMDB observation the resolution
-    gate requires. Adding a seventh mandatory step, or a second forced call,
-    breaks this test before it breaks a run in production.
+    ``max_tool_calls`` is ``max_model_turns + 1``: the forced knowledge search
+    costs one call before the loop starts and the loop spends at most one per
+    turn, so anything higher is dead configuration and anything lower cuts a real
+    run short. This pins the mandatory sequence — forced knowledge search, a
+    fetch, a read, a write, the read that discharges the write's verification
+    obligation, and the CMDB observation the resolution gate requires — against
+    that ceiling. A live infrastructure fix additionally re-reads pods after the
+    patch, which is why the headroom asserted below is not zero: an eight-call run
+    was observed exhausting a ceiling of 8 one call short of resolving. The
+    endpoint path is longer again and is pinned separately below.
     """
     model = ScriptedModel(
         [
@@ -174,7 +177,81 @@ async def test_worst_case_infrastructure_fix_fits_the_tool_ceiling() -> None:
         "cmdb_record_observation",
     ]
     assert len(bus.calls) == 6
-    assert config.max_tool_calls - len(bus.calls) == 2
+    # Headroom over the mandatory sequence. The observed live path spends two of
+    # these on a knowledge fetch and a post-patch pods read.
+    assert config.max_tool_calls - len(bus.calls) >= 4
+
+
+async def test_worst_case_endpoint_fix_fits_the_tool_ceiling() -> None:
+    """The endpoint path, which is what the ceiling is actually sized for.
+
+    Unlike a cluster patch, a named device action can be the wrong one without
+    anything having gone wrong: the agent picks the narrowest action that fits
+    the symptom, verifies, and only then reaches for the broader one. Each
+    attempt costs the action and the read that discharges its verification
+    obligation, so two cycles plus the state reads and the mandatory CMDB
+    observation come to nine calls. A live run of exactly this shape ended on
+    the turn ceiling of 11 having already applied the fix, leaving the ticket
+    open and nothing recorded, which is what this pins.
+    """
+    device = "device-1"
+    model = ScriptedModel(
+        [
+            call("device_read_state", {"device_id": device, "facets": ["proxy"]}),
+            call(
+                "device_run_action",
+                {
+                    "device_id": device,
+                    "action": "clear_proxy_override",
+                    "parameters": {},
+                },
+            ),
+            call("device_read_state", {"device_id": device, "facets": ["proxy"]}),
+            call(
+                "device_run_action",
+                {"device_id": device, "action": "disable_proxy", "parameters": {}},
+            ),
+            call("device_read_state", {"device_id": device, "facets": ["proxy"]}),
+            call(
+                "device_read_state",
+                {
+                    "device_id": device,
+                    "facets": ["reachability"],
+                    "target": "intranet.example",
+                },
+            ),
+            call("knowledge_fetch", {"source": "article", "id": "kb-2"}),
+            cmdb_call(),
+            Decision(
+                kind="resolved",
+                reasoning="The proxy is off and the intranet resolves.",
+                resolution="Disabled the stale WinINET proxy.",
+            ),
+        ]
+    )
+    ctx, bus, _ = context(
+        model,
+        FakeToolBus(
+            {
+                "knowledge_search": {"mode": "hybrid", "items": []},
+                "knowledge_fetch": {"source": "article", "id": "kb-2", "body": "Full text"},
+                # One entry per call: the bus hands each out once.
+                "device_read_state": [
+                    {"proxy": {"ok": True, "data": {"enabled": True}}},
+                    {"proxy": {"ok": True, "data": {"enabled": True}}},
+                    {"proxy": {"ok": True, "data": {"enabled": False}}},
+                    {"reachability": {"ok": True, "data": {"resolved": True}}},
+                ],
+                "device_run_action": [{"ok": True}, {"ok": True}],
+                "cmdb_record_observation": {"ok": True, "object_id": "ci-1"},
+            }
+        ),
+        device_id=device,
+    )
+    result = await run(ctx)
+    assert result.status is RunStatus.RESOLVED
+    assert len(bus.calls) == 9
+    assert len(bus.calls) <= config.max_tool_calls
 
 
 def test_same_resource_requires_matching_authoritative_environment() -> None:

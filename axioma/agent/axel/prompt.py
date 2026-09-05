@@ -115,6 +115,34 @@ def build_user_prompt(
         lines.extend(f"{label}: {value or 'unknown'}" for label, value in reporter)
     else:
         lines.append("No directory context available.")
+    # The vocabulary the platform will accept. Without it the model can only
+    # discover a legal class key or namespace by trying one and reading the
+    # refusal, and a run that spends its budget guessing never records the
+    # observation it must record before it is allowed to resolve.
+    if isinstance(context, dict):
+        classes = context.get("cmdbClasses") or context.get("cmdb_classes") or []
+        described = [
+            "{} (properties: {})".format(
+                c["key"], ", ".join(c.get("properties") or []) or "none declared"
+            )
+            for c in classes
+            if isinstance(c, dict) and c.get("key")
+        ]
+        if described:
+            lines.extend([
+                "",
+                "# CMDB classes you may record against, with the only attributes each"
+                " accepts. Exact keys; anything else is refused.",
+                *[f"- {entry}" for entry in described],
+            ])
+        namespaces = context.get("namespaces") or []
+        if namespaces:
+            lines.extend([
+                "",
+                "# Kubernetes namespaces you may read or patch (no others are permitted)",
+                ", ".join(str(n) for n in namespaces),
+            ])
+
     lines.extend([
         "",
         "# What the platform already believes (prior observations, not established fact)",

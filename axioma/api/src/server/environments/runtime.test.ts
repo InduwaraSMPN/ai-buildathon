@@ -17,13 +17,13 @@ const suffix = crypto.randomUUID();
 
 async function insertTicket(ticketId: string, serviceId = "svc-general") {
 	await db.insert(user).values({
-		id: `rt-user-${ticketId}`,
+		id: `test-rt-user-${ticketId}`,
 		name: "runtime test",
-		email: `rt-${ticketId}@example.test`,
+		email: `test-rt-${ticketId}@example.test`,
 	});
 	await db.insert(tickets).values({
 		id: ticketId,
-		reporterId: `rt-user-${ticketId}`,
+		reporterId: `test-rt-user-${ticketId}`,
 		title: "Runtime ticket",
 		body: "Body",
 		serviceId,
@@ -69,20 +69,26 @@ async function withoutExistingDefault<T>(body: () => Promise<T>): Promise<T> {
 	}
 }
 
+/**
+ * Every test below seeds from inside its own `try`. Seeding above the `try` is
+ * what leaked "Runtime ticket" rows into the demo database: an insert that
+ * throws part-way through leaves the rows before it stranded, because the
+ * `finally` that would have removed them was never entered.
+ */
 async function cleanup(ticketIds: string[], envIds: string[]) {
 	for (const id of envIds) {
 		await db.delete(environments).where(eq(environments.id, id));
 	}
 	for (const id of ticketIds) {
 		await db.delete(tickets).where(eq(tickets.id, id));
-		await db.delete(user).where(eq(user.id, `rt-user-${id}`));
+		await db.delete(user).where(eq(user.id, `test-rt-user-${id}`));
 	}
 }
 
 test("resolveRunEnvironment bootstraps a default when no environment rows exist", async () => {
-	const ticketId = `rt-bootstrap-${suffix}`;
-	await insertTicket(ticketId);
+	const ticketId = `test-rt-bootstrap-${suffix}`;
 	try {
+		await insertTicket(ticketId);
 		await withoutExistingDefault(async () => {
 			const resolved = await resolveRunEnvironment({
 				id: ticketId,
@@ -100,20 +106,20 @@ test("resolveRunEnvironment bootstraps a default when no environment rows exist"
 });
 
 test("resolveRunEnvironment prefers a ticket-linked environment", async () => {
-	const ticketId = `rt-ticket-${suffix}`;
-	const envId = `rt-env-ticket-${suffix}`;
-	const envKey = `rt-key-ticket-${suffix}`;
-	await insertTicket(ticketId);
-	await insertEnvironment(envId, envKey);
-	await db.insert(serviceEnvironments).values({
-		serviceId: "svc-general",
-		environmentId: envId,
-	});
-	await db.insert(ticketEnvironments).values({
-		ticketId,
-		environmentId: envId,
-	});
+	const ticketId = `test-rt-ticket-${suffix}`;
+	const envId = `test-rt-env-ticket-${suffix}`;
+	const envKey = `test-rt-key-ticket-${suffix}`;
 	try {
+		await insertTicket(ticketId);
+		await insertEnvironment(envId, envKey);
+		await db.insert(serviceEnvironments).values({
+			serviceId: "svc-general",
+			environmentId: envId,
+		});
+		await db.insert(ticketEnvironments).values({
+			ticketId,
+			environmentId: envId,
+		});
 		const resolved = await resolveRunEnvironment({
 			id: ticketId,
 			serviceId: "svc-general",
@@ -135,11 +141,11 @@ test("resolveRunEnvironment prefers a ticket-linked environment", async () => {
 });
 
 test("resolveRunEnvironment falls back to the default environment", async () => {
-	const ticketId = `rt-default-${suffix}`;
-	const envId = `rt-env-default-${suffix}`;
-	const envKey = `rt-key-default-${suffix}`;
-	await insertTicket(ticketId);
+	const ticketId = `test-rt-default-${suffix}`;
+	const envId = `test-rt-env-default-${suffix}`;
+	const envKey = `test-rt-key-default-${suffix}`;
 	try {
+		await insertTicket(ticketId);
 		await withoutExistingDefault(async () => {
 			// This test's own environment must stop being the default before the
 			// wrapper restores the one it displaced, so it is removed in here.
@@ -171,24 +177,24 @@ test("resolveRunEnvironment falls back to the default environment", async () => 
 });
 
 test("loadRunEnvironment builds a connection and links for a persisted run", async () => {
-	const ticketId = `rt-load-${suffix}`;
-	const runId = `rt-run-${suffix}`;
-	const envId = `rt-env-load-${suffix}`;
-	const envKey = `rt-key-load-${suffix}`;
-	await insertTicket(ticketId);
-	await insertEnvironment(envId, envKey);
-	await db.insert(serviceEnvironments).values({
-		serviceId: "svc-general",
-		environmentId: envId,
-	});
-	await db.insert(agentRuns).values({
-		id: runId,
-		ticketId,
-		environmentId: envId,
-		environmentKey: envKey,
-		environmentSource: "ticket",
-	});
+	const ticketId = `test-rt-load-${suffix}`;
+	const runId = `test-rt-run-${suffix}`;
+	const envId = `test-rt-env-load-${suffix}`;
+	const envKey = `test-rt-key-load-${suffix}`;
 	try {
+		await insertTicket(ticketId);
+		await insertEnvironment(envId, envKey);
+		await db.insert(serviceEnvironments).values({
+			serviceId: "svc-general",
+			environmentId: envId,
+		});
+		await db.insert(agentRuns).values({
+			id: runId,
+			ticketId,
+			environmentId: envId,
+			environmentKey: envKey,
+			environmentSource: "ticket",
+		});
 		const result = await loadRunEnvironment(runId);
 		assert.equal(result.environment?.key, envKey);
 		assert.equal(result.environment?.mode, "act");
@@ -205,14 +211,8 @@ test("loadRunEnvironment builds a connection and links for a persisted run", asy
 });
 
 test("Gateway.startRun sends the resolved environment key", async () => {
-	const ticketId = `rt-grpc-${suffix}`;
-	const runId = `rt-grpc-run-${suffix}`;
-	await insertTicket(ticketId);
-	await db.insert(agentRuns).values({
-		id: runId,
-		ticketId,
-		status: "running",
-	});
+	const ticketId = `test-rt-grpc-${suffix}`;
+	const runId = `test-rt-grpc-run-${suffix}`;
 	const writes: unknown[] = [];
 	const gateway = new Gateway();
 	const internals = gateway as unknown as {
@@ -235,12 +235,18 @@ test("Gateway.startRun sends the resolved environment key", async () => {
 	internals.agentOrder = ["worker-1"];
 	internals.nextAgent = 0;
 	try {
+		await insertTicket(ticketId);
+		await db.insert(agentRuns).values({
+			id: runId,
+			ticketId,
+			status: "running",
+		});
 		await gateway.startRun({
 			runId,
 			ticketId,
 			title: "Runtime grpc",
 			body: "Body",
-			reporterId: `rt-user-${ticketId}`,
+			reporterId: `test-rt-user-${ticketId}`,
 			environmentKey: envKey("grpc"),
 		});
 		const startRun = (writes[0] as { startRun: Record<string, unknown> })
@@ -254,5 +260,5 @@ test("Gateway.startRun sends the resolved environment key", async () => {
 });
 
 function envKey(prefix: string) {
-	return `rt-key-${prefix}-${suffix}`;
+	return `test-rt-key-${prefix}-${suffix}`;
 }

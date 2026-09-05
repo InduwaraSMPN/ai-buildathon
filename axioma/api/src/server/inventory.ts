@@ -52,6 +52,10 @@ const object = (value: unknown): Record<string, unknown> =>
  * because anything writing software_inventory_apps has to agree on the shape —
  * a product whose key was derived differently joins to nothing.
  */
+/** ASCII unit separator. Deliberately not a NUL: Postgres `text` cannot hold
+ * 0x00 and rejects the row outright, which took the entire demo seed down. */
+const SOFTWARE_KEY_SEPARATOR = String.fromCharCode(31);
+
 export const softwareIdentityKey = (name: unknown, publisher: unknown) =>
 	[name, publisher]
 		.map((value) =>
@@ -59,7 +63,7 @@ export const softwareIdentityKey = (name: unknown, publisher: unknown) =>
 				.trim()
 				.toLowerCase(),
 		)
-		.join("\0");
+		.join(SOFTWARE_KEY_SEPARATOR);
 
 const identityKey = (app: Record<string, unknown>) =>
 	softwareIdentityKey(app.name, app.publisher);

@@ -443,8 +443,14 @@ agent:
 
   # Loop ceilings. Hitting any of them ends the run as exhausted and escalates.
   limits:
-    maxToolCalls: 20
-    maxModelTurns: 10
+    # maxModelTurns + 1: the forced knowledge search costs one call before the
+    # loop starts and the loop spends at most one per turn, so anything higher
+    # never binds. The floor is the endpoint path, which is the longest: a named
+    # device action that turns out not to clear the symptom is normal diagnosis,
+    # and each attempt costs the action plus the read that verifies it, so two
+    # cycles with the state reads and the CMDB observation reach thirteen.
+    maxToolCalls: 15
+    maxModelTurns: 14
     runDeadlineSeconds: 300
     modelOutputMaxChars: 4000
     maxConsecutiveFailures: 3

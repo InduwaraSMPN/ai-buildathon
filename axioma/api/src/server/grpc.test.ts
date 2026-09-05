@@ -506,6 +506,10 @@ test("terminal persistence commits run, ticket, transition, then acknowledges", 
 			.where(eq(ticketTransitions.ticketId, ticketId));
 		assert.equal(run?.status, "resolved");
 		assert.equal(ticket?.status, "resolved");
+		// The marker is present tense and the portal renders it under the progress
+		// timeline. A resolved ticket that kept "verifying_fix" told the employee
+		// their finished request was still being checked.
+		assert.equal(ticket?.progressMarker, null);
 		assert.equal(transitions.at(-1)?.action, "resolve");
 		assert.deepEqual(writes, [{ terminalAck: { runId, ordinal: 1 } }]);
 		assert.equal(internals.runAgents.has(runId), false);
@@ -815,6 +819,227 @@ test("enrolment issues a claim code that binds the device to one employee", asyn
 			.delete(deviceEnrolmentTokens)
 			.where(eq(deviceEnrolmentTokens.tokenHash, hashDeviceSecret(token)));
 		await db.delete(user).where(inArray(user.id, [ownerId, otherId]));
+	}
+});
+
+test("an unclaimed device is re-issued a claim code on every reconnect", async () => {
+	const deviceId = crypto.randomUUID();
+	const token = `axen_${crypto.randomUUID()}`;
+	const ownerId = `reissue-owner-${crypto.randomUUID()}`;
+	await db.insert(user).values({
+		id: ownerId,
+		name: "Owner",
+		email: `${ownerId}@example.test`,
+	});
+	await db.insert(deviceEnrolmentTokens).values({
+		id: crypto.randomUUID(),
+		tokenHash: hashDeviceSecret(token),
+		expiresAt: new Date(Date.now() + 60_000),
+	});
+	const writes: Array<Record<string, unknown>> = [];
+	const gateway = new Gateway();
+	const stream = {
+		write: (value: Record<string, unknown>) => void writes.push(value),
+		end: () => {},
+		destroy: () => {},
+	} as never;
+	const registerDevice = (
+		gateway as unknown as {
+			registerDevice(
+				deviceId: string,
+				generation: symbol,
+				stream: never,
+				hello: Record<string, unknown>,
+			): Promise<void>;
+		}
+	).registerDevice.bind(gateway);
+	const enrollment = () =>
+		writes.at(-1)?.enrollment as Record<string, unknown> | undefined;
+	const claim = (code: string) =>
+		createRouterClient(devicesRouter, {
+			context: {
+				auth: null,
+				session: null,
+				userId: ownerId,
+				capabilities: new Set(),
+			} as never,
+		}).claimDevice({ code });
+	try {
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			hostname: "reissued",
+			enrolmentToken: token,
+		});
+		const credential = String(enrollment()?.credential);
+		const first = String(enrollment()?.claimCode);
+		assert.match(first, /^[A-Z0-9]{6}-[A-Z0-9]{4}$/);
+
+		// Reconnecting used to be the end of it: the code was issued only on the
+		// hello that spent the enrolment token, so a laptop that slept before
+		// anyone read the code off `axel-cli status` was left unclaimable, and an
+		// unclaimed device is invisible to every owner-scoped read.
+		for (let attempt = 0; attempt < 10; attempt++) {
+			// What the 24-hour expiry does on its own; forced here so the test does
+			// not have to wait a day for it.
+			await db
+				.update(devices)
+				.set({ claimCodeExpiresAt: new Date(Date.now() - 1_000) })
+				.where(eq(devices.id, deviceId));
+			await registerDevice(deviceId, Symbol(deviceId), stream, {
+				deviceId,
+				hostname: "reissued",
+				credential,
+			});
+			const reissued = String(enrollment()?.claimCode);
+			assert.match(reissued, /^[A-Z0-9]{6}-[A-Z0-9]{4}$/);
+			assert.notEqual(reissued, first);
+			assert.equal(enrollment()?.claimed, false);
+			assert.equal(enrollment()?.credential, "");
+		}
+		const usable = String(enrollment()?.claimCode);
+
+		// A code that is still valid is not churned: the agent already holds it,
+		// and replacing it would invalidate whatever the employee is reading.
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			hostname: "reissued",
+			credential,
+		});
+		assert.equal(enrollment()?.claimCode, "");
+
+		// The last code issued is the one that works, and only that one.
+		await assert.rejects(
+			() => claim(first),
+			(error: unknown) =>
+				error instanceof ORPCError && error.code === "NOT_FOUND",
+		);
+		assert.deepEqual(await claim(usable), { deviceId, hostname: "reissued" });
+
+		// Once someone owns the machine there is nothing left to type in, so the
+		// gateway sends no code and says the device is claimed — which is how the
+		// agent knows to stop showing the one it still has.
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			hostname: "reissued",
+			credential,
+		});
+		assert.equal(enrollment()?.claimCode, "");
+		assert.equal(enrollment()?.claimed, true);
+		assert.equal(
+			(await db.select().from(devices).where(eq(devices.id, deviceId)))[0]
+				?.claimCodeHash,
+			null,
+		);
+	} finally {
+		await db.delete(devices).where(eq(devices.id, deviceId));
+		await db
+			.delete(deviceEnrolmentTokens)
+			.where(eq(deviceEnrolmentTokens.tokenHash, hashDeviceSecret(token)));
+		await db.delete(user).where(eq(user.id, ownerId));
+	}
+});
+
+test("re-enrolment reuses the device row and lifts a revocation", async () => {
+	const deviceId = crypto.randomUUID();
+	const first = `axen_${crypto.randomUUID()}`;
+	const second = `axen_${crypto.randomUUID()}`;
+	const ownerId = `reenrol-owner-${crypto.randomUUID()}`;
+	await db.insert(user).values({
+		id: ownerId,
+		name: "Owner",
+		email: `${ownerId}@example.test`,
+	});
+	await db.insert(deviceEnrolmentTokens).values(
+		[first, second].map((token) => ({
+			id: crypto.randomUUID(),
+			tokenHash: hashDeviceSecret(token),
+			expiresAt: new Date(Date.now() + 60_000),
+		})),
+	);
+	const writes: Array<Record<string, unknown>> = [];
+	const gateway = new Gateway();
+	const stream = {
+		write: (value: Record<string, unknown>) => void writes.push(value),
+		end: () => {},
+		destroy: () => {},
+	} as never;
+	const registerDevice = (
+		gateway as unknown as {
+			registerDevice(
+				deviceId: string,
+				generation: symbol,
+				stream: never,
+				hello: Record<string, unknown>,
+			): Promise<void>;
+		}
+	).registerDevice.bind(gateway);
+	const enrollment = () =>
+		writes.at(-1)?.enrollment as Record<string, unknown> | undefined;
+	try {
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			hostname: "re-enrolled",
+			enrolmentToken: first,
+		});
+		const original = String(enrollment()?.credential);
+		// An owner is what re-enrolment must not throw away: the device UUID is
+		// the same machine, and the person who claimed it still owns it.
+		await db.update(devices).set({ ownerId }).where(eq(devices.id, deviceId));
+		assert.ok(await gateway.revokeDevice(deviceId));
+
+		// The second enrolment used to hit the primary key, and the catch around
+		// the transaction reported that as "invalid enrolment" — leaving deleting
+		// device.json to mint a new UUID as the only way back, which orphans the
+		// row that holds the owner and the machine's history.
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			hostname: "re-enrolled",
+			enrolmentToken: second,
+		});
+		const reissued = String(enrollment()?.credential);
+		assert.notEqual(reissued, original);
+		assert.equal(enrollment()?.claimed, true);
+		// Already owned, so there is nothing to claim and no code is minted.
+		assert.equal(enrollment()?.claimCode, "");
+
+		const rows = await db
+			.select()
+			.from(devices)
+			.where(eq(devices.id, deviceId));
+		assert.equal(rows.length, 1);
+		assert.equal(rows[0]?.revokedAt, null);
+		assert.equal(rows[0]?.ownerId, ownerId);
+
+		// Only the credential from the enrolment that just happened works.
+		await assert.rejects(() =>
+			registerDevice(deviceId, Symbol(deviceId), stream, {
+				deviceId,
+				credential: original,
+			}),
+		);
+		await registerDevice(deviceId, Symbol(deviceId), stream, {
+			deviceId,
+			credential: reissued,
+		});
+
+		// Re-enrolment is not a way around the token being single-use.
+		await assert.rejects(() =>
+			registerDevice(deviceId, Symbol(deviceId), stream, {
+				deviceId,
+				enrolmentToken: second,
+			}),
+		);
+	} finally {
+		await db.delete(devices).where(eq(devices.id, deviceId));
+		await db
+			.delete(deviceEnrolmentTokens)
+			.where(
+				inArray(
+					deviceEnrolmentTokens.tokenHash,
+					[first, second].map(hashDeviceSecret),
+				),
+			);
+		await db.delete(user).where(eq(user.id, ownerId));
 	}
 });
 

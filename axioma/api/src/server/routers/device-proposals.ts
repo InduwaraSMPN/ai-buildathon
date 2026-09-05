@@ -1,7 +1,7 @@
 import { ORPCError } from "@orpc/server";
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { deviceCommandProposals, devices } from "@/db/schema";
+import { deviceCommandProposals, devices, user } from "@/db/schema";
 import { grpcGateway } from "../grpc";
 import { capabilityProcedure } from "../orpc";
 import {
@@ -43,7 +43,17 @@ export const deviceProposalsRouter = {
 				command: deviceCommandProposals.command,
 				reason: deviceCommandProposals.reason,
 				status: deviceCommandProposals.status,
+				// Correlated subqueries rather than two aliased joins: the row is
+				// already joined to devices, and both actors are optional, so a
+				// proposal with neither must stay a single row.
+				requestedById: deviceCommandProposals.requestedById,
+				requestedByName: sql<
+					string | null
+				>`(select name from "user" where id = ${deviceCommandProposals.requestedById})`,
 				approvedById: deviceCommandProposals.approvedById,
+				approvedByName: sql<
+					string | null
+				>`(select name from "user" where id = ${deviceCommandProposals.approvedById})`,
 				decisionNote: deviceCommandProposals.decisionNote,
 				decidedAt: deviceCommandProposals.decidedAt,
 				expiresAt: deviceCommandProposals.expiresAt,
@@ -104,10 +114,26 @@ export const deviceProposalsRouter = {
 			.where(eq(devices.id, decided.deviceId))
 			.limit(1);
 
+		// The decided row carries ids; the queue shows people. One lookup covers
+		// both actors, and either of them may legitimately be absent.
+		const actorIds = [decided.requestedById, decided.approvedById].filter(
+			(value): value is string => value !== null,
+		);
+		const actors = actorIds.length
+			? await db
+					.select({ id: user.id, name: user.name })
+					.from(user)
+					.where(inArray(user.id, actorIds))
+			: [];
+		const actorName = (id: string | null) =>
+			actors.find((actor) => actor.id === id)?.name ?? null;
+
 		const result = {
 			...decided,
 			command: asCommand(decided.command),
 			deviceHostname: device?.hostname ?? null,
+			requestedByName: actorName(decided.requestedById),
+			approvedByName: actorName(decided.approvedById),
 		};
 		if (input.decision !== "approved") return result;
 

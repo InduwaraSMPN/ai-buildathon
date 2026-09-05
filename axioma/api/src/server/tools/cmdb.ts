@@ -1,4 +1,4 @@
-import { desc, eq, or, sql } from "drizzle-orm";
+import { asc, desc, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
@@ -10,6 +10,7 @@ import {
 	cmdbRelationshipTypes,
 } from "@/db/schema/cmdb";
 import { ticketCmdbObjects } from "@/db/schema/cmdb-links";
+import { env } from "@/env";
 import { impactForObject } from "@/server/cmdb/impact";
 import { indexCmdbObject } from "@/server/search/projections";
 
@@ -89,7 +90,11 @@ export function validateAttributes(
 		if (!property)
 			errors.push({
 				code: "unknown_property",
-				message: `Class "${classKey}" does not declare property "${key}"`,
+				// Naming what the class does declare makes the refusal correctable
+				// in the same run, the way `unknown_class` names the classes.
+				message: `Class "${classKey}" does not declare property "${key}". Declared properties: ${
+					[...declared.keys()].join(", ") || "(none)"
+				}`,
 				classKey,
 				propertyKey: key,
 			});
@@ -127,7 +132,16 @@ export async function recordObservation(
 			ok: false as const,
 			error: {
 				code: "unknown_class",
-				message: `CMDB class "${input.class_key}" does not exist`,
+				// Naming the alternatives makes the refusal correctable inside the
+				// same run: without them the model can only guess again.
+				message: `CMDB class "${input.class_key}" does not exist. Available classes: ${(
+					await db
+						.select({ key: cmdbClasses.key })
+						.from(cmdbClasses)
+						.orderBy(asc(cmdbClasses.key))
+				)
+					.map((row) => row.key)
+					.join(", ")}`,
 				classKey: input.class_key,
 			} satisfies CmdbValidationError,
 		};
@@ -217,6 +231,54 @@ export async function recordObservation(
 	return { ok: true as const, id };
 }
 
+/**
+ * The vocabulary a run is allowed to use, sent with the ticket so the model is
+ * told rather than left to guess. Both of these were previously discoverable
+ * only by trying a value and reading the refusal: the class keys are seeded data
+ * the model cannot see, and the namespace allowlist refused without ever saying
+ * what it would accept — so a run spent its budget guessing `service`,
+ * `application`, `business_service` and never recorded the observation it is
+ * required to record before it may resolve.
+ */
+export async function readRunVocabulary() {
+	// Properties as well as class keys: a class the model can name but whose
+	// declared attributes it cannot see is only half discoverable, and an
+	// undeclared attribute is refused exactly like an unknown class — so a run
+	// still burned a call inventing `environment` on a class that has no such
+	// property.
+	const rows = await db
+		.select({
+			key: cmdbClasses.key,
+			label: cmdbClasses.label,
+			propertyKey: cmdbClassProperties.propertyKey,
+		})
+		.from(cmdbClasses)
+		.leftJoin(
+			cmdbClassProperties,
+			eq(cmdbClassProperties.classId, cmdbClasses.id),
+		)
+		.orderBy(asc(cmdbClasses.key), asc(cmdbClassProperties.propertyKey));
+	const byKey = new Map<
+		string,
+		{ key: string; label: string; properties: string[] }
+	>();
+	for (const row of rows) {
+		const entry = byKey.get(row.key) ?? {
+			key: row.key,
+			label: row.label,
+			properties: [],
+		};
+		if (row.propertyKey) entry.properties.push(row.propertyKey);
+		byKey.set(row.key, entry);
+	}
+	const classes = [...byKey.values()];
+	const namespaces = (env.AXIOMA_K8S_NAMESPACES ?? "")
+		.split(",")
+		.map((value) => value.trim())
+		.filter(Boolean);
+	return { cmdbClasses: classes, namespaces };
+}
+
 export async function readContextForTicket(
 	ticketId: string,
 	deviceId?: string | null,
@@ -237,7 +299,10 @@ export async function readContextForTicket(
 		const key = `${row.classKey}\0${row.object.externalId}`;
 		if (!newest.has(key)) newest.set(key, row);
 	}
-	return [...newest.values()];
+	return {
+		observations: [...newest.values()],
+		...(await readRunVocabulary()),
+	};
 }
 
 export async function cmdbImpact(input: z.infer<typeof impactInput>) {

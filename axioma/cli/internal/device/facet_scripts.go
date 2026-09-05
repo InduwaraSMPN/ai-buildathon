@@ -14,9 +14,22 @@ import (
 
 const resolverScript = `[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; $servers=@{}; Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object IPEnabled | ForEach-Object { $servers[$_.Description]=@($_.DNSServerSearchOrder) }; $suffix=@((Get-DnsClientGlobalSetting).SuffixSearchList); $count=@(Get-DnsClientCache).Count; @{servers=$servers;suffix_search_list=$suffix;cached_entries=$count}|ConvertTo-Json -Compress -Depth 5`
 
-const adaptersScript = `[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; $items=@(Get-CimInstance Win32_NetworkAdapterConfiguration | ForEach-Object { $a=Get-CimAssociatedInstance $_ -ResultClassName Win32_NetworkAdapter | Select-Object -First 1; @{name=$_.Description;status=if($a.NetEnabled){'up'}else{'down'};ipv4=@($_.IPAddress|Where-Object{$_ -match '^\d+\.'})[0];gateway=@($_.DefaultIPGateway)[0];dhcp_enabled=[bool]$_.DHCPEnabled;lease_expiry=if($_.DHCPLeaseExpires){[Management.ManagementDateTimeConverter]::ToDateTime($_.DHCPLeaseExpires).ToString('o')}else{''}} }); @{adapters=$items}|ConvertTo-Json -Compress -Depth 5`
+// The DHCP lease is read through a try/catch because a Windows adapter that has
+// never held one reports the DMTF zero date, and ToDateTime throws on it —
+// under $ErrorActionPreference='Stop' that took down the whole facet with
+// "Specified argument was out of the range of valid values. Parameter name:
+// dmtfDate", so a machine with one loopback or VPN adapter could not enumerate
+// any of its real ones.
+const adaptersScript = `[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; $items=@(Get-CimInstance Win32_NetworkAdapterConfiguration | ForEach-Object { $a=Get-CimAssociatedInstance $_ -ResultClassName Win32_NetworkAdapter | Select-Object -First 1; $lease=''; if($_.DHCPLeaseExpires){try{$lease=[Management.ManagementDateTimeConverter]::ToDateTime($_.DHCPLeaseExpires).ToString('o')}catch{$lease=''}}; @{name=$_.Description;status=if($a.NetEnabled){'up'}else{'down'};ipv4=@($_.IPAddress|Where-Object{$_ -match '^\d+\.'})[0];gateway=@($_.DefaultIPGateway)[0];dhcp_enabled=[bool]$_.DHCPEnabled;lease_expiry=$lease} }); @{adapters=$items}|ConvertTo-Json -Compress -Depth 5`
 
-const reachabilityScript = `[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; $addresses=@([Net.Dns]::GetHostAddresses($target)); $p=New-Object Net.NetworkInformation.Ping; $times=@(); 1..2|ForEach-Object{$r=$p.Send($target,3000);if($r.Status -eq 'Success'){$times+=$r.RoundtripTime}}; $mean=$null;if($times.Count){$mean=($times|Measure-Object -Average).Average}; @{target=$target;resolved_address=if($addresses.Count){$addresses[0].ToString()}else{''};packet_loss_percent=(2-$times.Count)*50;mean_latency_ms=$mean}|ConvertTo-Json -Compress`
+// A name that will not resolve and a host that will not answer are findings,
+// not failures of the probe: they are the whole reason the facet was read. With
+// $ErrorActionPreference='Stop' the exception from GetHostAddresses escaped
+// instead, the daemon reported the command as failed, and the agent was told
+// only "the platform could not complete the call" — losing the one piece of
+// evidence it had asked for. Both are caught and reported as data now, with
+// full packet loss and the resolver's own message.
+const reachabilityScript = `[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; $resolveError=''; $addresses=@(); try{$addresses=@([Net.Dns]::GetHostAddresses($target))}catch{$resolveError=$_.Exception.GetBaseException().Message}; $times=@(); $probes=0; if($addresses.Count){$p=New-Object Net.NetworkInformation.Ping; $probes=2; 1..2|ForEach-Object{try{$r=$p.Send($target,3000);if($r.Status -eq 'Success'){$times+=$r.RoundtripTime}}catch{}}}; $mean=$null;if($times.Count){$mean=($times|Measure-Object -Average).Average}; @{target=$target;resolved=($addresses.Count -gt 0);resolve_error=$resolveError;resolved_address=if($addresses.Count){$addresses[0].ToString()}else{''};packet_loss_percent=if($probes){[int]((($probes-$times.Count)/$probes)*100)}else{100};mean_latency_ms=$mean}|ConvertTo-Json -Compress`
 
 const proxyScript = `[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); $ErrorActionPreference='Stop'; $p=Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings'; @{enabled=([bool]$p.ProxyEnable);server=([string]$p.ProxyServer);override=([string]$p.ProxyOverride)}|ConvertTo-Json -Compress`
 

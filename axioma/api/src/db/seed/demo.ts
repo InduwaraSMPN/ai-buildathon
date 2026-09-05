@@ -12,6 +12,7 @@
  */
 
 import { db } from "@/db";
+import { searchReconciliationState } from "@/db/schema";
 import { seedAgent } from "./agent";
 import { seedAssetLifecycle } from "./asset-lifecycle";
 import { seedAssetsAndDevices } from "./assets-devices";
@@ -93,6 +94,17 @@ async function main(): Promise<void> {
 	// 18. Everything else — dynamic fields, ticket links/merges, change
 	// transitions, CSAT, team roles, followups, holidays, CMDB extras, channels
 	await seedExtras(ticketIds);
+
+	// Everything above is written with backdated timestamps so the demo looks
+	// lived-in. The search projection is reconciled forward from a watermark, so
+	// a row whose `updated_at` is older than that watermark is never picked up —
+	// seeded knowledge would sit outside the index permanently, and the agent's
+	// forced knowledge search would find nothing. Rewinding the watermark makes
+	// the next sweep reconsider everything the seed just wrote.
+	await db.delete(searchReconciliationState);
+	console.log(
+		"[seed:demo] search watermark reset; the next sweep will index the seed",
+	);
 
 	console.log("[seed:demo] completed successfully");
 

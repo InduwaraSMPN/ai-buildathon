@@ -27,7 +27,11 @@ export function ProgressTimeline({
 	progressMarker: string | null;
 }) {
 	const current = isStateType(stateType) ? (stageIndex[stateType] ?? 0) : 0;
-	const marker = getProgressMarkerCopy(progressMarker);
+	// The marker is present tense — "Making sure the fix worked" — so it belongs
+	// only to a request still being worked. On a finished one it contradicts the
+	// timeline directly above it, whatever the last writer happened to leave.
+	const marker =
+		current === 2 ? undefined : getProgressMarkerCopy(progressMarker);
 	const detail = isStateType(stateType)
 		? statusDetailCopy[stateType]
 		: undefined;

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"runtime"
 	"strings"
 	"unicode/utf8"
 
@@ -95,7 +96,17 @@ func (m enrollModel) View() tea.View {
 			[]string{"gateway", m.config.GRPCHost},
 			[]string{"token", "stored for one connection"},
 		)
-		out += t.Render() + "\nStart or restart the daemon to complete enrolment.\n"
+		// The daemon reads device.json once, before its reconnect loop, so one
+		// that is already running never sees this token and goes on failing
+		// authentication forever. Under a logon Scheduled Task it says so to a
+		// stderr nobody reads, which makes this line the only warning there is.
+		out += t.Render() + "\n\n" +
+			m.theme.title().Render("The daemon must be restarted before this token is used.") + "\n" +
+			"A running daemon reads its identity once, at start-up, and will not pick this up.\n"
+		if runtime.GOOS == "windows" {
+			out += "\n  schtasks.exe /End /TN \"Axiōma Axel Agent\"\n" +
+				"  schtasks.exe /Run /TN \"Axiōma Axel Agent\"\n"
+		}
 	} else {
 		// Same table as the completed state, so the fields do not shift when
 		// enrolment finishes. The cursor is a column rather than hand-inserted

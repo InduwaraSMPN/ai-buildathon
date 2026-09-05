@@ -182,6 +182,7 @@ test("a shadow environment cannot even propose a command", () => {
 			assertEnvironmentAllowed({
 				name: "device_propose_command",
 				effect: "write",
+				target: "environment",
 				...shadow,
 			}),
 		/shadow mode/,
@@ -191,6 +192,7 @@ test("a shadow environment cannot even propose a command", () => {
 		assertEnvironmentAllowed({
 			name: "device_read_state",
 			effect: "read",
+			target: "environment",
 			...shadow,
 		}),
 	);

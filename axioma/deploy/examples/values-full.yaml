@@ -208,7 +208,8 @@ agent:
     strictFunctionCalling: true
     temperature: 0.2
   limits:
-    maxToolCalls: 30
+    # maxModelTurns + 1; anything higher never binds.
+    maxToolCalls: 16
     maxModelTurns: 15
     runDeadlineSeconds: 600
     modelOutputMaxChars: 8000

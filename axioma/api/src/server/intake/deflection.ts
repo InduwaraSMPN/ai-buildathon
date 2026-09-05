@@ -166,10 +166,6 @@ export async function deflectKnowledge(
 			rank: semanticIds.length - index,
 		})),
 	);
-	// Nothing indexed at all — a fresh install whose projection watermark ran
-	// past the seed. Fall back to the source table so the stage still works.
-	if (!ranked.length) return deflectByFullText(query, limit);
-
 	// The index can lag an unpublish, so visibility is re-read from the source
 	// of truth before anything is shown to the employee.
 	const ids = ranked.slice(0, limit).map((hit) => hit.id);
@@ -189,7 +185,15 @@ export async function deflectKnowledge(
 			),
 		);
 	const byId = new Map(visible.map((article) => [article.id, article]));
-	return ids
+	const deflected = ids
 		.map((id) => byId.get(id))
 		.filter((article): article is DeflectionArticle => Boolean(article));
+	if (deflected.length) return deflected;
+
+	// Fall back on the *visible* result being empty rather than on the ranked
+	// list being empty. An article the index reaches but the visibility re-read
+	// rejects — an unpublished one, or a nearest neighbour the vector branch
+	// surfaced from another audience — left `ranked` non-empty and so suppressed
+	// the fallback entirely, and the employee saw nothing at all.
+	return deflectByFullText(query, limit);
 }

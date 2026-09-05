@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { ticketTimeEntries } from "@/db/schema/journal";
 import { ticketMessages } from "@/db/schema/messages";
-import { tickets } from "@/db/schema/tickets";
+import { ticketCreationClaims, tickets } from "@/db/schema/tickets";
 import { indexTicket } from "@/server/search/projections";
 import {
 	createTicketInTransaction,
@@ -199,6 +199,23 @@ export async function seedTickets(): Promise<string[]> {
 						? "demo-team-helpdesk"
 						: null;
 
+		// The creation claim that makes this idempotent expires after 24 hours, and
+		// `createTicketInTransaction` recycles an expired claim rather than
+		// refusing — so a reseed on any later day minted a second copy of every
+		// ticket, and the demo queue filled with duplicate P1s. Checking the claim
+		// directly makes the seed idempotent on any timescale.
+		const claimed = (
+			await db
+				.select({ ticketId: ticketCreationClaims.ticketId })
+				.from(ticketCreationClaims)
+				.where(eq(ticketCreationClaims.idempotencyKey, idempotencyKey))
+				.limit(1)
+		)[0];
+		if (claimed?.ticketId) {
+			createdIds.push(claimed.ticketId);
+			continue;
+		}
+
 		try {
 			const result = await db.transaction(async (tx) => {
 				return createTicketInTransaction(tx, {
@@ -286,7 +303,6 @@ export async function seedTickets(): Promise<string[]> {
 		} catch (err) {
 			// On rerun, createTicketInTransaction may throw "in progress" or already exists; try to recover existing ticket
 			// Find existing ticket by idempotency claim
-			const { ticketCreationClaims } = await import("@/db/schema/tickets");
 			const existing = (
 				await db
 					.select({ ticketId: ticketCreationClaims.ticketId })

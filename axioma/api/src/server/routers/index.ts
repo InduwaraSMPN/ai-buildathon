@@ -61,6 +61,7 @@ export const appRouter = {
 	listCmdbRelationshipTypes: cmdbRouter.listCmdbRelationshipTypes,
 	createCmdbRelationshipType: cmdbRouter.createCmdbRelationshipType,
 	createCmdbObjectRelationship: cmdbRouter.createCmdbObjectRelationship,
+	getCmdbObject: cmdbRouter.getCmdbObject,
 	cmdbImpact: cmdbRouter.cmdbImpact,
 	listTicketCmdbObjects: cmdbRouter.listTicketCmdbObjects,
 	linkTicketCmdbObject: cmdbRouter.linkTicketCmdbObject,

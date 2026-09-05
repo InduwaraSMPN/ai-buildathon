@@ -17,10 +17,21 @@ export type DeviceProposalSummary = {
 	command: string[];
 	reason: string;
 	status: "proposed" | "approved" | "rejected" | "expired" | "dispatched";
+	requestedById: string | null;
+	requestedByName: string | null;
+	approvedById: string | null;
+	approvedByName: string | null;
 	decisionNote: string | null;
 	expiresAt: Date | string;
 	createdAt: Date | string;
 };
+
+/**
+ * The capability that gates a decision. There is no per-proposal approver list
+ * and inventing one would misdescribe the gate: anyone holding this may decide,
+ * except the person whose run proposed the command.
+ */
+const APPROVAL_CAPABILITY = "device.approve";
 
 /**
  * Pair each argument with its argv position so the rendered rows carry their
@@ -131,6 +142,38 @@ export function DeviceProposalList({
 						<p className="mt-3 whitespace-pre-wrap text-muted-foreground">
 							{proposal.reason}
 						</p>
+
+						{/*
+						  Who asked and who may decide. The requester is named because the
+						  separation of duty is enforced on the decision itself — a decider
+						  who started the run is refused — so the person reading this card
+						  has to be able to see whether that is them before they press
+						  anything.
+						*/}
+						<dl className="mt-3 flex flex-col gap-1 text-sm">
+							<div className="flex flex-wrap gap-x-2">
+								<dt className="text-muted-foreground">Requested by</dt>
+								<dd>
+									{proposal.requestedByName ??
+										proposal.requestedById ??
+										"Not recorded"}
+								</dd>
+							</div>
+							<div className="flex flex-wrap gap-x-2">
+								<dt className="text-muted-foreground">May approve</dt>
+								<dd>
+									Anyone holding{" "}
+									<span className="font-mono">{APPROVAL_CAPABILITY}</span>,
+									except the person who started the run that proposed it.
+								</dd>
+							</div>
+							{(proposal.approvedByName ?? proposal.approvedById) ? (
+								<div className="flex flex-wrap gap-x-2">
+									<dt className="text-muted-foreground">Decided by</dt>
+									<dd>{proposal.approvedByName ?? proposal.approvedById}</dd>
+								</div>
+							) : null}
+						</dl>
 					</CardContent>
 					<CardFooter className="flex flex-wrap items-center justify-between gap-2">
 						<span className="text-muted-foreground text-sm">

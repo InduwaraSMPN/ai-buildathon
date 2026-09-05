@@ -97,6 +97,12 @@ export const agentSteps = pgTable(
 		evidenceTone: text("evidence_tone", { enum: EVIDENCE_TONES })
 			.notNull()
 			.default("neutral"),
+		// The write tool this read discharged the verification obligation for.
+		// Null on every other step, including a read that names the same tool but
+		// confirmed nothing. The API sets it from its own obligation tracking, so
+		// a step claiming a verification is a claim the change ledger agrees with
+		// rather than one the model made about itself.
+		verifiesTool: text("verifies_tool"),
 
 		createdAt: timestamp("created_at").defaultNow().notNull(),
 	},

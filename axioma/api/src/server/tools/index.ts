@@ -1,7 +1,13 @@
 import { and, eq, isNotNull, lte } from "drizzle-orm";
 import type { z } from "zod";
 import { db } from "@/db";
-import { agentRuns, changes, changeTransitions, tickets } from "@/db/schema";
+import {
+	agentRuns,
+	agentSteps,
+	changes,
+	changeTransitions,
+	tickets,
+} from "@/db/schema";
 import {
 	defaultEnvironmentConnection,
 	type EnvironmentConnection,
@@ -57,32 +63,55 @@ export type ToolContext = {
 };
 
 /**
+ * A refusal by the environment contract rather than a failure of the platform.
+ * Nothing was attempted, and the message names only the environment and the
+ * tool, so there is nothing in it to redact. The gateway tells the two apart by
+ * this class instead of by matching on the text.
+ */
+export class ToolRefusalError extends Error {
+	override readonly name = "ToolRefusalError";
+}
+
+/**
  * Enforce the environment contract for a tool call. The resolved run
  * environment is authoritative; an agent-named environment must be both linked
  * to the ticket's service and match the resolved one, and a shadow-mode
- * environment refuses any write-effect tool. Throwing here happens before the
- * cluster/device call so gRPC records the refusal and no side effect occurs.
+ * environment refuses any write-effect tool that acts on the environment.
+ * Throwing here happens before the cluster/device call so gRPC records the
+ * refusal and no side effect occurs.
+ *
+ * Shadow is a promise about the customer's estate, not about Axioma's own
+ * records. A write whose target is `axioma` — the CMDB observation — changes
+ * nothing outside this system, and refusing it would make a shadow run
+ * impossible to finish at all: recording an observation is the gate every run
+ * must pass to resolve, so a blanket refusal left shadow runs exhausting on
+ * retries instead of escalating with their diagnosis.
  */
 export function assertEnvironmentAllowed(params: {
 	name: string;
 	effect: "read" | "write";
+	target: ToolTarget;
 	requested: string | undefined;
 	resolved: ResolvedEnvironment;
 	linked: ReadonlySet<string>;
 }): void {
-	const { name, effect, requested, resolved, linked } = params;
+	const { name, effect, target, requested, resolved, linked } = params;
 	if (requested != null) {
 		if (linked.size > 0 && !linked.has(requested))
-			throw new Error(
+			throw new ToolRefusalError(
 				`environment "${requested}" is not linked to the ticket's service`,
 			);
 		if (requested !== resolved.key)
-			throw new Error(
+			throw new ToolRefusalError(
 				`run targets environment "${resolved.key}"; refusing to target "${requested}"`,
 			);
 	}
-	if (resolved.mode === "shadow" && effect === "write")
-		throw new Error(
+	if (
+		resolved.mode === "shadow" &&
+		effect === "write" &&
+		target === "environment"
+	)
+		throw new ToolRefusalError(
 			`environment "${resolved.key}" is in shadow mode; refusing write tool "${name}"`,
 		);
 }
@@ -94,9 +123,18 @@ export function sameChangeEnvironment(
 	return changeEnvironment === readEnvironment;
 }
 
+/**
+ * Where a tool's effect lands. `environment` reaches the customer's estate —
+ * a cluster, a machine, or a command queued for one. `axioma` writes only this
+ * system's own records. The distinction exists for shadow mode, which promises
+ * that the estate is untouched, and says nothing about Axioma's bookkeeping.
+ */
+type ToolTarget = "environment" | "axioma";
+
 type ToolHandler = {
 	input: z.ZodType;
 	effect: "read" | "write";
+	target: ToolTarget;
 	verifiedBy?: string;
 	run(input: never, ctx: ToolContext): Promise<unknown>;
 };
@@ -108,6 +146,7 @@ const device = (
 ): ToolHandler => ({
 	input,
 	effect,
+	target: "environment",
 	verifiedBy,
 	run: (value, ctx) => ctx.dispatchDevice("", value),
 });
@@ -116,27 +155,37 @@ export const tools: Record<string, ToolHandler> = {
 	knowledge_search: {
 		input: knowledgeSearchInput,
 		effect: "read",
+		target: "axioma",
 		run: knowledgeSearch,
 	},
 	knowledge_fetch: {
 		input: knowledgeFetchInput,
 		effect: "read",
+		target: "axioma",
 		run: knowledgeFetch,
 	},
 	ticket_read_messages: {
 		input: ticketReadMessagesInput,
 		effect: "read",
+		target: "axioma",
 		run: ticketReadMessages,
 	},
-	cluster_read_pods: { input: readPodsInput, effect: "read", run: readPods },
+	cluster_read_pods: {
+		input: readPodsInput,
+		effect: "read",
+		target: "environment",
+		run: readPods,
+	},
 	cluster_read_deployment: {
 		input: readDeploymentInput,
 		effect: "read",
+		target: "environment",
 		run: readDeployment,
 	},
 	cluster_patch_image: {
 		input: patchImageInput,
 		effect: "write",
+		target: "environment",
 		verifiedBy: "cluster_read_deployment",
 		run: patchImageWithChange,
 	},
@@ -148,19 +197,39 @@ export const tools: Record<string, ToolHandler> = {
 		"device_read_state",
 	),
 	// Writes a proposal and returns. Deliberately has no verifier: it changes
-	// nothing on the device, so there is nothing for a read to confirm.
+	// nothing on the device, so there is nothing for a read to confirm. Its
+	// target is still the environment — an approved proposal executes on the
+	// machine, so shadow mode must suppress it like any other device write.
 	device_propose_command: {
 		input: deviceProposeCommandInput,
 		effect: "write",
+		target: "environment",
 		run: (input, ctx) => proposeDeviceCommand(input, ctx),
 	},
 	cmdb_record_observation: {
 		input: recordObservationInput,
 		effect: "write",
+		target: "axioma",
 		run: recordObservation,
 	},
-	cmdb_impact: { input: impactInput, effect: "read", run: cmdbImpact },
+	cmdb_impact: {
+		input: impactInput,
+		effect: "read",
+		target: "axioma",
+		run: cmdbImpact,
+	},
 };
+
+/**
+ * The write tool that names `read` as the tool confirming it — the inverse of
+ * the registry's `verifiedBy`. The registry is static server-side data, so the
+ * write named on a verifying step is never a name the model supplied.
+ */
+export function writeVerifiedBy(read: string): string | undefined {
+	return Object.entries(tools).find(
+		([, handler]) => handler.verifiedBy === read,
+	)?.[0];
+}
 
 export async function sweepExpiredChangeVerifications(now = new Date()) {
 	return db.transaction(async (tx) => {
@@ -222,6 +291,7 @@ export async function executeTool(
 	assertEnvironmentAllowed({
 		name,
 		effect: handler.effect,
+		target: handler.target,
 		requested,
 		resolved,
 		linked,
@@ -305,6 +375,15 @@ export async function executeTool(
 					runId: ctx.runId,
 					stepId: ctx.stepId,
 				});
+				// Stamped in the transaction that discharges the obligation, so the
+				// transcript can only call a read a verification when that read is
+				// what actually completed the change. A second read of the same
+				// deployment finds nothing in progress and stays unmarked, which is
+				// what makes the marked step worth pointing at.
+				await tx
+					.update(agentSteps)
+					.set({ verifiesTool: writeVerifiedBy(name) })
+					.where(eq(agentSteps.id, ctx.stepId));
 			});
 		}
 	}

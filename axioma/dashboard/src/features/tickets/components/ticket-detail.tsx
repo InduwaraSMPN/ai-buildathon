@@ -386,8 +386,17 @@ function Metadata({ ticket }: { ticket: TicketDetailData }) {
 	);
 }
 
+/**
+ * Turns an enum value into prose: `service_request` reads as "Service request".
+ * The capitalisation is done here rather than by a `capitalize` class on the
+ * whole row, because that class applied to every value in the panel — it
+ * title-cased the agent's resolution text into "Restored Checkout In
+ * Production…" and rewrote identifiers, turning a copied reporter id or CI
+ * UUID into one that does not exist.
+ */
 function label(value: string) {
-	return value.replaceAll("_", " ");
+	const words = value.replaceAll("_", " ");
+	return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 function Meta({
@@ -400,7 +409,7 @@ function Meta({
 	return (
 		<div className="grid grid-cols-[90px_1fr] gap-3 py-2.5 first:pt-0 last:pb-0">
 			<dt className="text-muted-foreground">{title}</dt>
-			<dd className="min-w-0 break-words text-right capitalize">{children}</dd>
+			<dd className="min-w-0 break-words text-right">{children}</dd>
 		</div>
 	);
 }

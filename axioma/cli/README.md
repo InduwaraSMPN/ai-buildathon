@@ -36,11 +36,14 @@ Run PowerShell as the user who should own and run the agent; administrator right
 ```powershell
 .\scripts\install.ps1 -Gateway 'gateway.example.com:50051'
 & "$env:LOCALAPPDATA\axioma\axel-cli.exe" enroll
+schtasks.exe /End /TN 'Axiōma Axel Agent'; schtasks.exe /Run /TN 'Axiōma Axel Agent'
 ```
 
-`enroll` asks for the single-use token issued from the dashboard. For an internal or self-signed gateway certificate, set `caFile` in `%LOCALAPPDATA%\axioma\config.json` (and optionally `tlsServerName` when the dial address is not the certificate name). Verification cannot be disabled.
+`enroll` asks for the single-use token issued from the dashboard. The daemon loads its identity once, at start-up, so one that is already running has to be restarted before it will present a token written after it started — hence the third line.
 
-The installer validates its inputs, copies `dist\axel-cli.exe` to `%LOCALAPPDATA%\axioma\axel-cli.exe`, persists the gateway in `%LOCALAPPDATA%\axioma\config.json`, registers the **Axiōma Axel Agent** `ONLOGON` Scheduled Task with `LIMITED` privileges, and starts it immediately. The task runs in that user's session so it can access the user's profile and applications.
+For an internal or self-signed gateway certificate, pass `-CAFile 'C:\certs\corp-root.pem'` to the installer; it is written to `caFile` in `%LOCALAPPDATA%\axioma\config.json`. Set `tlsServerName` in the same file when the dial address is not the certificate name. Verification cannot be disabled, so a gateway whose CA is not configured fails the handshake — silently, because the daemon runs as a Scheduled Task with nowhere to write.
+
+The installer validates its inputs and copies `dist\axel-cli.exe` or `bin\axel-cli.exe` — whichever is present, the newer one when both are, and it reports which — to `%LOCALAPPDATA%\axioma\axel-cli.exe`. It merges the gateway and CA into `%LOCALAPPDATA%\axioma\config.json` rather than rewriting the file, so settings added by hand survive a re-run. It then registers the **Axiōma Axel Agent** `ONLOGON` Scheduled Task with `LIMITED` privileges and starts it, stopping and waiting out a task that already exists first. The task runs in that user's session so it can access the user's profile and applications.
 
 Check the task or agent afterward:
 

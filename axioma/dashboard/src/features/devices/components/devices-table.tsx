@@ -7,6 +7,9 @@ import { orpc } from "@/utils/orpc";
 import type { Device } from "../api/types";
 import { DeviceDetailSheet } from "./device-detail-sheet";
 
+// Display fallbacks use `||`, not `??`. An agent that does not report a field
+// sends an empty string, which `??` passes straight through — the column then
+// rendered as blank space with no indication that the value is simply absent.
 const column = createColumnHelper<Device>();
 const columns = [
 	column.accessor("hostname", {
@@ -23,7 +26,7 @@ const columns = [
 							className={`size-2 rounded-full ${online ? "bg-success" : "bg-muted-foreground/50"}`}
 							aria-hidden="true"
 						/>
-						{row.original.hostname}
+						{row.original.hostname || "Unnamed device"}
 						<span className="sr-only">
 							{row.original.revokedAt
 								? "Revoked"
@@ -41,17 +44,17 @@ const columns = [
 	}),
 	column.accessor(
 		(device) =>
-			device.ownerName ?? device.ownerEmail ?? device.username ?? "Unassigned",
+			device.ownerName || device.ownerEmail || device.username || "Unassigned",
 		{
 			id: "user",
 			header: "User",
 			size: 20,
 			cell: ({ row }) => (
 				<div>
-					<p>{row.original.ownerName ?? "Unassigned"}</p>
+					<p>{row.original.ownerName || "Unassigned"}</p>
 					<p className="text-muted-foreground text-xs">
-						{row.original.ownerEmail ??
-							row.original.username ??
+						{row.original.ownerEmail ||
+							row.original.username ||
 							"No user details"}
 					</p>
 				</div>
@@ -59,7 +62,7 @@ const columns = [
 		},
 	),
 	column.accessor(
-		(device) => `${device.platform ?? "Unknown"} ${device.release ?? ""}`,
+		(device) => `${device.platform || "Unknown"} ${device.release || ""}`,
 		{
 			id: "platform",
 			header: "Platform",
@@ -67,10 +70,10 @@ const columns = [
 			cell: ({ row }) => (
 				<div>
 					<p>
-						{row.original.platform ?? "Unknown"} {row.original.release ?? ""}
+						{row.original.platform || "Unknown"} {row.original.release || ""}
 					</p>
 					<p className="text-muted-foreground text-xs">
-						Agent {row.original.agentVersion ?? "unknown"}
+						Agent {row.original.agentVersion || "unknown"}
 					</p>
 				</div>
 			),

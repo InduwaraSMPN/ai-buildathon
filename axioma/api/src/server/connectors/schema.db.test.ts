@@ -15,6 +15,11 @@
  *
  * Skipped without `DATABASE_URL`, matching `tier3-integration.test.ts`.
  * Nothing is committed, so a run leaves the development database untouched.
+ *
+ * Every fixture id nonetheless carries a `test-` prefix, and `test.after`
+ * sweeps them. `DATABASE_URL` in development points at the database the demo is
+ * shown from, so the one failure mode worth insuring against is a rollback that
+ * does not happen — a killed process, or a connection that dies mid-statement.
  */
 
 import assert from "node:assert/strict";
@@ -66,7 +71,28 @@ async function connection(): Promise<Client> {
 	return shared;
 }
 
+/**
+ * Children before parents: `itsm_ticket_origins.connector_id` is ON DELETE
+ * restrict, which is itself one of the properties asserted above.
+ */
+const SWEEP = [
+	`DELETE FROM itsm_writebacks WHERE connector_id = 'test-conn'`,
+	`DELETE FROM itsm_proposals WHERE connector_id = 'test-conn'`,
+	`DELETE FROM itsm_dispatch_ledger WHERE connector_id = 'test-conn'`,
+	`DELETE FROM itsm_ticket_origins WHERE connector_id = 'test-conn'`,
+	`DELETE FROM itsm_connectors WHERE id = 'test-conn'`,
+	`DELETE FROM environments WHERE id = 'test-env-shadow'`,
+];
+
 test.after(async () => {
+	// Belt and braces over the rollback, which is the real isolation mechanism.
+	// A sweep of six ids costs nothing and it is the only thing standing between
+	// a killed run and connector rows appearing in the demo.
+	if (shared) {
+		for (const statement of SWEEP) {
+			await shared.query(statement).catch(() => undefined);
+		}
+	}
 	await shared?.end();
 	shared = undefined;
 });
@@ -86,14 +112,14 @@ async function inRollback(
 
 		await client.query(
 			`INSERT INTO environments (id, key, label, connection_type, mode)
-			 VALUES ('env-test-shadow', 'test-shadow', 'Test (shadow)', 'in_cluster', 'shadow')`,
+			 VALUES ('test-env-shadow', 'test-shadow', 'Test (shadow)', 'in_cluster', 'shadow')`,
 		);
 		await client.query(
 			`INSERT INTO itsm_connectors
 			   (id, key, vendor, label, base_url, client_id, client_secret_encrypted,
 			    ticket_origin, default_environment_id, fallback_reporter_id)
-			 VALUES ('conn-test', 'test', 'servicenow', 'Test', 'https://t.service-now.com',
-			         'cid', 'v1:x:y:z', 'itsm', 'env-test-shadow', 'user-test')`,
+			 VALUES ('test-conn', 'test-conn', 'servicenow', 'Test', 'https://t.service-now.com',
+			         'cid', 'v1:x:y:z', 'itsm', 'test-env-shadow', 'test-user')`,
 		);
 
 		const { rows: tickets } = await client.query(UNCLAIMED_TICKETS);
@@ -125,7 +151,7 @@ test("the itsm ticket origin is unique per connector and external id", {
 			client.query(
 				`INSERT INTO itsm_ticket_origins
 					   (ticket_id, connector_id, external_id, external_key, foreign_updated_at)
-					 VALUES ($1, 'conn-test', 'sys-1', 'INC0010023', now())`,
+					 VALUES ($1, 'test-conn', 'test-sys-1', 'TEST0010023', now())`,
 				[ticketId],
 			);
 		await insert(rows[0].id);
@@ -145,13 +171,13 @@ test("one transition equals at most one dispatch", {
 			client.query(
 				`INSERT INTO itsm_dispatch_ledger
 					   (id, ticket_id, connector_id, trigger_key, outcome)
-					 VALUES ($1, $2, 'conn-test', 'comment:cmt-9', 'dispatched')`,
+					 VALUES ($1, $2, 'test-conn', 'comment:cmt-9', 'dispatched')`,
 				[id, ticketId],
 			);
-		await claim("led-1");
+		await claim("test-led-1");
 		// Re-observing the same transition claims nothing new, which is what
 		// stops a poller starting a second run for one change.
-		await assert.rejects(() => claim("led-2"), /duplicate key/i);
+		await assert.rejects(() => claim("test-led-2"), /duplicate key/i);
 	});
 });
 
@@ -162,8 +188,8 @@ test("a different transition on the same ticket is a separate claim", {
 		const ticketId = seed.ticketId;
 		await client.query(
 			`INSERT INTO itsm_dispatch_ledger (id, ticket_id, connector_id, trigger_key, outcome)
-				 VALUES ('led-a', $1, 'conn-test', 'comment:cmt-1', 'dispatched'),
-				        ('led-b', $1, 'conn-test', 'comment:cmt-2', 'dispatched')`,
+				 VALUES ('test-led-a', $1, 'test-conn', 'comment:cmt-1', 'dispatched'),
+				        ('test-led-b', $1, 'test-conn', 'comment:cmt-2', 'dispatched')`,
 			[ticketId],
 		);
 		const { rows: counted } = await client.query(
@@ -183,7 +209,7 @@ test("a write-back cannot exceed its own attempt ceiling", {
 				client.query(
 					`INSERT INTO itsm_writebacks
 						   (id, connector_id, ticket_id, payload, attempt_count, max_attempts)
-						 VALUES ('wb-1', 'conn-test', $1, '{}'::jsonb, 6, 5)`,
+						 VALUES ('test-wb-1', 'test-conn', $1, '{}'::jsonb, 6, 5)`,
 					[seed.ticketId],
 				),
 			/itsm_writebacks_attempt_within_max/,
@@ -198,13 +224,13 @@ test("a connector owning synced tickets cannot be deleted out from under them", 
 		await client.query(
 			`INSERT INTO itsm_ticket_origins
 				   (ticket_id, connector_id, external_id, external_key, foreign_updated_at)
-				 VALUES ($1, 'conn-test', 'sys-1', 'INC0010023', now())`,
+				 VALUES ($1, 'test-conn', 'test-sys-1', 'TEST0010023', now())`,
 			[seed.ticketId],
 		);
 		// ON DELETE restrict: otherwise those tickets would silently become
 		// indistinguishable from native ones, with their actions re-enabled.
 		await assert.rejects(
-			() => client.query(`DELETE FROM itsm_connectors WHERE id = 'conn-test'`),
+			() => client.query(`DELETE FROM itsm_connectors WHERE id = 'test-conn'`),
 			/violates RESTRICT setting/i,
 		);
 	});
@@ -223,11 +249,11 @@ test("one proposal per run, so a replayed terminal cannot double-count", {
 			client.query(
 				`INSERT INTO itsm_proposals
 					   (id, run_id, ticket_id, connector_id, suppressed_calls)
-					 VALUES ($1, $2, $3, 'conn-test', '[]'::jsonb)`,
+					 VALUES ($1, $2, $3, 'test-conn', '[]'::jsonb)`,
 				[id, seed.runId, seed.ticketId],
 			);
-		await insert("prop-1");
-		await assert.rejects(() => insert("prop-2"), /duplicate key/i);
+		await insert("test-prop-1");
+		await assert.rejects(() => insert("test-prop-2"), /duplicate key/i);
 	});
 });
 

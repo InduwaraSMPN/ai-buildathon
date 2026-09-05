@@ -521,6 +521,18 @@ export const KNOWLEDGE_ARTICLES: KnowledgeArticleDef[] = [
 		tags: ["demo-tag-03", "demo-tag-06"],
 	},
 	{
+		id: "demo-kb-article-19",
+		folderId: "demo-kb-folder-03",
+		title: "Checkout service - approved images and rollback",
+		body: "The checkout deployment runs in the `demo` namespace.\n\nApproved image: `nginx:1.27-alpine`. This is the only tag cleared for production checkout; it is what a healthy deployment is running and what a broken one should be returned to.\n\nIf checkout pods are in ImagePullBackOff, the image tag is the first thing to check: a tag that does not exist in the registry cannot be pulled, and the deployment sits at zero ready replicas with ProgressDeadlineExceeded. Patch the container image back to the approved tag and confirm the rollout completes before closing.\n\nDo not change CPU or memory requests as part of this repair. Resource sizing is owned by the service team.",
+		summary:
+			"Approved container image for the checkout deployment and what to do when it will not pull",
+		status: "published",
+		audience: "staff",
+		isRestricted: false,
+		tags: ["demo-tag-03", "demo-tag-06"],
+	},
+	{
 		id: "demo-kb-article-11",
 		folderId: "demo-kb-folder-04",
 		title: "Split-tunnel VPN configuration for engineers",

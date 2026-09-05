@@ -29,6 +29,7 @@ export const changeSchema = z.object({
 	status: changeStatus,
 	priority,
 	impact: z.enum(["high", "medium", "low"]),
+	implementationPlan: z.string().nullable(),
 	testPlan: z.string().nullable(),
 	rollbackPlan: z.string().nullable(),
 	riskLikelihood: z.number().int().nullable(),
@@ -41,11 +42,17 @@ export const changeSchema = z.object({
 	workEndAt: z.date().nullable(),
 	outageStartAt: z.date().nullable(),
 	outageEndAt: z.date().nullable(),
+	pirReview: z.string().nullable(),
 	pirWasSuccessful: z.boolean().nullable(),
 	pirActualStartAt: z.date().nullable(),
 	pirActualEndAt: z.date().nullable(),
 	pirLessonsLearned: z.string().nullable(),
 	pirFollowUp: z.string().nullable(),
+	// Provenance. A change the agent raised names the run and the step that
+	// completed it, so an auditor reading this record can reach the transcript
+	// that produced it rather than taking the record on trust.
+	sourceRunId: z.string().nullable(),
+	sourceStepId: z.string().nullable(),
 	createdAt: z.date(),
 	updatedAt: z.date(),
 });

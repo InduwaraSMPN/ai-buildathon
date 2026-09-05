@@ -174,6 +174,9 @@ const agentStep = z.object({
 	evidence: z.string().nullable(),
 	// Presentation tone for the evidence alert.
 	evidenceTone: z.enum(EVIDENCE_TONES).optional(),
+	// The write tool this read discharged the verification obligation for, set
+	// by the API rather than by the agent. Null on every other step.
+	verifiesTool: z.string().nullable().optional(),
 	createdAt: z.date(),
 });
 

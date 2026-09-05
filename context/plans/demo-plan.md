@@ -23,10 +23,13 @@ the rest believable.
 | 15 minutes | Cold open, 1–4, close | The default. Covers every claim that matters |
 | 25 minutes | All six acts, with the dashboard tour in act 4 | A buyer who has asked for detail |
 
-**The pacing problem, solved once.** An agent run has a 300-second deadline and takes
-real model turns. Never stand in silence watching a spinner. Every act below starts
-the run, then cuts to something to look at while it works. Rehearse that transition —
-it is the difference between "watch it think" and dead air.
+**The pacing problem, solved once.** An agent run has a 300-second ceiling and takes
+real model turns. Measured on the demo stack, the act 1 fix resolves in about 30
+seconds across eight tool calls and the act 2 refusal escalates in about 20 — quote
+those rather than the ceiling, and re-measure on your own hardware before you do.
+Either way, never stand in silence watching a spinner. Every act below starts the
+run, then cuts to something to look at while it works. Rehearse that transition — it
+is the difference between "watch it think" and dead air.
 
 ---
 
@@ -34,32 +37,56 @@ it is the difference between "watch it think" and dead air.
 
 Thirty minutes before, not five.
 
-1. `tilt up` from `axioma/`, all services green.
-2. `pnpm seed:demo` from `axioma/api/`.
-3. `pnpm seed` — the cluster scenarios. Confirm `checkout` is in `ImagePullBackOff`
-   and `reporting` is `Pending`.
-4. **`AXIOMA_LLM_KEY` is set and the gateway answers.** This is the single most
+1. **A cluster exists.** `kind create cluster --name axioma`, then confirm
+   `kubectl config current-context` reads `kind-axioma`. Everything in acts 1, 2
+   and act 4's change and shadow beats runs against it, and the API reaches it
+   through the operator's own kubeconfig — the `production` and `staging` demo
+   environments are both the `default` connection type, so no credential is
+   stored and whatever context you are pointed at is what the agent patches.
+2. `tilt up` from `axioma/`, all services green.
+3. `pnpm seed:demo` from `axioma/api/`. It rewinds the search watermark on the
+   way out, so give the reconciliation sweep about ten seconds before the first
+   run — the agent's forced knowledge search reads the index, not the tables.
+4. `pnpm seed` — the cluster scenarios. Confirm `checkout` is in `ImagePullBackOff`
+   and `reporting` is `Pending` with the scheduler reporting `Insufficient cpu`.
+5. **`AXIOMA_LLM_KEY` is set and the gateway answers.** This is the single most
    common way the demo dies. Test it with one throwaway ticket and delete it.
-5. **A worker is connected.** `AXIOMA_AGENT_TOKEN` has to hold the same value in
+6. **A worker is connected.** `AXIOMA_AGENT_TOKEN` has to hold the same value in
    `api/.env` and `agent/.env`, or the gateway refuses every agent connection and
    nothing dispatches — the API log line to look for is
    `[grpc] Axel worker=… connected`. Against a self-signed gateway certificate the
    worker also needs `AXIOMA_API_GRPC_CA_FILE` pointing at `api/certs/grpc.crt`;
    without it the handshake fails with `CERTIFICATE_VERIFY_FAILED` and the agent
    retries silently in the background while the queue does nothing.
-6. If demoing the device path, both halves of enrolment are done: `axel-cli enroll`
-   with a token from the dashboard, the daemon connected, and the claim code from
-   `axel-cli status` entered in the portal under **Connect a computer**. A device
-   with no owner is not wrong — it is invisible, and act 3 files a ticket that binds
-   to nothing. Confirm the machine appears in that employee's own list, then run
+7. If demoing the device path, all three parts are done, in this order:
+   **install** — run `cli/scripts/install.ps1` from **pwsh**, not Windows
+   PowerShell, passing `-CAFile` pointing at `api/certs/grpc.crt`. Without that CA
+   the daemon cannot verify a self-signed gateway and fails with
+   `CERTIFICATE_VERIFY_FAILED` — silently, because the logon task discards its
+   stderr. The script registers a logon Scheduled Task, which many managed
+   Windows builds refuse to create from an unelevated shell: if it stops on
+   `ERROR: Access is denied`, run the same command from an elevated pwsh.
+   **Enrol** — `axel-cli enroll` with a token issued from the dashboard,
+   then restart the scheduled task, because the daemon reads its identity once at
+   start. **Claim** — `axel-cli status` shows the claim code; enter it in the
+   portal under **Connect a computer** on `/my-requests`. A device with no owner is
+   not wrong, it is invisible, and act 3 would file a ticket that binds to nothing.
+   Confirm the machine now appears in the device picker on `/tickets/new`, then run
    `pnpm seed:device` to plant the proxy fault.
-7. Browser tabs, left to right, in this order: portal (:3001), portal
-   `/my-requests`, dashboard queue (:3002), dashboard run transcript,
-   `/device-commands`, `/admin/environments`.
-8. One terminal with `kubectl -n demo get pods -w` already running. Live pod status
+
+   If the worker runs on the same Windows machine as the daemon — a one-box
+   demo — `NO_PROXY` has to be set in `agent/.env` before you seed that fault.
+   Python resolves proxies from the registry, so the fault applies to the
+   worker's own calls to the model gateway, and every run dies with
+   `Cannot connect to host 127.0.0.1:9` before it reads anything.
+8. Browser tabs, left to right, in this order: portal (:3001), portal
+   `/my-requests`, dashboard queue (:3002), a ticket's **Transcript tab** (it is a
+   tab on `/tickets/<id>`, not its own route, so it cannot be deep-linked — open
+   it by hand), `/devices`, `/device-commands`, `/admin/environments`.
+9. One terminal with `kubectl -n demo get pods -w` already running. Live pod status
    changing on screen is worth more than any slide.
-9. Run the whole arc once, end to end, timed. Every demo that has ever failed was
-   demoed for the first time in front of the audience.
+10. Run the whole arc once, end to end, timed. Every demo that has ever failed was
+    demoed for the first time in front of the audience.
 
 **Reset between runs:** `pnpm seed:reset && pnpm seed` restores the cluster faults.
 The reset deletes a namespace and takes its target from the context the workstation
@@ -157,13 +184,27 @@ differentiating — most competing tools stop at the ticket.
 
    Skip this if you enrolled during pre-flight and want the time back — but say the
    sentence, because the next step depends on it.
-2. On the Windows machine, show the fault is real: the stale proxy override.
+2. On the Windows machine, show the fault is real. `pnpm seed:device` enables the
+   WinINET proxy and points it at `127.0.0.1:9`, the discard port, so every
+   connection through it is refused at once. Read it:
+
+   ```powershell
+   Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings' |
+       Select-Object ProxyEnable, ProxyServer
+   ```
+
+   Open a browser on that account if you want the symptom on screen — it will not
+   load anything. `pnpm seed:device -- -Undo` puts the machine back if you need to
+   abandon the act.
 3. From the portal, as that employee: *"I cannot reach internal sites since this
    morning."*
 4. The run binds the ticket to that person's device — because they claimed it — reads
-   the `proxy` facet, dispatches `clear_proxy_override`, **re-reads to verify**,
-   closes.
-5. Show the registry value is gone. Show the command row with its sequence number.
+   the `proxy` facet, dispatches `disable_proxy`, **re-reads to verify**, records
+   the CMDB observation, closes. Measured at 57 seconds over eight tool calls.
+5. Show `ProxyEnable` is back to `0` and the browser loads again. Then open
+   `/devices`, click the device, and show the command in **Latest commands** with
+   its sequence number — that column is on the device detail sheet, not on
+   `/device-commands`, which is the approval queue act 4 uses.
 
 **Say:**
 
@@ -195,10 +236,17 @@ This act converts a demo into a purchase. It is where enterprise buyers lean in.
    > names where it came from."
 3. **Shadow mode.** Open `/admin/environments`. Two environments; `staging` is in
    shadow. Run a ticket against it and show the agent diagnosing, attempting the
-   write, and being refused — with the attempt still in the transcript.
+   write, and being refused — with the attempt still in the transcript, naming the
+   exact image it would have applied. The run then escalates with its diagnosis
+   and records the CMDB observation, because shadow withholds the estate, not
+   Axioma's own record. The cluster is unchanged; check it on the terminal.
    > "This is how you trial it. It proposes on production for a fortnight; you compare
    > every proposal against what your team actually did. Zero blast radius, and you
    > get an evaluation set out of it."
+
+   The agent is never told the environment is in shadow. That is deliberate: it
+   behaves exactly as it would in act mode, which is what makes the fortnight's
+   proposals worth comparing against what your team did.
 4. **The approval gate.** Open `/device-commands`. Show a proposal: the exact argument
    vector, the reason, who asked, who may approve.
    > "Where there is no typed action, it proposes a command and escalates. A named
@@ -294,7 +342,7 @@ It will, eventually. Have these ready.
 | Run exhausts or escalates unexpectedly | Use it. Open the transcript and walk what it tried. A bounded failure that escalates cleanly *is* the product working |
 | Cluster unhealthy | `pnpm seed:reset && pnpm seed`. If it will not recover, switch to act 3 or act 4 |
 | Device disconnected | `axel-cli status`, then `doctor`. If it will not reconnect, skip to act 4 — the proposal queue still has content |
-| A run takes too long | Say "this takes about two minutes, so while it works —" and move to the change record or the CMDB. Come back to it |
+| A run takes too long | Say "this takes under a minute, so while it works —" and move to the change record or the CMDB. Come back to it |
 
 Never narrate a spinner. Never apologise twice for the same delay.
 

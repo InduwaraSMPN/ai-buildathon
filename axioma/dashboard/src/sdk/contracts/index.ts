@@ -60,6 +60,7 @@ export const appContract = {
 	updateCmdbClass: cmdbContract.updateCmdbClass,
 	deleteCmdbClass: cmdbContract.deleteCmdbClass,
 	listCmdbObjects: cmdbContract.listCmdbObjects,
+	getCmdbObject: cmdbContract.getCmdbObject,
 	cmdbImpact: cmdbContract.cmdbImpact,
 	listTicketCmdbObjects: cmdbContract.listTicketCmdbObjects,
 	linkTicketCmdbObject: cmdbContract.linkTicketCmdbObject,

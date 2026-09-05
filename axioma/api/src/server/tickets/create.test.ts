@@ -28,20 +28,22 @@ test("every intake source applies the shared ticket creation invariants", async 
 	const reporterId = `test-ticket-creator-${suffix}`;
 	const workflowId = `test-ticket-created-${suffix}`;
 	const ticketIds: string[] = [];
-	await db.insert(user).values({
-		id: reporterId,
-		name: "Ticket creation test",
-		email: `${reporterId}@example.test`,
-	});
-	await db.insert(workflows).values({
-		id: workflowId,
-		name: "Ticket creation test",
-		triggerEvent: "ticket.created",
-		conditions: [],
-		actions: [],
-	});
 
+	// Seeded inside the `try`: the workflow insert failing above it stranded the
+	// reporter, because the `finally` that removes it was never entered.
 	try {
+		await db.insert(user).values({
+			id: reporterId,
+			name: "Ticket creation test",
+			email: `${reporterId}@example.test`,
+		});
+		await db.insert(workflows).values({
+			id: workflowId,
+			name: "Ticket creation test",
+			triggerEvent: "ticket.created",
+			conditions: [],
+			actions: [],
+		});
 		for (const source of sources) {
 			const created = await createTicket({
 				source,

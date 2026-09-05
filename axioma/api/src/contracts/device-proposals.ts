@@ -19,7 +19,13 @@ export const deviceProposalSchema = z.object({
 	command: z.array(z.string()),
 	reason: z.string(),
 	status: z.enum(DEVICE_PROPOSAL_STATUSES),
+	// Both sides of the separation of duty are on the record. The approver may
+	// not be the person whose run proposed the command, so the queue has to say
+	// who that person was before anyone decides.
+	requestedById: z.string().nullable(),
+	requestedByName: z.string().nullable(),
 	approvedById: z.string().nullable(),
+	approvedByName: z.string().nullable(),
 	decisionNote: z.string().nullable(),
 	decidedAt: z.date().nullable(),
 	expiresAt: z.date(),

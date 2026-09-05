@@ -9,8 +9,10 @@
  * proposal FKs; these use their own ids and do not collide.
  */
 
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { agentRuns, agentSteps, agentToolCalls } from "@/db/schema/agent";
+import { cmdbObjects } from "@/db/schema/cmdb";
 import { DEMO_USERS, daysFromEpoch } from "./data";
 
 type StepSeed = {
@@ -59,12 +61,12 @@ const RUNS: RunSeed[] = [
 			},
 			{
 				kind: "tool_call",
-				toolName: "kubernetes.list_pods",
-				toolInput: { namespace: "checkout", selector: "app=checkout-api" },
+				toolName: "cluster_read_pods",
+				toolInput: { namespace: "demo", label_selector: "app=checkout" },
 			},
 			{
 				kind: "observation",
-				toolName: "kubernetes.list_pods",
+				toolName: "cluster_read_pods",
 				toolOutput: {
 					pods: 4,
 					notReady: 1,
@@ -75,12 +77,12 @@ const RUNS: RunSeed[] = [
 			},
 			{
 				kind: "tool_call",
-				toolName: "kubernetes.read_logs",
-				toolInput: { pod: "checkout-api-7d9f", tailLines: 200 },
+				toolName: "cluster_read_deployment",
+				toolInput: { namespace: "demo", name: "checkout" },
 			},
 			{
 				kind: "observation",
-				toolName: "kubernetes.read_logs",
+				toolName: "cluster_read_deployment",
 				toolOutput: { matched: "OOMKilled", occurrences: 14 },
 				evidence:
 					"Pod is being OOMKilled — memory limit 512Mi, working set peaks at 498Mi.",
@@ -119,12 +121,12 @@ const RUNS: RunSeed[] = [
 			},
 			{
 				kind: "tool_call",
-				toolName: "device.read_inventory",
-				toolInput: { hostname: "demo-host-02" },
+				toolName: "device_read_state",
+				toolInput: { device_id: "demo-device-02", facets: ["storage"] },
 			},
 			{
 				kind: "observation",
-				toolName: "device.read_inventory",
+				toolName: "device_read_state",
 				toolOutput: { certificateExpiresInDays: -3 },
 				evidence: "Device certificate expired 3 days ago.",
 				evidenceTone: "warning",
@@ -161,12 +163,12 @@ const RUNS: RunSeed[] = [
 			},
 			{
 				kind: "tool_call",
-				toolName: "mail.read_send_log",
-				toolInput: { limit: 50 },
+				toolName: "ticket_read_messages",
+				toolInput: { ticket_id: "demo-ticket-11" },
 			},
 			{
 				kind: "observation",
-				toolName: "mail.read_send_log",
+				toolName: "ticket_read_messages",
 				toolOutput: { failed: 9, code: "550 Mailbox unavailable" },
 				evidence: "All 9 failures share a 550 from one recipient domain.",
 				evidenceTone: "warning",
@@ -198,12 +200,12 @@ const RUNS: RunSeed[] = [
 			},
 			{
 				kind: "tool_call",
-				toolName: "kubernetes.list_pods",
-				toolInput: { namespace: "reporting" },
+				toolName: "cluster_read_pods",
+				toolInput: { namespace: "demo", label_selector: "app=reporting" },
 			},
 			{
 				kind: "observation",
-				toolName: "kubernetes.list_pods",
+				toolName: "cluster_read_pods",
 				error: "dial tcp 10.4.0.11:6443: i/o timeout",
 				evidence: "Staging cluster did not answer within the 30s timeout.",
 				evidenceTone: "destructive",
@@ -234,24 +236,24 @@ const RUNS: RunSeed[] = [
 			},
 			{
 				kind: "tool_call",
-				toolName: "metrics.query",
-				toolInput: { query: 'p99_latency{service="portal"}', window: "24h" },
+				toolName: "cluster_read_pods",
+				toolInput: { namespace: "demo", label_selector: "app=checkout" },
 			},
 			{
 				kind: "observation",
-				toolName: "metrics.query",
+				toolName: "cluster_read_pods",
 				toolOutput: { p99Ms: 840, baselineMs: 310 },
 				evidence: "p99 is 2.7× baseline but with no clear onset.",
 				evidenceTone: "warning",
 			},
 			{
 				kind: "tool_call",
-				toolName: "database.slow_queries",
-				toolInput: { minDurationMs: 500 },
+				toolName: "cluster_read_deployment",
+				toolInput: { namespace: "demo", name: "reporting" },
 			},
 			{
 				kind: "observation",
-				toolName: "database.slow_queries",
+				toolName: "cluster_read_deployment",
 				toolOutput: { candidates: 0 },
 				evidence: "No slow queries above the threshold.",
 				evidenceTone: "neutral",
@@ -283,8 +285,8 @@ const RUNS: RunSeed[] = [
 			},
 			{
 				kind: "tool_call",
-				toolName: "device.read_inventory",
-				toolInput: { scope: "fleet", check: "certificate_expiry" },
+				toolName: "device_read_state",
+				toolInput: { device_id: "demo-device-05", facets: ["certificates"] },
 			},
 		],
 	},
@@ -382,7 +384,39 @@ export async function seedAgent(ticketIds: string[]): Promise<void> {
 		}
 	});
 
+	// Provenance is the point of the CMDB table — every fact names the run that
+	// observed it — so a few seeded objects carry it. It is attributed here rather
+	// than in `seedCmdb` because that runs long before these rows exist and the
+	// foreign key could not resolve. An UPDATE rather than part of the insert,
+	// because the objects are seeded with `onConflictDoNothing` and a database
+	// that already has them would otherwise never gain the attribution.
+	//
+	// Only the first three: a CMDB fills from observation over time, and a store
+	// where every row named a run would misrepresent how it accumulates.
+	for (const [objectId, runId, stepId] of SEEDED_OBSERVATION_PROVENANCE) {
+		const [run] = await db
+			.select({ ticketId: agentRuns.ticketId })
+			.from(agentRuns)
+			.where(eq(agentRuns.id, runId))
+			.limit(1);
+		if (!run) continue;
+		await db
+			.update(cmdbObjects)
+			.set({
+				sourceTicketId: run.ticketId,
+				sourceRunId: runId,
+				sourceStepId: stepId,
+			})
+			.where(eq(cmdbObjects.id, objectId));
+	}
+
 	console.log(
 		`[seed:agent] seeded ${RUNS.length} runs with transcripts and tool calls`,
 	);
 }
+
+const SEEDED_OBSERVATION_PROVENANCE: ReadonlyArray<[string, string, string]> = [
+	["demo-cmdb-01", "demo-run-01", "demo-run-01-step-07"],
+	["demo-cmdb-02", "demo-run-02", "demo-run-02-step-05"],
+	["demo-cmdb-03", "demo-run-03", "demo-run-03-step-04"],
+];

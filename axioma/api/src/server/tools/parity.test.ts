@@ -435,3 +435,44 @@ test("every tool exposes the same effect in the agent and API", async () => {
 		effects,
 	);
 });
+
+/**
+ * The seeded transcripts are what the demo falls back to when a live run cannot
+ * be shown, so a tool name in there that the registry does not contain puts an
+ * invented capability on screen immediately after the real ones were described.
+ * Six of them did exactly that — `kubernetes.list_pods`, `metrics.query` and
+ * friends, none of which has ever existed.
+ */
+test("every seeded transcript names a tool the registry actually has", async () => {
+	const source = await readFile(
+		new URL("../../db/seed/agent.ts", import.meta.url),
+		"utf8",
+	);
+	const seeded = [...source.matchAll(/toolName:\s*"([^"]+)"/g)].map(
+		(match) => match[1] as string,
+	);
+	assert.ok(seeded.length > 0, "no seeded tool names found — check the regex");
+	const registered = new Set(Object.keys(tools));
+	const invented = [...new Set(seeded)].filter((name) => !registered.has(name));
+	assert.deepEqual(invented, []);
+});
+
+/**
+ * The same defect one screen later. Act 3 ends on a device's Latest commands
+ * list, and the seeded rows there named `collect_logs`, `run_script`,
+ * `check_disk` and `install_package` — four capabilities the product has never
+ * had, shown immediately after the audience watched the real ones run.
+ */
+test("every seeded device command names a tool the registry actually has", async () => {
+	const source = await readFile(
+		new URL("../../db/seed/assets-devices.ts", import.meta.url),
+		"utf8",
+	);
+	const seeded = [...source.matchAll(/\btool:\s*"([^"]+)"/g)].map(
+		(match) => match[1] as string,
+	);
+	assert.ok(seeded.length > 0, "no seeded tool names found — check the regex");
+	const registered = new Set(Object.keys(tools));
+	const invented = [...new Set(seeded)].filter((name) => !registered.has(name));
+	assert.deepEqual(invented, []);
+});

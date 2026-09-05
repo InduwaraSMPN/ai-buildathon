@@ -93,7 +93,7 @@ func RunDaemon(ctx context.Context, config Config, version string) error {
 		}
 		started := time.Now()
 		err = connect(ctx, config, &id, productionTimings)
-		recordDaemonState(DaemonState{GRPCHost: config.GRPCHost, LastSeenSequence: id.LastSeenSequence, LastError: errorString(err)})
+		recordDaemonState(disconnectedState(config.GRPCHost, id.LastSeenSequence, err))
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -249,6 +249,21 @@ func isAuthRefusal(err error) bool {
 	return code == codes.Unauthenticated || code == codes.PermissionDenied
 }
 
+// disconnectedState builds the snapshot written between connections. The
+// fields that outlive a single connection are read back off disk first: a
+// fresh struct here wiped the claim code on the very first reconnect, and the
+// employee has no other way to see it, so the machine stayed unowned and
+// invisible to every owner-scoped read with nothing left to claim it with. The
+// inventory clock is carried for the same reason it is persisted at all.
+func disconnectedState(host string, sequence uint64, err error) DaemonState {
+	state := DaemonState{GRPCHost: host, LastSeenSequence: sequence, LastError: errorString(err)}
+	if stored, storedErr := loadDaemonState(); storedErr == nil {
+		state.ClaimCode = stored.ClaimCode
+		state.LastInventoryAt = stored.LastInventoryAt
+	}
+	return state
+}
+
 // recordDaemonState writes the snapshot `status` reads. It is cosmetic, and on
 // Windows the write fails routinely — writeJSON ends in os.Rename, which a
 // real-time scanner holding the destination open turns into a sharing
@@ -275,6 +290,11 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 	stored, storedErr := loadDaemonState()
 	if storedErr == nil {
 		state.LastInventoryAt = stored.LastInventoryAt
+		// The claim code belongs to the device, not to one connection. Rebuilding
+		// it away on every connect left `status` with nothing to show from the
+		// second connection onwards, which is the only place the employee reads
+		// it.
+		state.ClaimCode = stored.ClaimCode
 	}
 
 	// grpc permits one sender and one receiver, and SendMsg parks until the
@@ -484,20 +504,27 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 						return terminalError{fmt.Errorf("persist device credential: %w", err)}
 					}
 					id.EnrolmentToken, id.Credential = "", enrollment.Credential
-					// Enrolment binds this machine to the gateway; it does not
-					// say whose machine it is. The employee types this code into
-					// the portal to claim it, and `axel-cli status` is where they
-					// read it, so it is persisted with the rest of the snapshot.
-					if enrollment.ClaimCode != "" {
-						state.ClaimCode = enrollment.ClaimCode
-						state.UpdatedAt = time.Now()
-						recordDaemonState(state)
-						log.Printf("axel-cli: enrolled. Claim code: %s — enter it in the portal to link this computer to your account.", enrollment.ClaimCode)
-					}
 				} else if enrollment.CodeExpired {
 					return terminalError{fmt.Errorf("enrolment token was refused or expired; run axel-cli enroll again")}
 				} else if !enrollment.AuthValid && id.Credential != "" {
 					return terminalError{fmt.Errorf("device credential was refused; re-enrolment is required")}
+				}
+				// Enrolment binds this machine to the gateway; it does not say
+				// whose machine it is. The employee types this code into the
+				// portal to claim it, and `axel-cli status` is where they read
+				// it, so it is persisted with the rest of the snapshot. The
+				// gateway re-issues one on any connection where the device is
+				// still unowned, so a code can arrive without a credential and
+				// must be stored then too; once someone has claimed the machine
+				// there is nothing left to type and the stale code is dropped.
+				switch {
+				case enrollment.ClaimCode != "" && enrollment.ClaimCode != state.ClaimCode:
+					state.ClaimCode = enrollment.ClaimCode
+					recordDaemonState(state)
+					log.Printf("axel-cli: claim code %s — enter it in the portal to link this computer to your account.", enrollment.ClaimCode)
+				case enrollment.Claimed && state.ClaimCode != "":
+					state.ClaimCode = ""
+					recordDaemonState(state)
 				}
 				continue
 			}

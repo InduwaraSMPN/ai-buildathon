@@ -31,6 +31,34 @@ const cmdbClass = z.object({
 	properties: z.array(cmdbProperty).optional(),
 });
 
+/**
+ * One configuration item, whole: what it is, what is recorded about it, what it
+ * is wired to, and where every one of those facts came from. Search emits a
+ * deep link per object, so there has to be a single call that answers it.
+ */
+const cmdbObjectDetail = cmdbObject.extend({
+	classKey: z.string(),
+	classLabel: z.string(),
+	properties: z.array(
+		z.object({
+			id: z.string(),
+			propertyKey: z.string(),
+			label: z.string(),
+			propertyType: z.string(),
+			value: z.unknown(),
+		}),
+	),
+	relationships: z.array(
+		z.object({
+			id: z.string(),
+			verb: z.string(),
+			direction: z.enum(["outgoing", "incoming"]),
+			objectId: z.string(),
+			objectName: z.string(),
+		}),
+	),
+});
+
 export const cmdbContract = {
 	listCmdbClasses: oc.output(z.array(cmdbClass)),
 	createCmdbClass: oc
@@ -65,6 +93,9 @@ export const cmdbContract = {
 			}),
 		)
 		.output(z.array(cmdbObject)),
+	getCmdbObject: oc
+		.input(z.object({ id: z.string() }))
+		.output(cmdbObjectDetail.nullable()),
 	cmdbImpact: oc
 		.input(
 			z.object({
