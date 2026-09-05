@@ -4,8 +4,12 @@ export const SITE_URL = "https://axioma.dev";
 
 export const CONTACT_EMAIL = "hello@axioma.dev";
 
+export const PILOT_MAILTO =
+	"mailto:hello@axioma.dev?subject=Shadow-mode%20pilot";
+
 export const nav = [
 	{ to: "/product", label: "Product" },
+	{ to: "/impact", label: "Impact" },
 	{ to: "/pricing", label: "Pricing" },
 	{ to: "/about", label: "About" },
 	{ to: "/contact", label: "Contact" },
@@ -13,29 +17,23 @@ export const nav = [
 
 export const footerColumns = [
 	{
-		heading: "Sitemap",
+		heading: "Product",
 		links: [
-			{ href: "/", label: "Home" },
-			{ href: "/product", label: "Product" },
-			{ href: "/pricing", label: "Pricing" },
-			{ href: "/about", label: "About" },
-			{ href: "/contact", label: "Contact" },
-			{ href: "/status", label: "Service status" },
+			{ to: "/product", label: "Product" },
+			{ to: "/impact", label: "Impact" },
+			{ to: "/pricing", label: "Deployment packages" },
+			{ to: "/status", label: "Service status" },
 		],
 	},
 	{
-		heading: "The loop",
+		heading: "Company",
 		links: [
-			{ href: "/product#ticket-flow", label: "Ticket flow" },
-			{ href: "/product#decisions", label: "Tool order" },
-			{ href: "/product#roles", label: "Roles" },
+			{ to: "/about", label: "About" },
+			{ to: "/contact", label: "Contact" },
 		],
 	},
 	{
 		heading: "Contact",
-		links: [
-			{ href: "/contact", label: "Start a conversation", accent: true },
-			{ href: `mailto:${CONTACT_EMAIL}`, label: CONTACT_EMAIL },
-		],
+		links: [{ href: `mailto:${CONTACT_EMAIL}`, label: CONTACT_EMAIL }],
 	},
 ] as const;

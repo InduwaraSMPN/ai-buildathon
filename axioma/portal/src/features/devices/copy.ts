@@ -20,4 +20,12 @@ export const deviceCopy = {
 	error: "We couldn’t load your computers.",
 	empty: "No computers connected yet.",
 	tryAgain: "Try again",
+	disconnect: "Disconnect",
+	disconnectTitle: "Disconnect this computer?",
+	disconnectBody:
+		"It will stop appearing when you ask for help, and no one will be able to act on it for you. You can connect it again with a new code from axel-cli.",
+	disconnectCancel: "Keep it connected",
+	disconnecting: "Disconnecting…",
+	disconnectError: "We couldn’t disconnect that computer. Try again.",
+	disconnected: "Computer disconnected.",
 } as const;

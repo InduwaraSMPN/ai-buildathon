@@ -125,6 +125,38 @@ export const devicesRouter = {
 			return { deviceId: claimed.id, hostname: claimed.hostname };
 		},
 	),
+	/**
+	 * Undoes a claim. Ownership is what every owner-scoped path reads — the
+	 * employee's own device list, the intake composer's picker, and the
+	 * ticket-to-device binding the whole device tier rests on — so clearing it is
+	 * the whole act. The machine stays enrolled and connected, and the gateway
+	 * issues it a fresh claim code on its next connect, because that branch fires
+	 * for any device with no owner and no usable code. A running daemon holds one
+	 * long stream, so the new code appears when it next reconnects rather than
+	 * immediately.
+	 *
+	 * The owner predicate is the authorization: another person's device id does
+	 * not match and comes back as NOT_FOUND, rather than being released.
+	 */
+	releaseMyDevice: reporterProcedure.releaseMyDevice.handler(
+		async ({ context, input }) => {
+			const [released] = await db
+				.update(devices)
+				.set({ ownerId: null })
+				.where(
+					and(
+						eq(devices.id, input.deviceId),
+						eq(devices.ownerId, context.userId),
+					),
+				)
+				.returning({ id: devices.id, hostname: devices.hostname });
+			if (!released)
+				throw new ORPCError("NOT_FOUND", {
+					message: "That computer is not connected to your account",
+				});
+			return { deviceId: released.id, hostname: released.hostname };
+		},
+	),
 	rotateDeviceCredential: capabilityProcedure(
 		"device.enroll",
 	).rotateDeviceCredential.handler(async ({ input }) => ({

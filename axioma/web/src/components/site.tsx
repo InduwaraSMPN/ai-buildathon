@@ -6,45 +6,66 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
-import { CONTACT_EMAIL, footerColumns, nav } from "../content/site";
+import {
+	CONTACT_EMAIL,
+	footerColumns,
+	nav,
+	PILOT_MAILTO,
+} from "../content/site";
 import { ThemeToggle } from "./theme-toggle";
 
 /**
  * The site stores nothing, so "subscribe" hands the address to the visitor's
  * own mail client rather than posting it anywhere. Swap the handler out once a
- * real list endpoint exists.
+ * real list endpoint exists. The disclosure sits above the field and is wired
+ * to the input with aria-describedby.
  */
 function SubscribeForm() {
 	const [email, setEmail] = useState("");
+	const [handedOff, setHandedOff] = useState(false);
 
 	return (
-		<form
-			className="subscribe-field"
-			onSubmit={(event) => {
-				event.preventDefault();
-				const subject = encodeURIComponent("Axiōma updates");
-				const body = encodeURIComponent(
-					`Please add ${email} to the Axiōma updates list.`,
-				);
-				window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
-			}}
-		>
-			<label className="sr-only" htmlFor="subscribe-email">
-				Email address
-			</label>
-			<input
-				id="subscribe-email"
-				name="email"
-				type="email"
-				required
-				autoComplete="email"
-				placeholder="Enter your email"
-				value={email}
-				onChange={(event) => setEmail(event.target.value)}
-			/>
-			<button type="submit">Subscribe</button>
-		</form>
+		<>
+			<form
+				className="subscribe-field"
+				onSubmit={(event) => {
+					event.preventDefault();
+					const subject = encodeURIComponent("Axiōma updates");
+					const body = encodeURIComponent(
+						`Please add ${email} to the Axiōma updates list.`,
+					);
+					window.location.href = `mailto:${CONTACT_EMAIL}?subject=${subject}&body=${body}`;
+					setHandedOff(true);
+				}}
+			>
+				<label className="sr-only" htmlFor="subscribe-email">
+					Email address
+				</label>
+				<input
+					aria-describedby="subscribe-note"
+					autoComplete="email"
+					id="subscribe-email"
+					name="email"
+					onChange={(event) => setEmail(event.target.value)}
+					placeholder="Enter your email"
+					required
+					type="email"
+					value={email}
+				/>
+				<button type="submit">Subscribe</button>
+			</form>
+			<p className="subscribe-note" id="subscribe-note" role="status">
+				{handedOff
+					? "Your email client should now hold the request. Send it to finish."
+					: "Subscribing opens your email client. Nothing is submitted to or stored by this website."}
+			</p>
+		</>
 	);
+}
+
+/** Trailing glyph on the footer contact chip. */
+function Arrow() {
+	return <span aria-hidden="true">↗</span>;
 }
 
 export function Wordmark() {
@@ -68,6 +89,10 @@ export function Wordmark() {
 	);
 }
 
+/**
+ * The masthead is a floating rounded bar on the page ground, not a full-bleed
+ * band: wordmark, links, and the three-state theme control.
+ */
 export function SiteHeader() {
 	return (
 		<header className="site-header">
@@ -109,6 +134,10 @@ export function SiteHeader() {
 	);
 }
 
+/**
+ * A rounded panel inset on a brand-green band, closing with the oversized
+ * trademark wordmark. This is the one part of the site that is not hard-edged.
+ */
 export function SiteFooter() {
 	return (
 		<footer className="site-footer">
@@ -120,10 +149,6 @@ export function SiteFooter() {
 							outcome.
 						</h2>
 						<SubscribeForm />
-						<p className="subscribe-note">
-							Subscribing opens your email client. Nothing is submitted to or
-							stored by this website.
-						</p>
 						<a className="contact-chip" href={`mailto:${CONTACT_EMAIL}`}>
 							{CONTACT_EMAIL} <Arrow />
 						</a>
@@ -134,15 +159,12 @@ export function SiteFooter() {
 								<h3>{column.heading}</h3>
 								<ul>
 									{column.links.map((link) => (
-										<li key={link.href}>
-											<a
-												className={
-													"accent" in link && link.accent ? "accent" : undefined
-												}
-												href={link.href}
-											>
-												{link.label}
-											</a>
+										<li key={link.label}>
+											{"to" in link ? (
+												<Link to={link.to}>{link.label}</Link>
+											) : (
+												<a href={link.href}>{link.label}</a>
+											)}
 										</li>
 									))}
 								</ul>
@@ -179,43 +201,67 @@ export function SiteFooter() {
 	);
 }
 
-export function Arrow() {
-	return <span aria-hidden="true">↗</span>;
-}
-
+/** Page title and lede, set side by side so an intro fills the measure. */
 export function PageIntro({
-	eyebrow,
 	title,
+	lede,
 	children,
 }: {
-	eyebrow?: string;
 	title: string;
-	children: ReactNode;
+	lede?: string;
+	children?: ReactNode;
 }) {
 	return (
 		<section className="page-intro shell">
-			{eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
 			<h1>{title}</h1>
-			<div className="lede">{children}</div>
+			{lede || children ? (
+				<div className="lede">
+					{lede ? <p>{lede}</p> : null}
+					{children}
+				</div>
+			) : null}
 		</section>
 	);
 }
 
-export function ContactCta({
-	title = "Bring the whole ticket into view.",
-}: {
+export type ContactBandProps = {
 	title?: string;
-}) {
+	body?: string;
+	primaryLabel?: string;
+	secondary?: boolean | string;
+};
+
+/**
+ * Shadow-mode pilot band. The primary action is a mailto to PILOT_MAILTO and
+ * the secondary action links to the home run replay. Plain text only.
+ */
+export function ContactBand({
+	title = "Run it in shadow mode for a fortnight.",
+	body = "Shadow mode refuses every write and records the attempt. Compare each proposal with what your team did.",
+	primaryLabel = "Start a shadow-mode pilot",
+	secondary = true,
+}: ContactBandProps) {
+	const showSecondary = secondary !== false;
+	const secondaryLabel =
+		typeof secondary === "string" ? secondary : "Watch a run";
+
 	return (
 		<section className="cta-band">
 			<div className="shell cta-inner">
 				<div>
-					<p className="eyebrow">Start a conversation</p>
 					<h2>{title}</h2>
+					{body ? <p>{body}</p> : null}
 				</div>
-				<Link className="button button-light" to="/contact">
-					Contact us <Arrow />
-				</Link>
+				<div className="cta-actions">
+					<a className="button" href={PILOT_MAILTO}>
+						{primaryLabel}
+					</a>
+					{showSecondary ? (
+						<Link className="button-secondary" to="/" hash="run">
+							{secondaryLabel}
+						</Link>
+					) : null}
+				</div>
 			</div>
 		</section>
 	);

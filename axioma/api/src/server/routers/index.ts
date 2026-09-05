@@ -188,6 +188,7 @@ export const appRouter = {
 	updateTicket: ticketsRouter.updateTicket,
 	listMyDevices: devicesRouter.listMyDevices,
 	claimDevice: devicesRouter.claimDevice,
+	releaseMyDevice: devicesRouter.releaseMyDevice,
 	createDeviceEnrolmentToken: devicesRouter.createDeviceEnrolmentToken,
 	rotateDeviceCredential: devicesRouter.rotateDeviceCredential,
 	revokeDevice: devicesRouter.revokeDevice,

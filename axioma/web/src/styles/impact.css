@@ -1,0 +1,281 @@
+/* Axioma web — impact: calculator, time-split bar, coverage table, sources. */
+/* Explicit placement: the note spans both columns and the results panel keeps
+   the right column for the whole of the inputs, which auto-placement pushed
+   into column one and left the right half of the section empty. */
+.impact-calculator {
+	display: grid;
+	grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+	grid-template-areas:
+		"note note"
+		"inputs results"
+		"reset results";
+	gap: clamp(16px, 2.4vw, 28px);
+	align-items: start;
+	margin-top: 24px;
+}
+.impact-inputs {
+	grid-area: inputs;
+}
+.impact-calculator .sunken {
+	grid-area: results;
+	position: sticky;
+	top: 88px;
+}
+.impact-inputs {
+	display: grid;
+	gap: 16px;
+}
+.impact-inputs > div {
+	display: grid;
+	gap: 6px;
+}
+.impact-inputs label {
+	font-family: var(--font-sans);
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-strong);
+}
+.impact-inputs a {
+	color: var(--text-strong);
+}
+.impact-inputs input {
+	width: 100%;
+	min-height: 44px;
+	padding: 10px 14px;
+	border: 1px solid var(--rule);
+	border-radius: 6px;
+	background: var(--paper);
+	color: var(--text-strong);
+	font-family: var(--font-sans);
+	font-size: 15px;
+	font-variant-numeric: tabular-nums;
+}
+.impact-inputs input:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 2px;
+}
+.impact-inputs p {
+	margin: 0;
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+/* A fallback the estimate applied, not the benchmark note: it reads in the
+   strong colour so the substitution is not missed. */
+.impact-inputs .impact-hint {
+	color: var(--text-strong);
+}
+.impact-calculator > p {
+	grid-area: note;
+	margin: 0;
+	font-size: 13px;
+	font-weight: 600;
+	color: var(--text-strong);
+}
+.impact-calculator .sunken {
+	display: grid;
+	gap: 16px;
+	padding: clamp(20px, 2.4vw, 28px);
+	border-radius: 8px;
+	background: var(--surface-sunken);
+}
+.impact-calculator .sunken dl {
+	display: grid;
+	gap: 0;
+	margin: 0;
+}
+.impact-calculator .sunken dl > div {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 16px;
+	padding-block: 12px;
+}
+.impact-calculator .sunken dl > div + div {
+	border-top: 1px solid var(--rule);
+}
+.impact-calculator .sunken dt {
+	font-size: 13.5px;
+	color: var(--text-body);
+}
+.impact-calculator .sunken dd {
+	margin: 0;
+	font-size: 18px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	color: var(--text-strong);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.impact-calculator .sunken pre {
+	margin: 0;
+	padding: 16px;
+	border: 1px solid var(--rule);
+	border-radius: 6px;
+	background: var(--paper);
+	overflow-x: auto;
+}
+.impact-calculator .sunken pre code {
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	line-height: 1.6;
+	color: var(--text-body);
+	white-space: pre;
+}
+.impact-calculator > button {
+	grid-area: reset;
+	justify-self: start;
+	display: inline-flex;
+	align-items: center;
+	min-height: 44px;
+	padding: 0 22px;
+	border: 1px solid var(--rule);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-strong);
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.impact-calculator > button:hover {
+	border-color: var(--text-strong);
+}
+
+/* Time-split bar: visible labels plus an sr-only list. */
+.time-split-bar {
+	display: flex;
+	margin-block: 20px;
+	border: 1px solid var(--rule);
+	border-radius: 8px;
+	background: var(--paper);
+	overflow: hidden;
+}
+.time-split-segment {
+	display: grid;
+	gap: 2px;
+	align-content: center;
+	min-width: 0;
+	padding: 14px 16px;
+}
+.time-split-segment + .time-split-segment {
+	border-left: 1px solid var(--rule);
+}
+.time-split-segment:first-child {
+	flex: 1 1 auto;
+	background: var(--ink);
+	color: var(--paper);
+}
+.time-split-segment span:first-child {
+	font-size: 16px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+.time-split-segment span:last-child {
+	font-size: 12.5px;
+	line-height: 1.4;
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+}
+.time-split-segment:first-child span:last-child {
+	color: var(--paper);
+	opacity: 0.72;
+}
+
+/* Coverage table. */
+.coverage-scroll {
+	margin-top: 20px;
+	border: 1px solid var(--rule);
+	border-radius: 8px;
+	background: var(--paper);
+	overflow-x: auto;
+}
+.coverage-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 14px;
+	line-height: 1.55;
+}
+.coverage-table th {
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--rule);
+	font-size: 13px;
+	font-weight: 600;
+	text-align: left;
+	color: var(--text-strong);
+	white-space: nowrap;
+}
+.coverage-table td {
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--rule-faint);
+	color: var(--text-body);
+	vertical-align: top;
+	overflow-wrap: anywhere;
+}
+.coverage-table tbody tr:last-child td {
+	border-bottom: 0;
+}
+.coverage-scroll .coverage-table td code {
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	color: var(--text-strong);
+	overflow-wrap: anywhere;
+}
+
+/* Sources list. */
+.sources {
+	display: grid;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.sources > li:first-child {
+	padding-top: 0;
+}
+.sources > li {
+	display: grid;
+	gap: 4px;
+	padding-block: 16px;
+}
+.sources > li + li {
+	border-top: 1px solid var(--rule);
+}
+.sources cite {
+	font-style: normal;
+	font-size: 14.5px;
+	font-weight: 600;
+	color: var(--text-strong);
+}
+.sources span {
+	display: block;
+	font-size: 13px;
+	color: var(--text-muted);
+}
+.sources a {
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	color: var(--text-strong);
+	overflow-wrap: anywhere;
+}
+
+@media (max-width: 980px) {
+	.impact-calculator {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-areas:
+			"note"
+			"inputs"
+			"results"
+			"reset";
+	}
+	.impact-calculator .sunken {
+		position: static;
+	}
+	.time-split-bar {
+		flex-direction: column;
+	}
+	.time-split-segment + .time-split-segment {
+		border-left: 0;
+		border-top: 1px solid var(--rule);
+	}
+}

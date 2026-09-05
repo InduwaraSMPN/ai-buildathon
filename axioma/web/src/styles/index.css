@@ -1,13 +1,13 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "@fontsource-variable/instrument-sans";
-@import "@fontsource-variable/fraunces";
 @import "@fontsource-variable/geist-mono";
 
-/* Entry point — partials in original cascade order. */
+/* Entry point — partials in cascade order. */
 @import "./tokens.css";
 @import "./base.css";
 @import "./primitives.css";
 @import "./layout.css";
+@import "./replay.css";
+@import "./impact.css";
 @import "./sections.css";
 @import "./motion.css";

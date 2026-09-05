@@ -1,6 +1,7 @@
 import {
 	createRootRoute,
 	HeadContent,
+	Link,
 	Outlet,
 	Scripts,
 } from "@tanstack/react-router";
@@ -20,6 +21,7 @@ const themeInit = `(function () {
 				window.matchMedia("(prefers-color-scheme: dark)").matches);
 		var root = document.documentElement;
 		root.classList.toggle("dark", dark);
+		root.classList.add("js");
 		root.style.colorScheme = dark ? "dark" : "light";
 	} catch (e) {}
 })();`;
@@ -142,12 +144,11 @@ function NotFound() {
 
 	return (
 		<section className="not-found shell">
-			<p className="eyebrow">404 / Route not found</p>
 			<h1>This ticket has no owner.</h1>
 			<p>The page may have moved, or the address may be incomplete.</p>
-			<a className="button" href="/">
-				Return home <span aria-hidden="true">↗</span>
-			</a>
+			<Link className="button" to="/">
+				Return home
+			</Link>
 		</section>
 	);
 }

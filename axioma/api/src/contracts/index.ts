@@ -186,6 +186,7 @@ export const appContract = {
 	updateTicket: ticketsContract.updateTicket,
 	listMyDevices: devicesContract.listMyDevices,
 	claimDevice: devicesContract.claimDevice,
+	releaseMyDevice: devicesContract.releaseMyDevice,
 	createDeviceEnrolmentToken: devicesContract.createDeviceEnrolmentToken,
 	rotateDeviceCredential: devicesContract.rotateDeviceCredential,
 	revokeDevice: devicesContract.revokeDevice,
@@ -267,6 +268,7 @@ export const portalContract = {
 	updateTicket: reporterUpdateTicket,
 	listMyDevices: devicesContract.listMyDevices,
 	claimDevice: devicesContract.claimDevice,
+	releaseMyDevice: devicesContract.releaseMyDevice,
 	portalIsFrontDoor: connectorContract.portalIsFrontDoor,
 };
 

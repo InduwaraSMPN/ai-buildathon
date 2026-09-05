@@ -1,0 +1,507 @@
+/* Run transcripts.
+
+   The grammar follows what mature trace viewers converged on: a dot is an
+   event, a line connects events, and colour carries status before anything
+   else (Temporal). A row is name and arguments on one side, what came back on
+   the other, with the ordinal and status marker in a fixed gutter (Inngest).
+   Monospace marks machine identifiers only — tool names, arguments, state —
+   while labels, findings and counts stay in the UI face (LangSmith, Inngest).
+
+   Steps the replay has not reached keep their place as dimmed rows with a
+   hollow marker, so the shape of the run is readable before it plays and
+   nothing shifts as it fills in. */
+
+@keyframes step-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.run-replay {
+	display: grid;
+	gap: 16px;
+}
+.run-replay-controls {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 12px 24px;
+}
+.run-replay-caption {
+	max-width: 68ch;
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 15px;
+	line-height: 1.6;
+	color: var(--text-body);
+}
+.run-replay-button {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 38px;
+	padding: 0 18px;
+	border: 1px solid var(--rule);
+	border-radius: 6px;
+	background: transparent;
+	color: var(--text-strong);
+	font-family: var(--font-sans);
+	font-size: 14px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.run-replay-button:hover {
+	border-color: var(--text-strong);
+}
+
+/* ── Run header ── */
+.transcript {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	overflow: hidden;
+}
+.transcript-head {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 16px;
+	padding: clamp(16px, 2vw, 20px) clamp(16px, 2vw, 22px);
+}
+.transcript-title {
+	min-width: 0;
+}
+.transcript-ticket {
+	margin: 0 0 5px;
+	font-family: var(--font-sans);
+	font-size: 15px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	line-height: 1.35;
+	color: var(--text-strong);
+}
+.transcript-env {
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+}
+.transcript-state {
+	display: inline-flex;
+	align-items: center;
+	gap: 7px;
+	flex: none;
+	padding: 4px 11px 4px 9px;
+	border: 1px solid var(--rule);
+	border-radius: 999px;
+	font-family: var(--font-sans);
+	font-size: 12.5px;
+	font-weight: 500;
+	line-height: 1.4;
+	color: var(--text-muted);
+	text-transform: capitalize;
+}
+.transcript-state::before {
+	content: "";
+	width: 6px;
+	height: 6px;
+	border-radius: 999px;
+	background: currentColor;
+}
+.transcript-state[data-state="resolved"] {
+	border-color: var(--state-ok);
+	color: var(--state-ok);
+}
+.transcript-state[data-state="escalated"] {
+	border-color: var(--state-warn);
+	color: var(--state-warn);
+}
+.transcript-state[data-state="running"]::before {
+	animation: step-in 900ms ease-in-out infinite alternate;
+}
+
+/* Counts sit on a strip under the header, the way a run header carries its
+   totals and duration in a trace viewer. */
+.transcript-metrics {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 24px;
+	margin: 0;
+	padding: 10px clamp(16px, 2vw, 22px);
+	border-block: 1px solid var(--rule);
+	background: var(--surface-sunken);
+}
+.transcript-metrics > div {
+	display: flex;
+	align-items: baseline;
+	gap: 7px;
+	min-width: 0;
+}
+.transcript-metrics dt {
+	font-family: var(--font-sans);
+	font-size: 12px;
+	color: var(--text-muted);
+}
+.transcript-metrics dd {
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-strong);
+}
+
+/* ── Steps ── */
+.transcript-steps {
+	display: grid;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+.transcript-step {
+	display: grid;
+	grid-template-columns:
+		1.5rem 0.75rem minmax(0, 0.78fr)
+		minmax(0, 1.22fr);
+	/* One explicit row, so the marker column can span 1 / -1 and the spine
+	   reaches the full height of the step. Rows are stretched by the taller of
+	   the two runs on the shared grid; the extra height still falls below the
+	   text, because every cell that holds content pins it to the start. */
+	grid-template-rows: auto;
+	column-gap: clamp(10px, 1.2vw, 18px);
+	padding-inline: clamp(16px, 2vw, 22px);
+}
+.transcript-step + .transcript-step {
+	border-top: 1px solid var(--rule-faint);
+}
+.step-ordinal,
+.step-call,
+.step-result {
+	padding-block: 13px;
+	min-width: 0;
+}
+.step-ordinal {
+	/* Both gutter cells are placed by hand. The marker carries a definite row
+	   so the spine can span the step, and grid places definite items first,
+	   which would otherwise hand it column one and push the ordinal across. */
+	grid-column: 1;
+	font-family: var(--font-mono);
+	font-size: 12px;
+	line-height: 1.5;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-muted);
+	text-align: right;
+}
+
+/* The spine: one line through the whole list, one marker per step. */
+/* The spine is continuous, so the marker cell spans every row of the step and
+   stretches to fill it. Anything short of that breaks the line at each row. */
+.step-marker {
+	position: relative;
+	grid-column: 2;
+	grid-row: 1 / -1;
+	align-self: stretch;
+}
+.step-marker::before {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: 0;
+	bottom: 0;
+	width: 1px;
+	transform: translateX(-50%);
+	background: var(--rule);
+}
+.transcript-step:first-child .step-marker::before {
+	top: 22px;
+}
+/* The spine ends on the last real step, not on the note that fills the row a
+   shorter run leaves empty. */
+.transcript-step[data-last="true"] .step-marker::before {
+	bottom: calc(100% - 22px);
+}
+.step-marker::after {
+	content: "";
+	position: absolute;
+	left: 50%;
+	top: 18px;
+	width: 9px;
+	height: 9px;
+	margin-left: -4.5px;
+	box-sizing: border-box;
+	border: 1.5px solid var(--text-muted);
+	border-radius: 999px;
+	background: var(--surface-raised);
+}
+.transcript-step[data-tone="ok"] .step-marker::after {
+	border-color: var(--state-ok);
+	background: var(--state-ok);
+}
+.transcript-step[data-tone="warn"] .step-marker::after {
+	border-color: var(--state-warn);
+	background: var(--state-warn);
+}
+.transcript-step[data-tone="bad"] .step-marker::after {
+	border-color: var(--state-bad);
+	background: var(--state-bad);
+}
+/* Reasoning is not an event against a system, so it reads as a hollow node. */
+.transcript-step[data-kind="think"] .step-marker::after {
+	border-style: dashed;
+	border-color: var(--text-muted);
+	background: var(--surface-raised);
+}
+
+.step-call {
+	display: grid;
+	align-content: start;
+	gap: 4px;
+}
+.step-tool {
+	font-family: var(--font-mono);
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.45;
+	letter-spacing: -0.01em;
+	color: var(--text-strong);
+	overflow-wrap: anywhere;
+}
+.step-input {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+}
+.step-result {
+	display: grid;
+	align-content: start;
+	gap: 7px;
+}
+.step-evidence {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 13.5px;
+	line-height: 1.5;
+	color: var(--text-body);
+	overflow-wrap: anywhere;
+}
+/* The verified-by pairing is the product's central rule, so the step states
+   it in words rather than leaving it to a floating chip. */
+.step-pair {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0 6px;
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+.step-pair code {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	color: var(--text-body);
+	overflow-wrap: anywhere;
+}
+.step-pair-ref {
+	color: var(--text-muted);
+}
+
+/* Dense columns stack the call above its result. */
+.transcript-steps.is-dense .transcript-step {
+	grid-template-columns: 1.5rem 0.75rem minmax(0, 1fr);
+	/* The result row absorbs the slack from the shared grid, and pins its own
+	   content to the top, so the call and its result stay together. */
+	grid-template-rows: auto 1fr;
+	row-gap: 7px;
+}
+.transcript-steps.is-dense .step-call,
+.transcript-steps.is-dense .step-result {
+	grid-column: 3;
+}
+.transcript-steps.is-dense .step-ordinal,
+.transcript-steps.is-dense .step-call {
+	padding-bottom: 0;
+}
+.transcript-steps.is-dense .step-result {
+	padding-top: 0;
+}
+.transcript-steps.is-dense .step-result:empty {
+	padding-block: 0;
+}
+
+/* The shorter of two runs on the shared grid leaves its final row empty. The
+   note says why there is no step there, so the column ends with a reason
+   rather than a hole. It carries no marker: the run has already ended. */
+.transcript-tail {
+	display: grid;
+	grid-template-columns: 1.5rem 0.75rem minmax(0, 1fr);
+	align-content: start;
+	column-gap: clamp(10px, 1.2vw, 18px);
+	padding: 13px clamp(16px, 2vw, 22px);
+	border-top: 1px solid var(--rule-faint);
+}
+.transcript-tail p {
+	grid-column: 3;
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 13px;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+
+/* ── Run footer ── */
+.transcript-foot {
+	display: grid;
+	gap: 5px;
+	margin-top: auto;
+	padding: clamp(14px, 1.8vw, 18px) clamp(16px, 2vw, 22px);
+	border-top: 1px solid var(--rule);
+}
+.transcript-outcome {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 1.4;
+	color: var(--text-strong);
+	overflow-wrap: anywhere;
+}
+.transcript-measured {
+	margin: 0;
+	font-family: var(--font-sans);
+	font-size: 12.5px;
+	line-height: 1.5;
+	color: var(--text-muted);
+}
+
+/* ── Two runs, one row grid ──
+   Comparison only works when the rows line up, so both step lists are
+   subgrids of the same rows: step n of the fix sits level with step n of the
+   refusal, and the divergence at step four is shown rather than asserted. */
+.run-compare {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+	grid-template-rows: auto auto repeat(var(--compare-rows, 7), auto) auto;
+	overflow: hidden;
+}
+.run-compare > [data-col="a"] {
+	grid-column: 1;
+}
+.run-compare > [data-col="b"] {
+	grid-column: 3;
+}
+.run-compare > .transcript-head {
+	grid-row: 1;
+}
+.run-compare > .transcript-metrics {
+	grid-row: 2;
+}
+.run-compare > .run-compare-steps {
+	grid-row: 3 / -2;
+	grid-template-rows: subgrid;
+}
+.run-compare > .transcript-foot {
+	grid-row: -2 / -1;
+}
+.run-compare-rule {
+	grid-column: 2;
+	grid-row: 1 / -1;
+	background: var(--rule);
+}
+
+/* ── Replay gating — server and no-JS render every step visible. ── */
+html.js .transcript-step[data-visible="false"],
+html.js .transcript-tail[data-visible="false"] {
+	opacity: 0.26;
+}
+html.js .transcript-step[data-visible="false"] .step-marker::after {
+	border-style: dashed;
+	border-color: var(--rule);
+	background: transparent;
+}
+html.js .transcript-step[data-visible="true"] {
+	animation: step-in 280ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html.js .transcript-step[data-visible="false"],
+	html.js .transcript-tail[data-visible="false"] {
+		opacity: 1;
+	}
+	html.js .transcript-step[data-visible="true"] {
+		animation: none;
+	}
+	.transcript-state[data-state="running"]::before {
+		animation: none;
+	}
+}
+
+/* Below the two-column breakpoint the comparison stacks: each run keeps its
+   own header, steps and footer, one after the other. */
+@media (max-width: 900px) {
+	.transcript-step {
+		grid-template-columns: 1.5rem 0.75rem minmax(0, 1fr);
+		grid-template-rows: auto 1fr;
+		row-gap: 7px;
+	}
+	.step-call,
+	.step-result {
+		grid-column: 3;
+	}
+	.step-ordinal,
+	.step-call {
+		padding-bottom: 0;
+	}
+	.step-result {
+		padding-top: 0;
+	}
+	.step-result:empty {
+		padding-block: 0;
+	}
+	.run-compare {
+		grid-template-columns: minmax(0, 1fr);
+		grid-template-rows: none;
+	}
+	.run-compare > [data-col="a"],
+	.run-compare > [data-col="b"] {
+		grid-column: 1;
+	}
+	.run-compare > .transcript-head,
+	.run-compare > .transcript-metrics,
+	.run-compare > .run-compare-steps,
+	.run-compare > .transcript-foot {
+		grid-row: auto;
+	}
+	/* Source order interleaves the two runs a part at a time, which is what the
+	   shared row grid needs; stacked, each run has to arrive whole. */
+	.run-compare > [data-col="a"] {
+		order: 1;
+	}
+	.run-compare > [data-col="b"] {
+		order: 2;
+	}
+	.run-compare > .run-compare-steps {
+		grid-template-rows: none;
+	}
+	.run-compare > [data-col="b"].transcript-head {
+		border-top: 1px solid var(--rule);
+	}
+	.run-compare-rule {
+		display: none;
+	}
+	/* Stacked, the runs no longer share rows, so there is no empty row for the
+	   note to fill and the footer states the outcome directly below it. */
+	.run-compare .transcript-tail {
+		display: none;
+	}
+}

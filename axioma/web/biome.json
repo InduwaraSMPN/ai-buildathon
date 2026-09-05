@@ -14,7 +14,8 @@
 			"!**/node_modules",
 			"!**/routeTree.gen.ts",
 			"!**/.baseline",
-			"!scripts"
+			"!scripts",
+			"!public/brand"
 		]
 	},
 	"overrides": [

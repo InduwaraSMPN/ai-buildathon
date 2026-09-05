@@ -19,8 +19,12 @@ export const Route = createFileRoute("/status")({
 		}
 	},
 	component: StatusPage,
+	pendingComponent: StatusPending,
 	errorComponent: StatusUnavailable,
 });
+
+const STATUS_LEDE =
+	"Daily availability for each Axiōma service over the last 90 days, measured from recorded incidents.";
 
 function tone(availability: number) {
 	if (availability === 1) return "is-up";
@@ -48,14 +52,20 @@ function ServiceCard({ service }: { service: ServiceStatus }) {
 				</span>
 			</header>
 
-			<div className="status-strip" aria-hidden="true">
-				{days.map((day) => (
-					<span
-						key={day.date}
-						className={`status-day ${tone(day.availability)}`}
-						title={dayLabel(day)}
-					/>
-				))}
+			<div className="status-track">
+				<div className="status-strip" aria-hidden="true">
+					{days.map((day) => (
+						<span
+							key={day.date}
+							className={`status-day ${tone(day.availability)}`}
+							title={dayLabel(day)}
+						/>
+					))}
+				</div>
+				<p className="status-scale" aria-hidden="true">
+					<span>{days.length} days ago</span>
+					<span>Today</span>
+				</p>
 			</div>
 			<ol
 				className="sr-only"
@@ -89,6 +99,21 @@ function StatusUnavailable() {
 	);
 }
 
+/** Shown while the loader waits on the API, in the shape of the card to come. */
+function StatusPending() {
+	return (
+		<>
+			<PageIntro title="Service status" lede={STATUS_LEDE} />
+			<section className="status-list shell" aria-busy="true">
+				<article className="status-card status-empty">
+					<h2>Checking services</h2>
+					<p>The last 90 days of availability are loading.</p>
+				</article>
+			</section>
+		</>
+	);
+}
+
 function StatusPage() {
 	const services = Route.useLoaderData();
 
@@ -98,12 +123,7 @@ function StatusPage() {
 
 	return (
 		<>
-			<PageIntro title="Service status">
-				<p>
-					Daily availability for each Axiōma service over the last 90 days,
-					measured from recorded incidents.
-				</p>
-			</PageIntro>
+			<PageIntro title="Service status" lede={STATUS_LEDE} />
 
 			<section className="status-list shell">
 				{services.length ? (

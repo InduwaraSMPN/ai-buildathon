@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as ContactRouteImport } from './routes/contact'
+import { Route as ImpactRouteImport } from './routes/impact'
 import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as ProductRouteImport } from './routes/product'
 import { Route as StatusRouteImport } from './routes/status'
@@ -29,6 +30,11 @@ const AboutRoute = AboutRouteImport.update({
 const ContactRoute = ContactRouteImport.update({
   id: '/contact',
   path: '/contact',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImpactRoute = ImpactRouteImport.update({
+  id: '/impact',
+  path: '/impact',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricingRoute = PricingRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
+  '/impact': typeof ImpactRoute
   '/pricing': typeof PricingRoute
   '/product': typeof ProductRoute
   '/status': typeof StatusRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
+  '/impact': typeof ImpactRoute
   '/pricing': typeof PricingRoute
   '/product': typeof ProductRoute
   '/status': typeof StatusRoute
@@ -68,20 +76,36 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/contact': typeof ContactRoute
+  '/impact': typeof ImpactRoute
   '/pricing': typeof PricingRoute
   '/product': typeof ProductRoute
   '/status': typeof StatusRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/contact' | '/pricing' | '/product' | '/status'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/contact'
+    | '/impact'
+    | '/pricing'
+    | '/product'
+    | '/status'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/contact' | '/pricing' | '/product' | '/status'
+  to:
+    | '/'
+    | '/about'
+    | '/contact'
+    | '/impact'
+    | '/pricing'
+    | '/product'
+    | '/status'
   id:
     | '__root__'
     | '/'
     | '/about'
     | '/contact'
+    | '/impact'
     | '/pricing'
     | '/product'
     | '/status'
@@ -91,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   ContactRoute: typeof ContactRoute
+  ImpactRoute: typeof ImpactRoute
   PricingRoute: typeof PricingRoute
   ProductRoute: typeof ProductRoute
   StatusRoute: typeof StatusRoute
@@ -117,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/contact'
       fullPath: '/contact'
       preLoaderRoute: typeof ContactRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/impact': {
+      id: '/impact'
+      path: '/impact'
+      fullPath: '/impact'
+      preLoaderRoute: typeof ImpactRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/pricing': {
@@ -147,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   ContactRoute: ContactRoute,
+  ImpactRoute: ImpactRoute,
   PricingRoute: PricingRoute,
   ProductRoute: ProductRoute,
   StatusRoute: StatusRoute,

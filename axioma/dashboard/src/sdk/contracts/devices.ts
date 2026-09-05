@@ -75,6 +75,14 @@ export const devicesContract = {
 	claimDevice: oc
 		.input(z.object({ code: z.string().trim().min(4).max(32) }))
 		.output(z.object({ deviceId: z.string(), hostname: z.string() })),
+	// Claiming in reverse, and the employee's to perform. `revokeDevice` is not
+	// the counterpart to it: that is IT-only and ends the enrolment, where this
+	// only unbinds the owner and leaves the machine enrolled and connected. The
+	// id is `min(1)` rather than `uuid()` because it comes straight back from
+	// `listMyDevices`, which also carries seeded rows whose ids are not uuids.
+	releaseMyDevice: oc
+		.input(z.object({ deviceId: z.string().min(1) }))
+		.output(z.object({ deviceId: z.string(), hostname: z.string() })),
 	rotateDeviceCredential: oc
 		.input(z.object({ deviceId: z.string().uuid() }))
 		.output(z.object({ delivered: z.boolean() })),

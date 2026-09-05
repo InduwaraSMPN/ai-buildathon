@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Arrow, PageIntro } from "../components/site";
+import { PageIntro } from "../components/site";
+import { CONTACT_EMAIL, PILOT_MAILTO } from "../content/site";
 import { pageMeta } from "../lib/seo";
 
 export const Route = createFileRoute("/contact")({
@@ -7,7 +8,7 @@ export const Route = createFileRoute("/contact")({
 		pageMeta({
 			title: "Contact — Axiōma",
 			description:
-				"Contact Axiōma to discuss the IT support loop you are working on.",
+				"One address for a shadow-mode pilot or a question about the loop.",
 			path: "/contact",
 		}),
 	component: ContactPage,
@@ -17,32 +18,31 @@ function ContactPage() {
 	return (
 		<>
 			<PageIntro
-				eyebrow="Contact / start here"
-				title="Tell us where support loses the thread."
-			>
-				<p>
-					Share the ticket path, systems, or device boundary you are thinking
-					about. We will continue the conversation by email.
-				</p>
-			</PageIntro>
+				title="Tell us which ticket class you want to see closed without a human."
+				lede="Share the environment, the device boundary, and the decisions that must remain human. We continue the conversation by email."
+			/>
 			<section className="contact-block shell">
-				<div className="contact-card">
-					<p className="eyebrow">General enquiries</p>
-					<a href="mailto:hello@axioma.dev?subject=Axi%C5%8Dma%20enquiry">
-						hello@axioma.dev <Arrow />
-					</a>
+				<div className="contact-card panel">
+					<h2>Start a shadow-mode pilot</h2>
+					<a href={PILOT_MAILTO}>{CONTACT_EMAIL}</a>
 					<p>
-						This opens your email client. There is no form submission or stored
-						contact data on this website.
+						This opens your email client. This website does not submit a form or
+						store your contact data.
 					</p>
 				</div>
-				<aside>
-					<p className="eyebrow">Useful context</p>
+				<aside className="panel">
+					<h2>Useful context</h2>
 					<ul>
-						<li>The support path you want to examine</li>
-						<li>Where the relevant evidence currently lives</li>
-						<li>Which actions should remain human decisions</li>
+						<li>Your environments and how many there are</li>
+						<li>Whether Windows laptops are managed</li>
+						<li>Whether ServiceNow remains the front door</li>
+						<li>Which actions must stay human decisions</li>
 					</ul>
+					<h3>What happens next</h3>
+					<p>
+						We reply by email and agree the ticket classes for a shadow-mode
+						pilot.
+					</p>
 				</aside>
 			</section>
 		</>

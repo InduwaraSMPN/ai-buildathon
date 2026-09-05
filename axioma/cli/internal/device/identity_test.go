@@ -103,3 +103,61 @@ func TestSaveCredentialsPreservesConcurrentSequence(t *testing.T) {
 		t.Fatalf("concurrent state lost: %+v, %v", loaded, err)
 	}
 }
+
+func TestForgetClearsCredentialAndKeepsIdentity(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	id, err := Load("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveCredentials(id, "", "axdc_secret"); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveSequence(id, 7); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveDaemonState(DaemonState{Connected: true, ClaimCode: "ABCDEF-1234"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Forget(id); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := Load("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.DeviceID != id.DeviceID {
+		t.Fatalf("device id changed: %s -> %s", id.DeviceID, after.DeviceID)
+	}
+	if after.Credential != "" || after.EnrolmentToken != "" {
+		t.Fatalf("authentication material survived: credential=%q token=%q", after.Credential, after.EnrolmentToken)
+	}
+	// The sequence is the replay watermark, not authentication. Losing it would
+	// make the gateway replay commands this device already ran.
+	if after.LastSeenSequence != 7 {
+		t.Fatalf("sequence = %d, want 7", after.LastSeenSequence)
+	}
+	state, err := LoadDaemonState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Connected || state.ClaimCode != "" {
+		t.Fatalf("daemon state still advertises a connection: %+v", state)
+	}
+}
+
+// A machine that was never enrolled has no daemon.json, and forgetting is then
+// a no-op rather than an error — otherwise `disconnect` fails on exactly the
+// device that has least to disconnect.
+func TestForgetWithoutDaemonStateSucceeds(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	id, err := Load("test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Forget(id); err != nil {
+		t.Fatalf("Forget on a device with no daemon state: %v", err)
+	}
+}

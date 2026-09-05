@@ -164,6 +164,37 @@ func SaveCredentials(id Identity, enrolmentToken, credential string) error {
 	return writeJSON(path, persistedIdentity(id))
 }
 
+// Forget clears the authentication material this device dials out with, and
+// leaves its identity alone.
+//
+// The device id is the machine's name for itself, so keeping it means a later
+// `enroll` reuses the gateway's existing row rather than stranding it and
+// minting a second one for the same laptop. What goes is the credential, which
+// is the only thing that lets the daemon open a stream at all: without it the
+// gateway refuses the connection. The persisted claim code goes too, because a
+// code names a device the gateway is still willing to have claimed and this one
+// is no longer dialling.
+//
+// It does not stop a running daemon. The daemon reads its identity once, before
+// its reconnect loop, so a process already holding a stream keeps it until it is
+// stopped — which is the same reason `enroll` tells the operator to restart the
+// task.
+func Forget(id Identity) error {
+	if err := SaveCredentials(id, "", ""); err != nil {
+		return err
+	}
+	state, err := LoadDaemonState()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	state.Connected = false
+	state.ClaimCode = ""
+	return SaveDaemonState(state)
+}
+
 func persistedIdentity(id Identity) Identity {
 	return Identity{DeviceID: id.DeviceID, LastSeenSequence: id.LastSeenSequence, EnrolmentToken: id.EnrolmentToken, Credential: id.Credential}
 }

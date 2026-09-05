@@ -82,6 +82,9 @@ export const reporterProcedure = {
 	// authorization; no device capability is involved, because claiming is a
 	// self-service act and an employee holds none.
 	claimDevice: authenticatedProcedure.claimDevice,
+	// Same reasoning in reverse, and the ownership predicate in the handler is
+	// what scopes it: a device this account does not own is not found.
+	releaseMyDevice: authenticatedProcedure.releaseMyDevice,
 	listPublicKnowledge: authenticatedProcedure.listPublicKnowledge,
 	getPublicKnowledgeArticle: authenticatedProcedure.getPublicKnowledgeArticle,
 	getMyApprovalStatus: authenticatedProcedure.getMyApprovalStatus,

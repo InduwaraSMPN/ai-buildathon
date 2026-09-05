@@ -1,247 +1,242 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { AxiomaMark } from "../components/brand";
-import { Arrow, ContactCta } from "../components/site";
-import { stages, steps, systems, transcript } from "../content/home";
+import { FeatureGrid } from "../components/feature-grid";
+import { LimitsList } from "../components/limits-list";
+import { RunReplay } from "../components/run-replay";
+import { ContactBand } from "../components/site";
+import { SourceRef, SourcesList } from "../components/sources";
+import { Transcript } from "../components/transcript";
+import { facts } from "../content/facts";
+import { limits } from "../content/limits";
+import { platformGroups } from "../content/platform";
+import { sources } from "../content/research";
+import { checkoutFix, proxyLaptopFix, reportingRefusal } from "../content/runs";
+import { PILOT_MAILTO } from "../content/site";
 import { pageMeta } from "../lib/seo";
+import { createSourceIndex } from "../lib/sources";
+
+const homeSources = ["R9", "R14", "R5", "M1", "M2", "M3"];
+const sourceIndex = createSourceIndex(homeSources);
+const ref = (id: string) => sourceIndex.get(id) ?? 0;
+
+const runRules = [
+	[
+		"Knowledge first",
+		"knowledge_search is always the first call. It combines lexical and vector retrieval.",
+	],
+	[
+		"One typed tool per turn",
+		"Axel names one tool and supplies typed parameters. It cannot compose a command. Ticket text is fenced as data.",
+	],
+	[
+		"Every write names its read",
+		"A write returning OK means the call was accepted. The verifying read is stamped by the API, not claimed by the model.",
+	],
+	[
+		"An observation before closure",
+		"cmdb_record_observation must succeed before resolve_ticket is accepted.",
+	],
+	[
+		"Bounded",
+		`${facts.maxToolCalls} tool calls, ${facts.maxModelTurns} model turns, ${facts.runDeadlineSeconds} seconds. A run ends resolved, escalated, failed, or exhausted.`,
+	],
+] as const;
 
 export const Route = createFileRoute("/")({
 	head: () =>
 		pageMeta({
-			title: "Axiōma — IT support, from ticket to action",
+			title: "Axiōma — IT support that verifies its own fixes",
 			description:
-				"Axiōma gives Axel the context and tools to route, diagnose, resolve, or clearly escalate an IT support ticket.",
+				"Axiōma is an IT service management platform with an agent inside it. Axel fixes the ticket, verifies the fix, or escalates with the evidence.",
 			path: "/",
 		}),
 	component: HomePage,
 });
 
-function Check() {
-	return (
-		<svg viewBox="0 0 12 12" aria-hidden="true" focusable="false">
-			<path
-				d="M2.6 6.3 4.9 8.6 9.4 3.9"
-				fill="none"
-				stroke="currentColor"
-				strokeWidth="1.9"
-				strokeLinecap="round"
-				strokeLinejoin="round"
-			/>
-		</svg>
-	);
-}
-
-function ContextMap() {
-	return (
-		<svg
-			className="context-map reveal"
-			viewBox="0 0 420 300"
-			role="img"
-			aria-label="A single ticket connected to the four systems its evidence is spread across"
-		>
-			<title>Where the evidence for one ticket lives</title>
-			{systems.map((system, index) => {
-				const y = 30 + index * 72;
-				return (
-					<g key={system.label}>
-						<path
-							className={system.found ? "map-link is-found" : "map-link"}
-							d={`M150 150 C 200 150, 205 ${y + 21}, 250 ${y + 21}`}
-						/>
-						<rect
-							className={system.found ? "map-node is-found" : "map-node"}
-							x="250"
-							y={y}
-							width="162"
-							height="42"
-							rx="14"
-						/>
-						<text className="map-label" x="266" y={y + 19}>
-							{system.label}
-						</text>
-						<text className="map-note" x="266" y={y + 32}>
-							{system.note}
-						</text>
-					</g>
-				);
-			})}
-			<rect
-				className="map-source"
-				x="8"
-				y="118"
-				width="142"
-				height="64"
-				rx="18"
-			/>
-			<text className="map-label is-source" x="26" y="145">
-				AX-1042
-			</text>
-			<text className="map-note is-source" x="26" y="162">
-				reported symptom
-			</text>
-		</svg>
-	);
-}
-
 function HomePage() {
 	return (
 		<>
-			<section className="hero shell reveal-group">
-				<div className="hero-copy">
-					<p className="eyebrow reveal">AI IT support / one accountable loop</p>
-					<h1 className="reveal">
-						From symptom
-						<br />
-						to <em>resolution.</em>
-					</h1>
-					<p className="hero-lede reveal">
-						Axiōma gives Axel the context and tools to carry an IT ticket from
-						an employee’s report to a verified fix—or a clear handoff.
+			<section className="hero shell">
+				<h1>
+					<span className="hero-line">Fixes the ticket.</span>{" "}
+					<span className="hero-line">Refuses the wrong fix.</span>{" "}
+					<span className="hero-line">Shows its work.</span>
+				</h1>
+				<div className="hero-side">
+					<p className="hero-lede">
+						Axiōma is an IT service management platform with an agent inside it.
+						Axel reads the ticket, gathers evidence, applies a typed fix where
+						one exists, and reads the state back before it closes anything. When
+						the fix is a policy decision, it escalates with a diagnosis instead.
 					</p>
-					<div className="hero-actions reveal">
-						<Link className="button" to="/product">
-							See how it works <Arrow />
-						</Link>
-						<Link className="text-link" to="/contact">
-							Talk to Axiōma <Arrow />
+					<div className="hero-actions">
+						<a className="button" href={PILOT_MAILTO}>
+							Start a shadow-mode pilot
+						</a>
+						<Link className="button-secondary" to="/product">
+							See the tools and limits
 						</Link>
 					</div>
 				</div>
-				<TicketVisual />
+				<div className="hero-run">
+					<RunReplay
+						id="run"
+						left={checkoutFix}
+						right={reportingRefusal}
+						caption={
+							<>
+								One fix and one refusal, side by side, on the demo stack. Tool
+								names and evidence are the real ones; reasoning is shortened.
+								Timings are measured on the demo stack and should be re-measured
+								on yours. <SourceRef id="M1" index={ref("M1")} />{" "}
+								<SourceRef id="M2" index={ref("M2")} />
+							</>
+						}
+					/>
+				</div>
 			</section>
 
-			<section className="statement dark-section">
-				<div className="shell statement-grid reveal-group">
-					<div className="statement-copy reveal">
-						<p className="eyebrow">The missing context</p>
-						<h2>Employees report symptoms. Support has to find the cause.</h2>
+			<section className="shell" aria-labelledby="cost-heading">
+				<div className="section-heading">
+					<h2 id="cost-heading">What one ticket costs today</h2>
+				</div>
+				<div className="grid-3 facts-grid">
+					<article>
+						<strong>$22 → $70 → $100</strong>
 						<p>
-							The evidence needed to route a ticket and fix it often lives
-							across systems. Axiōma brings investigation and action into the
-							same run, so the path does not end at classification.
+							Cost per ticket from level one through desktop support to level
+							three, in North America in 2019 dollars.{" "}
+							<SourceRef id="R9" index={ref("R9")} />
 						</p>
-					</div>
-					<ContextMap />
+					</article>
+					<article>
+						<strong>28 minutes</strong>
+						<p>
+							Employee time lost per IT issue in an industry survey.{" "}
+							<SourceRef id="R14" index={ref("R14")} />
+						</p>
+					</article>
+					<article>
+						<strong>70.2%</strong>
+						<p>
+							Incident time spent diagnosing and mitigating after the right team
+							has it, in a peer-reviewed study.{" "}
+							<SourceRef id="R5" index={ref("R5")} />
+						</p>
+					</article>
 				</div>
+				<p>
+					<Link className="inline-link" to="/impact">
+						Read the research
+					</Link>
+				</p>
 			</section>
 
-			<section className="process shell">
-				<div className="ledger-index" aria-hidden="true">
-					<span>Index 01 — The loop</span>
-					<span>File ref. AX-1042 · 3 stages</span>
+			<section className="shell" aria-labelledby="rules-heading">
+				<div className="section-heading">
+					<h2 id="rules-heading">Every run follows the same five rules</h2>
 				</div>
-				<div className="section-heading reveal-group">
-					<p className="eyebrow reveal">The loop</p>
-					<h2 className="reveal">
-						One ticket. One reasoning surface. A recorded outcome.
-					</h2>
-				</div>
-				<ol className="step-grid reveal-group">
-					{steps.map((step) => (
-						<li key={step.number} className="reveal">
-							<span>{step.number}</span>
-							<h3>{step.title}</h3>
-							<p>{step.body}</p>
+				<ol className="sequence">
+					{runRules.map(([title, body]) => (
+						<li key={title}>
+							<h3>{title}</h3>
+							<p>{body}</p>
 						</li>
 					))}
 				</ol>
 			</section>
 
-			<section className="device-section shell reveal-group">
-				<div className="device-copy">
-					<div className="ledger-index reveal" aria-hidden="true">
-						<span>Index 02 — At the edge</span>
-						<span>axel-cli / device-017</span>
-					</div>
-					<p className="eyebrow reveal">Across the boundary</p>
-					<h2 className="reveal">
-						Infrastructure when it is there. The laptop when it is here.
+			<section className="shell" aria-labelledby="laptop-heading">
+				<div className="section-heading">
+					<h2 id="laptop-heading">
+						The same loop reaches the employee’s laptop
 					</h2>
-					<p className="reveal">
-						Axel works against connected infrastructure, or reaches the
-						employee’s device through axel-cli. Device actions are typed and the
-						result is read back before the ticket closes.
+					<p>
+						<code>axel-cli</code> runs typed actions only. It does not reason,
+						connects outbound, runs non-admin, and is claimed by the employee
+						with a code.
 					</p>
-					<Link className="text-link reveal" to="/product">
-						Explore the ticket flow <Arrow />
-					</Link>
 				</div>
-				<div
-					className="terminal reveal"
-					role="img"
-					aria-label="Illustration of axel-cli reading device state, running a typed action, then reading the state back"
-				>
-					<div className="terminal-bar">
-						<span className="terminal-dots" aria-hidden="true">
-							<i />
-							<i />
-							<i />
+				<Transcript
+					run={proxyLaptopFix}
+					frame={proxyLaptopFix.steps.length}
+					headingLevel={3}
+				/>
+				<p className="meta">
+					Typed actions only, and no remote session.{" "}
+					<SourceRef id="M3" index={ref("M3")} />
+				</p>
+			</section>
+
+			<section className="shell" aria-labelledby="changes-heading">
+				<div className="section-heading">
+					<h2 id="changes-heading">What Axel may change is a short list</h2>
+				</div>
+				<div className="scope-grid grid-3">
+					<article>
+						<span className="state" data-tone="ok">
+							Typed action
 						</span>
-						<span>axel-cli / device-017</span>
-						<span className="status-dot">connected</span>
-					</div>
-					<code>
-						{transcript.map((line) => (
-							<span className="terminal-line" key={line.at + line.text}>
-								<span className="terminal-time">{line.at}</span>
-								<span className={line.kind}>{line.text}</span>
-								<span className="terminal-phase">{line.phase ?? ""}</span>
-							</span>
-						))}
-					</code>
-					<div className="terminal-foot">
-						<span>Typed action</span>
-						<span>Result read back</span>
-						<span>No GUI control</span>
-					</div>
+						<h3>Cluster</h3>
+						<p>
+							One field: an image tag or digest. A dry-run comes first. Apply
+							creates a standard change record with a rollback plan and a
+							five-minute verification deadline.
+						</p>
+					</article>
+					<article>
+						<span className="state" data-tone="ok">
+							Typed action
+						</span>
+						<h3>Laptop</h3>
+						<p>
+							Seventeen typed actions. Each is paired with the facet that
+							observes its result.
+						</p>
+					</article>
+					<article>
+						<span className="state" data-tone="warn">
+							Proposal
+						</span>
+						<h3>Anything else</h3>
+						<p>
+							Axel proposes it for a named person. The approver cannot be the
+							person who started the run. Axel holds no credentials; the API
+							executes every side effect.
+						</p>
+					</article>
 				</div>
 			</section>
 
-			<ContactCta />
-		</>
-	);
-}
+			<section className="shell" aria-labelledby="platform-heading">
+				<div className="section-heading">
+					<h2 id="platform-heading">
+						The service desk around the agent is a full one
+					</h2>
+				</div>
+				<FeatureGrid groups={platformGroups} limit={6} />
+				<p>
+					<Link className="inline-link" to="/product" hash="platform">
+						See the full platform
+					</Link>
+				</p>
+			</section>
 
-function TicketVisual() {
-	return (
-		<div
-			className="ticket-visual reveal"
-			role="img"
-			aria-label="Work order dossier AX-1042"
-		>
-			<div className="ticket-holes" aria-hidden="true" />
-			<div className="ticket-sheet">
-				<div className="ticket-topline">
-					<span>AX-1042</span>
-					<span className="work-order-label">Work order</span>
-					<span className="live-pill">In progress</span>
+			<section className="shell" aria-labelledby="limits-heading">
+				<div className="section-heading">
+					<h2 id="limits-heading">What it does not do</h2>
 				</div>
-				<h2>Deployment will not start</h2>
-				<p>Reported by Maya · Platform Engineering</p>
-				<div className="ticket-route">
-					{stages.map((stage, index) => (
-						<div
-							key={stage.title}
-							className={stages[index + 1]?.done ? "rail-done" : undefined}
-						>
-							<span className={stage.done ? "node is-done" : "node"}>
-								{stage.done ? <Check /> : null}
-							</span>
-							<strong>{stage.title}</strong>
-							<small>{stage.note}</small>
-						</div>
-					))}
+				<LimitsList limits={limits} />
+			</section>
+			<section
+				className="shell sources-compact"
+				aria-labelledby="home-sources-heading"
+			>
+				<div className="section-heading">
+					<h2 id="home-sources-heading">Sources</h2>
 				</div>
-				<div className="ticket-note">
-					<span>
-						<AxiomaMark className="ticket-note-mark" />
-						Axel — 09:42
-					</span>
-					<p>
-						Bad image tag identified. Verifying the intended image before
-						patching. Evidence retained for handoff if fix is not permitted.
-					</p>
-				</div>
-			</div>
-		</div>
+				<SourcesList ids={homeSources} sources={sources} />
+			</section>
+			<ContactBand />
+		</>
 	);
 }

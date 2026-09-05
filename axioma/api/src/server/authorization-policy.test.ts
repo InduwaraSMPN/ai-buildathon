@@ -15,6 +15,7 @@ const authenticatedProcedures = new Set([
 	"privateData",
 	"listMyDevices",
 	"claimDevice",
+	"releaseMyDevice",
 	"listPublicKnowledge",
 	"getPublicKnowledgeArticle",
 	"getMyApprovalStatus",

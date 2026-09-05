@@ -19,6 +19,12 @@ function hashToken(token: string): string {
 }
 
 /**
+ * How far ahead of the seed run the demo proposals expire. Each one is offset a
+ * further day beyond this so the queue does not empty all at once.
+ */
+const PROPOSAL_EXPIRY_DAYS = 30;
+
+/**
  * Plain English, because this text is read aloud off the approval screen. A
  * reason a person cannot evaluate is not an authorisation prompt.
  */
@@ -268,7 +274,15 @@ export async function seedAssetsAndDevices(): Promise<void> {
 			// expiry both emptied the pending queue — no Approve or Reject to point
 			// at — and rewrote the approved row to `expired`, which then showed as
 			// expired and "Decided by Jamie Chen" on the same card.
-			const expiresAt = new Date(Date.now() + (i + 3) * 24 * 60 * 60_000);
+			//
+			// The window is a month rather than the few days it was, because these
+			// rows are inserted with `onConflictDoNothing`: re-running the seed does
+			// not refresh an expiry that has already passed, so a short window
+			// silently empties the approval queue some days after the first seed and
+			// nothing short of deleting the rows brings it back.
+			const expiresAt = new Date(
+				Date.now() + (PROPOSAL_EXPIRY_DAYS + i) * 24 * 60 * 60_000,
+			);
 			const createdAt = daysFromEpoch(12 + i, 10);
 			const command = DEMO_PROPOSAL_COMMANDS[i] ?? [
 				"powershell.exe",

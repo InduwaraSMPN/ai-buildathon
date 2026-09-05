@@ -44,6 +44,8 @@ func main() {
 		err = runStatus(ctx)
 	case "enroll":
 		err = runEnroll(ctx)
+	case "disconnect":
+		err = runDisconnect(ctx)
 	case "doctor":
 		err = runDoctor(ctx)
 	case "version":
@@ -65,11 +67,12 @@ func main() {
 func usage() {
 	fmt.Fprint(os.Stderr, `axel-cli — Axiōma device agent
 
-  daemon    Hold the connection and execute actions. Headless; no terminal UI.
-  status    Show connection and device state.
-  enroll    Register this device with the gateway.
-  doctor    Check identity, state directory, and local prerequisites.
-  version   Print the agent version.
+  daemon      Hold the connection and execute actions. Headless; no terminal UI.
+  status      Show connection and device state.
+  enroll      Register this device with the gateway.
+  disconnect  Clear this device's credential so it stops dialling the gateway.
+  doctor      Check identity, state directory, and local prerequisites.
+  version     Print the agent version.
 
 The daemon is installed as a logon Scheduled Task and is not run by hand.
 `)
@@ -132,6 +135,22 @@ func runEnroll(ctx context.Context) error {
 		return err
 	}
 	_, err = tea.NewProgram(tui.NewEnroll(id, config), tea.WithContext(ctx)).Run()
+	return err
+}
+
+// runDisconnect is enrol in reverse, from the machine's own side. Releasing a
+// computer in the portal unbinds its owner and leaves it connected; this leaves
+// the fleet outright, and neither implies the other.
+func runDisconnect(ctx context.Context) error {
+	id, err := device.Load(agentVersion)
+	if err != nil {
+		return err
+	}
+	config, err := gatewayConfig()
+	if err != nil {
+		return err
+	}
+	_, err = tea.NewProgram(tui.NewDisconnect(id, config.GRPCHost), tea.WithContext(ctx)).Run()
 	return err
 }
 

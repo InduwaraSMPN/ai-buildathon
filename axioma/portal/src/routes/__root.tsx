@@ -24,11 +24,11 @@ const Devtools = import.meta.env.DEV
 				default: function Devtools() {
 					return (
 						<>
-							<TanStackRouterDevtools position="bottom-left" />
-							<ReactQueryDevtools
+							{/* <TanStackRouterDevtools position="bottom-left" /> */}
+							{/* <ReactQueryDevtools
 								position="bottom"
 								buttonPosition="bottom-right"
-							/>
+							/> */}
 						</>
 					);
 				},
