@@ -29,6 +29,20 @@
       "when": 1788553212929,
       "tag": "0003_glorious_wild_child",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788567727801,
+      "tag": "0004_hard_tempest",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788572740421,
+      "tag": "0005_starter_device_rule",
+      "breakpoints": true
     }
   ]
 }
