@@ -8,6 +8,21 @@ export const intakeCopy = {
 	composerPlaceholder: "Describe what’s getting in the way…",
 	manualEscape: "Fill in the form myself",
 	manualCardTitle: "Request details",
+	/** Example openers on the empty composer, so a blank box is not the only prompt. */
+	composerExamples: [
+		"My laptop won’t start",
+		"I can’t sign in to an app",
+		"I need access to a shared folder",
+	],
+	/** The assistant's name, shown on the panel that carries the conversation. */
+	assistant: "Axel",
+	assistantRole: "Drafting your request with you",
+	reviewTitle: "Review your request",
+	reviewDescription:
+		"Axel wrote this from what you told it. Change anything that reads wrong, fill in what it left blank, then send.",
+	sectionRequest: "The request",
+	sectionImpact: "Who it affects",
+	sectionDetails: "Extra details support needs",
 	statusLabel: {
 		retrieving: "Searching help articles…",
 		reading_attachments: "Reading your screenshot…",
@@ -21,7 +36,12 @@ export const intakeCopy = {
 	bannerTitle: "Drafted from your description",
 	bannerDescription: "Check it before sending.",
 	needsInputHeading: "Needs your input",
+	needsInputCount: (count: number) =>
+		count === 1 ? "1 field needs you" : `${count} fields need you`,
+	/** Marks the individual field the banner is counting. */
+	fieldNeedsInput: "Needs you",
 	fieldFilledByAi: "Filled by AI",
+	fieldEdited: "You changed this",
 	revertToDraft: "Revert to draft",
 	confirmSubcategoryHeading: "Confirm where this request should go",
 	confirmSubcategory:
@@ -49,6 +69,7 @@ export const intakeCopy = {
 	incidentFallbackSummary: "A few details were left blank",
 	needsInputFields: (fields: string) => `Check these before sending: ${fields}`,
 	requiresAttention: "Please check the highlighted fields before sending.",
+	readyToSend: "Everything needed is filled in.",
 	cancelError: "We couldn’t discard this request. Please try again.",
 	startError: "We couldn’t start a new request. Please try again.",
 	saveError: "We couldn’t save your changes. Please try again.",

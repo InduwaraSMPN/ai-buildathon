@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { PageHeading, PageShell } from "@/components/ticket-ui";
-import { buttonVariants } from "@/components/ui/button";
+import { AxiomaMark } from "@/components/brand";
+import { PageHeading, PageShell, panelCardClass } from "@/components/ticket-ui";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -44,6 +45,7 @@ import {
 import type { DraftAttachment } from "@/features/intake/types";
 import type { RequestFormInitialValues } from "@/features/tickets/components/request-form";
 import { RequestForm } from "@/features/tickets/components/request-form";
+import { cn } from "@/lib/utils";
 import { orpc } from "@/utils/orpc";
 
 type NewTicketSearch = { mode?: "manual" };
@@ -287,10 +289,6 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 		onReset();
 	};
 
-	const handleEditFurther = () => {
-		handleMessage(intakeCopy.editFurther);
-	};
-
 	const handleManual = () => {
 		writeSavedDraftValues({
 			title: state.values.title,
@@ -340,8 +338,9 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 		}
 	};
 
-	const composer = (
+	const composer = (variant: "hero" | "docked") => (
 		<IntakeComposer
+			variant={variant}
 			draftId={state.draftId}
 			streaming={state.streaming}
 			visionEnabled={capabilities.data?.vision ?? false}
@@ -356,8 +355,8 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 		return (
 			<PageShell>
 				<BackLink />
-				<div className="flex min-h-[calc(100vh-12.75rem)] items-center justify-center">
-					{composer}
+				<div className="flex min-h-[calc(100vh-14rem)] items-center justify-center">
+					{composer("hero")}
 				</div>
 			</PageShell>
 		);
@@ -369,7 +368,16 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 		return (
 			<PageShell>
 				<BackLink />
-				<Card className="mx-auto flex min-h-[60vh] w-full max-w-3xl flex-col overflow-hidden p-0">
+				{/* The panel is as tall as the viewport allows, so the transcript —
+				    not a second copy of the landing hero — is what fills the screen
+				    once the conversation has started. */}
+				<Card
+					className={cn(
+						panelCardClass,
+						"mx-auto flex h-[calc(100vh-14rem)] min-h-[32rem] w-full max-w-3xl flex-col gap-0 p-0 py-0",
+					)}
+				>
+					<AssistantRail onManual={handleManual} />
 					<div className="min-h-0 flex-1">
 						<IntakeConversation
 							transcript={state.transcript}
@@ -398,7 +406,7 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 					{/* Always available: a deflection ends the turn with `complete`, and
 					    gating the composer on that left the user with two buttons and
 					    no way to type a follow-up. */}
-					<div className="border-t p-4">{composer}</div>
+					<div className="border-t bg-muted/30 p-2.5">{composer("docked")}</div>
 				</Card>
 			</PageShell>
 		);
@@ -407,10 +415,12 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 	return (
 		<PageShell>
 			<BackLink />
+			{/* The question has been answered by this point, so the heading stops
+			    asking it. */}
 			<PageHeading
 				eyebrow={intakeCopy.eyebrow}
-				title={intakeCopy.composerTitle}
-				description={intakeCopy.composerDescription}
+				title={intakeCopy.reviewTitle}
+				description={intakeCopy.reviewDescription}
 			/>
 			<ReviewLayout
 				conversation={
@@ -438,11 +448,11 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 						onConfirmSubcategory={() =>
 							setState((prev) => confirmSubcategory(prev))
 						}
-						onManual={handleManual}
 						onSubmit={handleSubmit}
 					/>
 				}
-				onEditFurther={handleEditFurther}
+				composer={composer("docked")}
+				onManual={handleManual}
 				messageKey={`${state.transcript.length}:${state.assistantMessage.length}:${state.articles.length}`}
 			/>
 		</PageShell>
@@ -452,12 +462,20 @@ function IntakeRouter({ onReset }: { onReset: () => void }) {
 function ReviewLayout({
 	conversation,
 	review,
-	onEditFurther,
+	composer,
+	onManual,
 	messageKey,
 }: {
 	conversation: ReactNode;
 	review: ReactNode;
-	onEditFurther: () => void;
+	/**
+	 * The rail keeps a live composer rather than a single canned "add more
+	 * detail" message: the employee reading the draft is exactly the person who
+	 * has the detail it is missing, and typing it is how they said everything
+	 * else on the page.
+	 */
+	composer: ReactNode;
+	onManual: () => void;
 	/** Changes whenever the assistant says something new. */
 	messageKey: string;
 }) {
@@ -477,26 +495,26 @@ function ReviewLayout({
 	// buttons and two live regions announcing the same text. Choose one tree.
 	if (wide)
 		return (
-			<div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-				<Card className="min-h-0 overflow-hidden p-0">
-					<CardHeader className="border-b py-3">
-						<CardTitle className="flex items-center justify-between text-sm">
-							<span>{intakeCopy.conversationTab}</span>
-							<button
-								type="button"
-								className="text-primary text-xs underline underline-offset-4"
-								onClick={onEditFurther}
-							>
-								{intakeCopy.editFurther}
-							</button>
-						</CardTitle>
-					</CardHeader>
-					<CardContent className="h-[calc(100vh-16rem)] p-0">
+			// The conversation is reference material and the form is the work, so
+			// the rail is fixed to the viewport and keeps its own scroll while the
+			// request scrolls the page. The two used to be equal-height columns,
+			// which left the transcript column mostly empty beside a form several
+			// screens long.
+			<div className="grid items-start gap-5 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] xl:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
+				<Card
+					className={cn(
+						panelCardClass,
+						"sticky top-[5.5rem] flex h-[calc(100vh-7rem)] min-h-0 flex-col gap-0 p-0 py-0",
+					)}
+				>
+					<AssistantRail onManual={onManual} />
+					<CardContent className="min-h-0 flex-1 p-0">
 						{conversation}
 					</CardContent>
+					<div className="border-t bg-muted/30 p-2.5">{composer}</div>
 				</Card>
-				<Card className="min-h-0 overflow-hidden p-0">
-					<CardContent className="p-6">{review}</CardContent>
+				<Card className={cn(panelCardClass, "min-h-0 overflow-visible p-0")}>
+					<CardContent className="p-4 sm:p-6">{review}</CardContent>
 				</Card>
 			</div>
 		);
@@ -521,28 +539,57 @@ function ReviewLayout({
 				<TabsTrigger value="request">{intakeCopy.requestTab}</TabsTrigger>
 			</TabsList>
 			<TabsContent value="conversation">
-				<Card className="h-[60vh] overflow-hidden p-0">
-					<CardHeader className="border-b py-3">
-						<CardTitle className="flex items-center justify-between text-sm">
-							<span>{intakeCopy.conversationTab}</span>
-							<button
-								type="button"
-								className="text-primary text-xs underline underline-offset-4"
-								onClick={onEditFurther}
-							>
-								{intakeCopy.editFurther}
-							</button>
-						</CardTitle>
-					</CardHeader>
-					<CardContent className="h-full p-0">{conversation}</CardContent>
+				<Card
+					className={cn(
+						panelCardClass,
+						"flex h-[60vh] flex-col gap-0 p-0 py-0",
+					)}
+				>
+					<AssistantRail onManual={onManual} />
+					<CardContent className="min-h-0 flex-1 p-0">
+						{conversation}
+					</CardContent>
+					<div className="border-t bg-muted/30 p-2.5">{composer}</div>
 				</Card>
 			</TabsContent>
 			<TabsContent value="request">
-				<Card className="p-0">
-					<CardContent className="p-6">{review}</CardContent>
+				<Card className={cn(panelCardClass, "overflow-visible p-0")}>
+					<CardContent className="p-4 sm:p-6">{review}</CardContent>
 				</Card>
 			</TabsContent>
 		</Tabs>
+	);
+}
+
+/**
+ * Who is on the other end of the transcript, and the one thing to do with it.
+ * The triage panel had no header at all, so the composer underneath was
+ * carrying the brand mark, the page heading and the escape link inside a chat
+ * footer; the rail takes those back and leaves the composer as an input.
+ */
+function AssistantRail({ onManual }: { onManual: () => void }) {
+	return (
+		<div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
+			<div className="flex min-w-0 items-center gap-2.5">
+				<span
+					className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+					aria-hidden="true"
+				>
+					<AxiomaMark className="size-4" />
+				</span>
+				<div className="min-w-0">
+					<p className="font-heading font-medium text-sm leading-tight">
+						{intakeCopy.assistant}
+					</p>
+					<p className="truncate text-muted-foreground text-xs">
+						{intakeCopy.assistantRole}
+					</p>
+				</div>
+			</div>
+			<Button variant="ghost" size="sm" onClick={onManual}>
+				{intakeCopy.manualEscape}
+			</Button>
+		</div>
 	);
 }
 

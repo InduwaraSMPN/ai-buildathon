@@ -42,6 +42,13 @@ type DaemonState struct {
 	// Shown by `axel-cli status` so the employee can type it into the portal and
 	// claim this machine. Enrolment alone leaves the device unowned.
 	ClaimCode string `json:"claimCode,omitempty"`
+	// Whether someone owns this machine in the portal, reported by the gateway on
+	// every hello. It is a separate binding from the gateway connection above: a
+	// device stays enrolled and connected after its owner releases it, and only
+	// this says whether it is still linked to an account. `status` shows both so
+	// an employee whose device vanished from the portal is not left reading
+	// "connected" and concluding nothing is wrong.
+	Claimed bool `json:"claimed,omitempty"`
 }
 
 // StateDir is where the agent keeps its identity and local state.
@@ -192,6 +199,7 @@ func Forget(id Identity) error {
 	}
 	state.Connected = false
 	state.ClaimCode = ""
+	state.Claimed = false
 	return SaveDaemonState(state)
 }
 

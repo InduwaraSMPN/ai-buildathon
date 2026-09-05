@@ -22,18 +22,23 @@ export function Question({
 	onChange: (value: string) => void;
 }) {
 	return (
-		<FieldSet className="gap-3">
-			<FieldLegend variant="label">{legend}</FieldLegend>
+		<FieldSet className="gap-2">
+			<FieldLegend variant="label" className="mb-0">
+				{legend}
+			</FieldLegend>
 			<RadioGroup
 				value={value}
 				onValueChange={(next) => onChange(String(next))}
-				className="gap-3 sm:grid-cols-3"
+				className="gap-2 sm:grid-cols-3"
 			>
 				{options.map((option) => (
 					<Label
 						key={option.value}
 						htmlFor={`${name}-${option.value}`}
-						className="flex min-h-12 cursor-pointer items-center gap-3 rounded-md border p-3 font-normal has-[[data-checked]]:border-primary has-[[data-checked]]:bg-muted/50"
+						// Chosen reads as chosen from across the page: the tint alone
+						// was a 4% wash behind a hairline border, which is why the
+						// answered questions looked as empty as the unanswered ones.
+						className="flex min-h-10 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 font-normal text-sm transition-colors hover:bg-muted/50 has-[[data-checked]]:border-primary has-[[data-checked]]:bg-primary/10 has-[[data-checked]]:font-medium has-[[data-checked]]:text-foreground"
 					>
 						<RadioGroupItem
 							id={`${name}-${option.value}`}

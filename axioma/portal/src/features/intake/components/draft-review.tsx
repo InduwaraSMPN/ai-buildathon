@@ -1,8 +1,8 @@
 import { RiSendPlane2Line, RiSparkling2Line } from "@remixicon/react";
 import { useQuery } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 import { useMemo } from "react";
 import { timeAgo } from "@/components/ticket-ui";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
 	Field,
@@ -19,7 +19,6 @@ import {
 	SelectTrigger,
 	SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
@@ -85,13 +84,27 @@ function countFilledFields(values: DraftViewState["values"]): number {
 	return scalars + nested;
 }
 
+/**
+ * One run of related questions. The drafted form used to be a single flat
+ * column of nine controls, which read as a wall the moment the catalogue added
+ * fields of its own; the headings give it the shape of the request it
+ * describes.
+ */
+function Section({ title, children }: { title: string; children: ReactNode }) {
+	return (
+		<section className="flex min-w-0 flex-col gap-4 border-border border-t pt-6 first:border-t-0 first:pt-0">
+			<h3 className="font-heading font-semibold text-base">{title}</h3>
+			{children}
+		</section>
+	);
+}
+
 export function DraftReview({
 	state,
 	submitting,
 	onFieldChange,
 	onRevert,
 	onConfirmSubcategory,
-	onManual,
 	onSubmit,
 }: {
 	state: DraftViewState;
@@ -99,7 +112,6 @@ export function DraftReview({
 	onFieldChange: (key: string, value: unknown) => void;
 	onRevert: (key: string) => void;
 	onConfirmSubcategory: () => void;
-	onManual: () => void;
 	onSubmit: () => void;
 }) {
 	const devices = useQuery(orpc.listMyDevices.queryOptions());
@@ -134,6 +146,9 @@ export function DraftReview({
 				.map(([key]) => key),
 		[state.aiDraft],
 	);
+	// The same set the banner counts, addressed by path, so a field can carry its
+	// own marker instead of leaving the banner to name it from a distance.
+	const needsInputPaths = useMemo(() => new Set(needsInput), [needsInput]);
 
 	// The fields the model left blank are collected into one summary line that
 	// names them, rather than a warning bolted to each one. Container keys
@@ -217,7 +232,7 @@ export function DraftReview({
 
 	return (
 		<div
-			className="flex min-w-0 flex-col gap-5"
+			className="flex min-w-0 flex-col gap-6"
 			aria-busy={state.streaming ? "true" : "false"}
 		>
 			{/* The form is what fills itself in, so the debounced summary belongs
@@ -226,171 +241,202 @@ export function DraftReview({
 			<div className="sr-only" aria-live="polite" aria-atomic="false">
 				{announcement}
 			</div>
-			<Alert className="gap-3 rounded-md" data-variant="outline">
-				<RiSparkling2Line className="size-5 text-info" aria-hidden="true" />
-				<AlertTitle>{intakeCopy.bannerTitle}</AlertTitle>
-				<AlertDescription>{intakeCopy.bannerDescription}</AlertDescription>
-			</Alert>
 
-			{needsInput.length > 0 ? (
-				<div className="flex flex-col gap-1 rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-					<span className="font-medium">{intakeCopy.needsInputHeading}</span>
-					<span>
-						{needsInputLabels.length > 0
-							? intakeCopy.needsInputFields(
-									LIST_FORMAT.format(needsInputLabels),
-								)
-							: intakeCopy.incidentFallbackSummary}
-					</span>
+			{/* One banner, not two. "Drafted from your description" and "Needs your
+			    input" were stacked blocks making the same request — check this
+			    before you send it — so the second is now the second line of the
+			    first, and the fields it counts carry their own marker. */}
+			<div className="flex gap-3 rounded-xl border bg-muted/40 p-4">
+				<RiSparkling2Line
+					className="mt-0.5 size-5 shrink-0 text-info"
+					aria-hidden="true"
+				/>
+				<div className="flex min-w-0 flex-col gap-1">
+					<p className="font-medium text-sm">{intakeCopy.bannerTitle}</p>
+					{needsInput.length > 0 ? (
+						<p className="text-sm text-warning">
+							{/* Counted from the labels, not the raw keys: a key the form
+							    does not render carries no label and is dropped from the
+							    list, so counting keys promised one more field to check
+							    than the page could show. */}
+							<span className="font-medium">
+								{intakeCopy.needsInputCount(
+									needsInputLabels.length || needsInput.length,
+								)}
+							</span>
+							{needsInputLabels.length > 0
+								? ` — ${LIST_FORMAT.format(needsInputLabels)}`
+								: ` — ${intakeCopy.incidentFallbackSummary}`}
+						</p>
+					) : (
+						<p className="text-muted-foreground text-sm">
+							{intakeCopy.bannerDescription}
+						</p>
+					)}
 				</div>
-			) : null}
+			</div>
 
-			<FieldGroup>
-				<Field>
-					<FieldProvenance
-						source={provenance(state, "title")}
-						hasAiValue={hasAiValue(state, "title")}
-						onRevert={() => onRevert("title")}
-					>
-						<FieldLabel htmlFor="intake-title">
-							{requestFormCopy.summaryLabel}
-						</FieldLabel>
-					</FieldProvenance>
-					<Input
-						id="intake-title"
-						maxLength={160}
-						value={title}
-						onChange={(event) => onFieldChange("title", event.target.value)}
-						aria-invalid={!titleValid}
-					/>
-					{title && !titleValid ? (
-						<FieldError>
-							{titleParse.error?.issues[0]?.message ??
-								requestFormCopy.summaryTooShort}
-						</FieldError>
-					) : null}
-				</Field>
-
-				<Field>
-					<FieldProvenance
-						source={provenance(state, "body")}
-						hasAiValue={hasAiValue(state, "body")}
-						onRevert={() => onRevert("body")}
-					>
-						<FieldLabel htmlFor="intake-body">
-							{requestFormCopy.incidentDetailsLabel}
-						</FieldLabel>
-					</FieldProvenance>
-					<Textarea
-						id="intake-body"
-						maxLength={10_000}
-						value={body}
-						onChange={(event) => onFieldChange("body", event.target.value)}
-						className="min-h-40"
-						aria-invalid={!bodyValid}
-					/>
-					{body && !bodyValid ? (
-						<FieldError>
-							{bodyParse.error?.issues[0]?.message ??
-								requestFormCopy.detailsTooShort}
-						</FieldError>
-					) : null}
-				</Field>
-
-				<Separator />
-
-				<Field>
-					<FieldProvenance
-						source={provenance(state, "impact")}
-						hasAiValue={hasAiValue(state, "impact")}
-						onRevert={() => onRevert("impact")}
-					>
-						{/* A field the model was unsure about is left empty rather than
-						    guessed, so nothing is preselected until a value exists. */}
-						<Question
-							legend={requestFormCopy.affectedPeopleLegend}
-							name="intake-impact"
-							value={
-								state.values.impact
-									? (impactToKey[state.values.impact] ?? null)
-									: null
-							}
-							options={affectedPeopleOptions}
-							onChange={handleImpact}
-						/>
-					</FieldProvenance>
-				</Field>
-
-				<Field>
-					<FieldProvenance
-						source={provenance(state, "urgency")}
-						hasAiValue={hasAiValue(state, "urgency")}
-						onRevert={() => onRevert("urgency")}
-					>
-						<Question
-							legend={requestFormCopy.timingLegend}
-							name="intake-urgency"
-							value={
-								state.values.urgency
-									? (timingToKey[state.values.urgency] ?? null)
-									: null
-							}
-							options={timingOptions}
-							onChange={handleUrgency}
-						/>
-					</FieldProvenance>
-				</Field>
-
-				{devices.isPending ? (
-					<p className="text-muted-foreground text-sm" role="status">
-						{requestFormCopy.devicesLoading}
-					</p>
-				) : null}
-				{devices.data?.length ? (
+			<Section title={intakeCopy.sectionRequest}>
+				<FieldGroup>
 					<Field>
 						<FieldProvenance
-							source={provenance(state, "deviceId")}
-							hasAiValue={hasAiValue(state, "deviceId")}
-							onRevert={() => onRevert("deviceId")}
+							source={provenance(state, "title")}
+							hasAiValue={hasAiValue(state, "title")}
+							needsInput={needsInputPaths.has("title")}
+							onRevert={() => onRevert("title")}
 						>
-							<FieldLabel htmlFor="intake-device">
-								{requestFormCopy.deviceLabel}
+							<FieldLabel htmlFor="intake-title">
+								{requestFormCopy.summaryLabel}
 							</FieldLabel>
+							<Input
+								id="intake-title"
+								maxLength={160}
+								value={title}
+								onChange={(event) => onFieldChange("title", event.target.value)}
+								aria-invalid={!titleValid}
+							/>
+							{title && !titleValid ? (
+								<FieldError>
+									{titleParse.error?.issues[0]?.message ??
+										requestFormCopy.summaryTooShort}
+								</FieldError>
+							) : null}
 						</FieldProvenance>
-						<Select
-							name="deviceId"
-							value={state.values.deviceId || null}
-							onValueChange={(value) => onFieldChange("deviceId", value ?? "")}
-						>
-							<SelectTrigger id="intake-device" className="w-full">
-								<SelectValue placeholder={requestFormCopy.recentDevice} />
-							</SelectTrigger>
-							<SelectContent>
-								<SelectGroup>
-									{/* Without an empty option a device the model chose could
-									    only be swapped, never taken off, and the request was
-									    filed against the wrong computer. */}
-									<SelectItem value={null}>{intakeCopy.noDevice}</SelectItem>
-									{devices.data.map((device) => (
-										<SelectItem key={device.id} value={device.id}>
-											{device.hostname}, {requestFormCopy.lastSeen}{" "}
-											{timeAgo(device.lastSeenAt)}
-										</SelectItem>
-									))}
-								</SelectGroup>
-							</SelectContent>
-						</Select>
 					</Field>
-				) : null}
 
-				{fieldDefinitions.isPending ? (
-					<div className="flex flex-col gap-2">
-						<Skeleton className="h-4 w-32" />
-						<Skeleton className="h-10 w-full" />
-					</div>
-				) : null}
-				{fieldDefinitions.data?.length ? (
-					<div className="flex flex-col gap-4">
+					<Field>
+						<FieldProvenance
+							source={provenance(state, "body")}
+							hasAiValue={hasAiValue(state, "body")}
+							needsInput={needsInputPaths.has("body")}
+							onRevert={() => onRevert("body")}
+						>
+							<FieldLabel htmlFor="intake-body">
+								{requestFormCopy.incidentDetailsLabel}
+							</FieldLabel>
+							<Textarea
+								id="intake-body"
+								maxLength={10_000}
+								value={body}
+								onChange={(event) => onFieldChange("body", event.target.value)}
+								className="min-h-36"
+								aria-invalid={!bodyValid}
+							/>
+							{body && !bodyValid ? (
+								<FieldError>
+									{bodyParse.error?.issues[0]?.message ??
+										requestFormCopy.detailsTooShort}
+								</FieldError>
+							) : null}
+						</FieldProvenance>
+					</Field>
+
+					{devices.isPending ? (
+						<p className="text-muted-foreground text-sm" role="status">
+							{requestFormCopy.devicesLoading}
+						</p>
+					) : null}
+					{devices.data?.length ? (
+						<Field>
+							<FieldProvenance
+								source={provenance(state, "deviceId")}
+								hasAiValue={hasAiValue(state, "deviceId")}
+								needsInput={needsInputPaths.has("deviceId")}
+								onRevert={() => onRevert("deviceId")}
+							>
+								<FieldLabel htmlFor="intake-device">
+									{requestFormCopy.deviceLabel}
+								</FieldLabel>
+								<Select
+									name="deviceId"
+									value={state.values.deviceId || null}
+									onValueChange={(value) =>
+										onFieldChange("deviceId", value ?? "")
+									}
+								>
+									<SelectTrigger id="intake-device" className="w-full">
+										<SelectValue placeholder={requestFormCopy.recentDevice} />
+									</SelectTrigger>
+									<SelectContent>
+										<SelectGroup>
+											{/* Without an empty option a device the model chose could
+											    only be swapped, never taken off, and the request was
+											    filed against the wrong computer. */}
+											<SelectItem value={null}>
+												{intakeCopy.noDevice}
+											</SelectItem>
+											{devices.data.map((device) => (
+												<SelectItem key={device.id} value={device.id}>
+													{device.hostname}, {requestFormCopy.lastSeen}{" "}
+													{timeAgo(device.lastSeenAt)}
+												</SelectItem>
+											))}
+										</SelectGroup>
+									</SelectContent>
+								</Select>
+							</FieldProvenance>
+						</Field>
+					) : null}
+				</FieldGroup>
+			</Section>
+
+			<Section title={intakeCopy.sectionImpact}>
+				<FieldGroup>
+					<Field>
+						<FieldProvenance
+							source={provenance(state, "impact")}
+							hasAiValue={hasAiValue(state, "impact")}
+							needsInput={needsInputPaths.has("impact")}
+							onRevert={() => onRevert("impact")}
+						>
+							{/* A field the model was unsure about is left empty rather than
+							    guessed, so nothing is preselected until a value exists. */}
+							<Question
+								legend={requestFormCopy.affectedPeopleLegend}
+								name="intake-impact"
+								value={
+									state.values.impact
+										? (impactToKey[state.values.impact] ?? null)
+										: null
+								}
+								options={affectedPeopleOptions}
+								onChange={handleImpact}
+							/>
+						</FieldProvenance>
+					</Field>
+
+					<Field>
+						<FieldProvenance
+							source={provenance(state, "urgency")}
+							hasAiValue={hasAiValue(state, "urgency")}
+							needsInput={needsInputPaths.has("urgency")}
+							onRevert={() => onRevert("urgency")}
+						>
+							<Question
+								legend={requestFormCopy.timingLegend}
+								name="intake-urgency"
+								value={
+									state.values.urgency
+										? (timingToKey[state.values.urgency] ?? null)
+										: null
+								}
+								options={timingOptions}
+								onChange={handleUrgency}
+							/>
+						</FieldProvenance>
+					</Field>
+				</FieldGroup>
+			</Section>
+
+			{fieldDefinitions.isPending ? (
+				<div className="flex flex-col gap-2">
+					<Skeleton className="h-4 w-32" />
+					<Skeleton className="h-10 w-full" />
+				</div>
+			) : null}
+			{fieldDefinitions.data?.length ? (
+				<Section title={intakeCopy.sectionDetails}>
+					<div className="flex flex-col gap-5">
 						{fieldDefinitions.data.map((definition) => {
 							// The model wraps every dynamic answer in one customFields
 							// entry, so provenance is addressed per key by the reducer's
@@ -401,6 +447,7 @@ export function DraftReview({
 									key={definition.id}
 									source={provenance(state, path)}
 									hasAiValue={hasAiValue(state, path)}
+									needsInput={needsInputPaths.has(path)}
 									onRevert={() => onRevert(path)}
 								>
 									<DynamicFields
@@ -414,71 +461,65 @@ export function DraftReview({
 							);
 						})}
 					</div>
-				) : null}
+				</Section>
+			) : null}
 
-				{selected ? (
-					<>
-						<Separator />
-						<div className="flex flex-col gap-4">
-							<div>
-								<h3 className="font-medium text-base">
-									{intakeCopy.confirmSubcategoryHeading}
-								</h3>
-								{/* Rendered for any routed subcategory, not only one that
-								    carries a form — otherwise a formless subcategory gates
-								    submit on a confirmation the user is never offered. */}
-								<SubcategoryConfirm
-									subcategoryName={selected.subcategory.name}
-									confirmed={state.subcategoryConfirmed}
-									onConfirm={onConfirmSubcategory}
-								/>
-							</div>
-							{catalogueFields(selected)
-								.filter((item) => activeKeys.has(item.key))
-								.map((item) => {
-									const path = `formValues.${item.key}`;
-									return (
-										<FieldProvenance
-											key={item.key}
-											source={provenance(state, path)}
-											hasAiValue={hasAiValue(state, path)}
-											onRevert={() => onRevert(path)}
-										>
-											<CatalogueField
-												field={item}
-												value={
-													(
-														(state.values.formValues ?? {}) as RequestFormValues
-													)[item.key]
-												}
-												onChange={(value) => onFieldChange(path, value)}
-											/>
-										</FieldProvenance>
-									);
-								})}
-						</div>
-					</>
-				) : null}
-			</FieldGroup>
+			{selected ? (
+				<Section title={intakeCopy.confirmSubcategoryHeading}>
+					{/* Rendered for any routed subcategory, not only one that carries a
+					    form — otherwise a formless subcategory gates submit on a
+					    confirmation the user is never offered. */}
+					<SubcategoryConfirm
+						subcategoryName={selected.subcategory.name}
+						confirmed={state.subcategoryConfirmed}
+						onConfirm={onConfirmSubcategory}
+					/>
+					<div className="flex flex-col gap-5">
+						{catalogueFields(selected)
+							.filter((item) => activeKeys.has(item.key))
+							.map((item) => {
+								const path = `formValues.${item.key}`;
+								return (
+									<FieldProvenance
+										key={item.key}
+										source={provenance(state, path)}
+										hasAiValue={hasAiValue(state, path)}
+										needsInput={needsInputPaths.has(path)}
+										onRevert={() => onRevert(path)}
+									>
+										<CatalogueField
+											field={item}
+											value={
+												((state.values.formValues ?? {}) as RequestFormValues)[
+													item.key
+												]
+											}
+											onChange={(value) => onFieldChange(path, value)}
+										/>
+									</FieldProvenance>
+								);
+							})}
+					</div>
+				</Section>
+			) : null}
 
-			<div className="flex flex-col-reverse gap-3 border-t pt-5 sm:flex-row sm:items-center sm:justify-end">
-				{/* The escape hatch has to stay reachable once the composer is gone:
-				    creating a ticket anyway is always visible, never something the
-				    user has to argue past. */}
-				<button
-					type="button"
-					className="self-start text-primary text-sm underline underline-offset-4 sm:mr-auto"
-					onClick={onManual}
-				>
-					{intakeCopy.manualEscape}
-				</button>
+			{/* Sticky, because the form is long enough to bury its own action: the
+			    send control sat past the last catalogue field, so the answer to "am
+			    I done?" was several screens from the work. */}
+			<div className="sticky bottom-4 z-10 flex flex-col-reverse gap-3 rounded-xl border bg-card/90 px-4 py-3 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-end">
 				{/* Not an alert: the send gate is unmet on first render, and an alert
-				    would interrupt the screen reader the moment the form arrives. */}
-				{!canSend ? (
-					<p className="self-start text-destructive text-sm">
+				    would interrupt the screen reader the moment the form arrives. The
+				    bar always says where the request stands, so a ready one is not a
+				    button floating in an empty strip. */}
+				{canSend ? (
+					<p className="self-start text-muted-foreground text-sm sm:mr-auto sm:self-center">
+						{intakeCopy.readyToSend}
+					</p>
+				) : (
+					<p className="self-start text-destructive text-sm sm:mr-auto sm:self-center">
 						{intakeCopy.requiresAttention}
 					</p>
-				) : null}
+				)}
 				<Button
 					type="button"
 					size="lg"

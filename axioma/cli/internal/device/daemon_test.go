@@ -675,3 +675,46 @@ func waitForResult(t *testing.T, sent <-chan *pb.DeviceMessage) *pb.CommandResul
 		}
 	}
 }
+
+// Ownership is the second binding, and it changes without the device doing
+// anything: the employee releases the machine in the portal while this daemon
+// holds the same stream. The gateway reports it on every enrolment message, and
+// `axel-cli status` reads it off the snapshot, so both directions are recorded.
+func TestServeConnectionRecordsOwnershipBothWays(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", t.TempDir())
+	if err := SaveDaemonState(DaemonState{GRPCHost: "test", Claimed: true}); err != nil {
+		t.Fatal(err)
+	}
+	for step, claimed := range []bool{false, true} {
+		stream := newFakeDeviceStream()
+		ctx, cancel := context.WithCancel(context.Background())
+		id := Identity{DeviceID: "device", Credential: "credential"}
+		done := make(chan error, 1)
+		go func() {
+			done <- serveConnection(ctx, cancel, stream, "test", &id,
+				daemonTimings{heartbeat: time.Hour, liveness: time.Hour},
+				func(Identity, uint64) error { return nil }, acknowledge)
+		}()
+		<-stream.sent // hello
+		stream.recv <- &pb.GatewayMessage{Payload: &pb.GatewayMessage_Enrollment{
+			Enrollment: &pb.DeviceEnrollment{Claimed: claimed, AuthValid: true},
+		}}
+		settle(t, stream, uint64(step)+1)
+		cancel()
+		stream.close()
+		<-done
+		state, err := LoadDaemonState()
+		if err != nil {
+			t.Fatalf("claimed=%v: load daemon state: %v", claimed, err)
+		}
+		if state.Claimed != claimed {
+			t.Fatalf("claimed = %v, want %v", state.Claimed, claimed)
+		}
+		// The connection carries the last known value forward, so a reconnect
+		// does not read as unlinked before the hello reply lands.
+		recordDaemonState(disconnectedState("test", id.LastSeenSequence, errors.New("stream closed")))
+		if between, err := LoadDaemonState(); err != nil || between.Claimed != claimed {
+			t.Fatalf("between connections claimed = %#v, %v", between, err)
+		}
+	}
+}

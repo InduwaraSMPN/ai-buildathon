@@ -259,6 +259,7 @@ func disconnectedState(host string, sequence uint64, err error) DaemonState {
 	state := DaemonState{GRPCHost: host, LastSeenSequence: sequence, LastError: errorString(err)}
 	if stored, storedErr := loadDaemonState(); storedErr == nil {
 		state.ClaimCode = stored.ClaimCode
+		state.Claimed = stored.Claimed
 		state.LastInventoryAt = stored.LastInventoryAt
 	}
 	return state
@@ -295,6 +296,10 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 		// second connection onwards, which is the only place the employee reads
 		// it.
 		state.ClaimCode = stored.ClaimCode
+		// Likewise ownership: the hello reply refreshes it a moment later, and
+		// carrying the last known value keeps `status` from reading as unlinked
+		// for the width of a reconnect.
+		state.Claimed = stored.Claimed
 	}
 
 	// grpc permits one sender and one receiver, and SendMsg parks until the
@@ -517,6 +522,16 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 				// still unowned, so a code can arrive without a credential and
 				// must be stored then too; once someone has claimed the machine
 				// there is nothing left to type and the stale code is dropped.
+				//
+				// Ownership itself is carried on every enrolment message the
+				// gateway sends — the hello reply and a credential rotation
+				// push — so it is recorded whichever way it moved. It moves
+				// without the device doing anything: the employee releasing the
+				// machine in the portal clears the owner while the daemon holds
+				// this same stream, and `status` would otherwise keep showing a
+				// link that is gone.
+				claimChanged := enrollment.Claimed != state.Claimed
+				state.Claimed = enrollment.Claimed
 				switch {
 				case enrollment.ClaimCode != "" && enrollment.ClaimCode != state.ClaimCode:
 					state.ClaimCode = enrollment.ClaimCode
@@ -524,6 +539,8 @@ func serveConnection(ctx context.Context, cancel context.CancelFunc, stream devi
 					log.Printf("axel-cli: claim code %s — enter it in the portal to link this computer to your account.", enrollment.ClaimCode)
 				case enrollment.Claimed && state.ClaimCode != "":
 					state.ClaimCode = ""
+					recordDaemonState(state)
+				case claimChanged:
 					recordDaemonState(state)
 				}
 				continue
