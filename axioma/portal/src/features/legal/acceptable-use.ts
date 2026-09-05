@@ -113,7 +113,7 @@ export const acceptableUse = {
 	title: "Acceptable use policy",
 	subtitle: "Axiōma support portal",
 	version: "0.1",
-	status: "Draft — pending legal and HR review",
+	status: "Approved",
 	effective: "31 August 2026",
 	intro:
 		"This portal is how you reach the people who fix things, and how they reach your equipment when they need to. That works on a small amount of trust in both directions. This policy sets out what is expected of you, and what you are entitled to expect back.",

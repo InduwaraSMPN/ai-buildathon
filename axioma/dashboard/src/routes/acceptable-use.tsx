@@ -54,7 +54,7 @@ function AcceptableUsePage() {
 								<Badge variant="outline">
 									Effective {acceptableUse.effective}
 								</Badge>
-								<Badge tone="warning">{acceptableUse.status}</Badge>
+								<Badge tone="success">{acceptableUse.status}</Badge>
 							</div>
 						</header>
 

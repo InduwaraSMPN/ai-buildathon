@@ -58,7 +58,12 @@ export default function Header() {
 					<Link to="/help-articles" className={navPill}>
 						Help articles
 					</Link>
-					<a href={siteUrl("status")} className={navPill}>
+					<a
+						href={siteUrl("status")}
+						className={navPill}
+						target="_blank"
+						rel="noopener noreferrer"
+					>
 						{statusCopy.viewStatus}
 						<RiArrowRightUpLine className="size-3.5" aria-hidden="true" />
 					</a>
