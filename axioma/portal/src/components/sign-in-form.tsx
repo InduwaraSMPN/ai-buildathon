@@ -85,7 +85,7 @@ export default function SignInForm({
 										title="Axiōma"
 										className="h-4 w-auto text-foreground"
 									/>
-									support requests
+									support portal.
 								</p>
 							</div>
 							<form.Field name="email">
