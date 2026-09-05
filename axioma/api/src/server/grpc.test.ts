@@ -7,6 +7,7 @@ import { db } from "@/db";
 import {
 	agentRuns,
 	authProviders,
+	deviceCommands,
 	deviceEnrolmentTokens,
 	devices,
 	directoryIdentities,
@@ -437,6 +438,105 @@ test("revocation disconnects the device and blocks reconnect", async () => {
 				deviceId,
 				credential,
 			}),
+		);
+	} finally {
+		await db.delete(devices).where(eq(devices.id, deviceId));
+	}
+});
+
+test("revocation discards queued commands before a reconnect can replay them", async () => {
+	const deviceId = crypto.randomUUID();
+	const credential = issueDeviceCredential();
+	await db.insert(devices).values({
+		id: deviceId,
+		hostname: "revoked-outbox-test",
+		credentialHash: hashDeviceSecret(credential),
+		enrolledAt: new Date(),
+	});
+	const gateway = new Gateway();
+	const command = {
+		commandId: crypto.randomUUID(),
+		sequence: "1",
+		action: "read_state",
+		parameters: {},
+		computerUse: false,
+		objective: "",
+		timeoutSeconds: 30,
+	};
+	const internals = gateway as unknown as {
+		outboxes: Map<string, unknown[]>;
+		registerDevice(
+			deviceId: string,
+			generation: symbol,
+			stream: never,
+			hello: Record<string, unknown>,
+		): Promise<void>;
+	};
+	internals.outboxes.set(deviceId, [command]);
+	try {
+		assert.ok(await gateway.revokeDevice(deviceId));
+		assert.equal(internals.outboxes.has(deviceId), false);
+		const writes: unknown[] = [];
+		await assert.rejects(() =>
+			internals.registerDevice(
+				deviceId,
+				Symbol(deviceId),
+				{ write: (value: unknown) => void writes.push(value) } as never,
+				{ deviceId, credential, lastSeenSequence: 0 },
+			),
+		);
+		assert.deepEqual(writes, []);
+	} finally {
+		await db.delete(devices).where(eq(devices.id, deviceId));
+	}
+});
+
+test("rotation preserves the device row and command history", async () => {
+	const deviceId = crypto.randomUUID();
+	const oldCredential = issueDeviceCredential();
+	const commandId = crypto.randomUUID();
+	await db.insert(devices).values({
+		id: deviceId,
+		hostname: "rotation-history-test",
+		credentialHash: hashDeviceSecret(oldCredential),
+		enrolledAt: new Date(),
+	});
+	await db.insert(deviceCommands).values({
+		id: commandId,
+		deviceId,
+		sequence: 1,
+		tool: "device_read_state",
+		status: "succeeded",
+	});
+	const writes: Record<string, unknown>[] = [];
+	const gateway = new Gateway();
+	(gateway as unknown as { devices: Map<string, unknown> }).devices.set(
+		deviceId,
+		{
+			stream: {
+				write: (value: Record<string, unknown>) => void writes.push(value),
+			},
+			lastSeen: Date.now(),
+			generation: Symbol(deviceId),
+		},
+	);
+	try {
+		assert.equal(await gateway.rotateDeviceCredential(deviceId), true);
+		assert.equal(
+			(await db.select().from(devices).where(eq(devices.id, deviceId))).length,
+			1,
+		);
+		assert.equal(
+			(
+				await db
+					.select({ id: deviceCommands.id })
+					.from(deviceCommands)
+					.where(eq(deviceCommands.id, commandId))
+			).length,
+			1,
+		);
+		assert.ok(
+			String((writes[0]?.enrollment as Record<string, unknown>)?.credential),
 		);
 	} finally {
 		await db.delete(devices).where(eq(devices.id, deviceId));

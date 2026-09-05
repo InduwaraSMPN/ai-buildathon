@@ -1062,9 +1062,13 @@ export const ticketsRouter = {
 			reclassify: "ticket.reclassify",
 			assign: "ticket.assign",
 		} as const;
-		assertCapabilities(context, required[input.action]);
 		const current = await findTicket(input.id);
 		if (!current) throw new ORPCError("NOT_FOUND");
+		const reporterVerdict =
+			current.reporterId === context.userId &&
+			current.statusStateType === "resolved" &&
+			(input.action === "close" || input.action === "escalate");
+		if (!reporterVerdict) assertCapabilities(context, required[input.action]);
 		if (input.action === "add_detail" && current.reporterId !== context.userId)
 			throw new ORPCError("FORBIDDEN");
 		if (["resolve", "close", "assign"].includes(input.action)) {
@@ -1231,9 +1235,12 @@ export const ticketsRouter = {
 								: current.resolutionCode,
 					escalationNote:
 						input.action === "escalate" ? input.note : current.escalationNote,
-					escalationFlag: ["reopen", "pend", "unpend"].includes(input.action)
-						? "none"
-						: current.escalationFlag,
+					escalationFlag:
+						input.action === "escalate"
+							? "warning"
+							: ["reopen", "pend", "unpend"].includes(input.action)
+								? "none"
+								: current.escalationFlag,
 					escalationReason: ["reopen", "pend", "unpend"].includes(input.action)
 						? null
 						: current.escalationReason,

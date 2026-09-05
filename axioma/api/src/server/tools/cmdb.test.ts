@@ -107,10 +107,10 @@ test("attribute validation returns structured unknown and typed errors", () => {
 			{
 				code: "unknown_property",
 				// The declared set is part of the message: a refusal the agent
-			// cannot act on costs a whole run, and the class keys are not
-			// guessable from the ticket.
-			message:
-				'Class "Server" does not declare property "surprise". Declared properties: hostname, cores',
+				// cannot act on costs a whole run, and the class keys are not
+				// guessable from the ticket.
+				message:
+					'Class "Server" does not declare property "surprise". Declared properties: hostname, cores',
 				classKey: "Server",
 				propertyKey: "surprise",
 			},
